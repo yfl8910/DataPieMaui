@@ -4,7 +4,7 @@
 @implements IDisposable
 
 <main>
-    <header><div><h1>Query results</h1><p>@snapshot?.Connection</p></div><span class="badge">Read-only preview</span></header>
+    <header><div><h1>Query results</h1><p>@snapshot?.Connection</p><p>@snapshot?.Source</p></div><span class="badge">Read-only preview</span></header>
     @if (snapshot is null)
     {
         <div class="empty">Run a query in the main window to view results.</div>

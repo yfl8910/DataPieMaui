@@ -17,7 +17,7 @@ internal static class WorkspaceChecks
         using (var access = new SQLiteConnection(connection))
         {
             access.Open();
-            using var command = new SQLiteCommand("CREATE TABLE Items(Id INTEGER, Name TEXT); INSERT INTO Items VALUES(1, 'first'), (2, 'second');", access);
+            using var command = new SQLiteCommand("CREATE TABLE Items(Id INTEGER, Name TEXT); INSERT INTO Items VALUES(1, 'first'), (2, 'second'); CREATE VIEW ItemNames AS SELECT Name FROM Items; CREATE VIEW ManyRows AS WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM numbers WHERE n<1001) SELECT n FROM numbers;", access);
             command.ExecuteNonQuery();
         }
         var desktop = new FakeDesktop();
@@ -36,6 +36,26 @@ internal static class WorkspaceChecks
             Check(workspace.Form.Sql.Contains("ORDER BY Id") && workspace.Form.ImportPath == "remember.csv", "Navigation lost inputs");
             await workspace.OpenResultsAsync();
             Check(desktop.ResultWindows == 2, "Reopen results not dispatched");
+        });
+        await test("Import and export object previews share results without changing page inputs or selection", async () =>
+        {
+            string sql = workspace.Form.Sql;
+            workspace.Navigate("Import");
+            await workspace.PreviewImportTableAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Results.Current?.Source == "Table · Items" && workspace.Results.Current.Rows.Length == 2, "Wrong import target preview");
+            Check(workspace.Section == "Import" && workspace.Form.Sql == sql, "Preview changed navigation or SQL editor");
+            workspace.Navigate("Export");
+            var view = workspace.Exports.Single(x => x.Name == "ItemNames"); view.Selected = true;
+            await workspace.PreviewObjectAsync(view.Name).WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Results.Current?.Source == "View · ItemNames" && workspace.Results.Current.Columns.SequenceEqual(new[] { "Name" }), "Wrong view preview");
+            Check(view.Selected && workspace.Form.Sql == sql && workspace.Form.ImportTable == "Items" && workspace.Section == "Export", "Preview changed user choices");
+            view.Selected = false;
+            await workspace.PreviewObjectAsync("ManyRows").WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Results.Current is { Truncated: true } limited && limited.Rows.Length == 1000, "Object preview ignored row limit");
+            var pending = workspace.PreviewObjectAsync("not in schema");
+            Check(workspace.Dialogs.Current?.Title == "Query data failed", "Unknown object was not rejected");
+            workspace.Dialogs.Complete(true); await pending;
+            workspace.Navigate("Query");
         });
         await test("Confirmation prevents execution and concurrent operations; cancel is safe", async () =>
         {
@@ -67,7 +87,8 @@ internal static class WorkspaceChecks
             Check(File.ReadAllText(export).Contains("third"), "Query export incomplete");
             var folder = Path.Combine(root, "workspace-exports"); Directory.CreateDirectory(folder);
             var existing = Path.Combine(folder, "Items.csv"); File.WriteAllText(existing, "keep me");
-            desktop.Folder = folder; workspace.SelectAll(true);
+            desktop.Folder = folder; workspace.SelectAll(false);
+            workspace.Exports.Single(x => x.Name == "Items").Selected = true;
             var running = workspace.ExportBatchAsync("csv");
             Check(workspace.Dialogs.Current?.Title == "Replace CSV files", "Missing overwrite confirmation");
             workspace.Dialogs.Complete(false); await running;
@@ -110,6 +131,8 @@ internal static class WorkspaceChecks
                     return component.ToHtmlString();
                 });
                 Check(html.Contains(expected), "Missing content for " + section);
+                if (section is "Import" or "Export") Check(html.Contains("Query data"), "Object query button missing in " + section);
+                if (section == "Procedures") Check(!html.Contains("object-preview"), "Procedures incorrectly offer table preview");
                 Check(!html.Contains("<script>alert(1)</script>"), "SQL rendered as markup");
                 Check(!html.Contains("workspace-body\" inert"), "Idle workspace is inert");
                 if (renderUi) SaveHtml(section, html);

@@ -11,14 +11,16 @@ public sealed class QueryResultSnapshot
     public object?[][] Rows { get; }
     public bool Truncated { get; }
     public string Connection { get; }
+    public string Source { get; }
 
-    public QueryResultSnapshot(DataTable table, bool truncated, string connection)
+    public QueryResultSnapshot(DataTable table, bool truncated, string connection, string source = "SQL query")
     {
         Columns = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToArray();
         Types = table.Columns.Cast<DataColumn>().Select(c => c.DataType).ToArray();
         Rows = table.Rows.Cast<DataRow>().Select(r => r.ItemArray.Select(v => v is byte[] bytes ? bytes.ToArray() : v).ToArray()).ToArray();
         Truncated = truncated;
         Connection = connection;
+        Source = source;
     }
 
     public static string Format(object? value) => value switch

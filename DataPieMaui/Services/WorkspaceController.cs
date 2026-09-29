@@ -190,13 +190,25 @@ public sealed class WorkspaceController
     public Task PreviewAsync() => RunAsync("Query", async w =>
     {
         if (string.IsNullOrWhiteSpace(Form.Sql)) Generate("SELECT");
-        var sql = Form.Sql; w.Start();
-        var result = await Task.Run(() => { using var access = database.OpenAccess(); using var table = QueryPreview.Load(access, sql, 1000, out bool truncated); return new QueryResultSnapshot(table, truncated, State.Connection); });
+        await LoadPreviewAsync(Form.Sql, "SQL query", w);
+    });
+    public Task PreviewImportTableAsync() => PreviewObjectAsync(Form.ImportTable);
+    public Task PreviewObjectAsync(string name) => RunAsync("Query data", async w =>
+    {
+        Required(name, "Select a table or view.");
+        var item = Exports.FirstOrDefault(x => x.Name == name)
+            ?? throw new InvalidOperationException("The table or view is not in the current database. Reconnect to refresh the schema.");
+        await LoadPreviewAsync(SqlQueryBuilder.BuildSelectAll(name, Type), item.Kind + " · " + name, w);
+    });
+    private async Task LoadPreviewAsync(string sql, string source, Stopwatch w)
+    {
+        w.Start();
+        var result = await Task.Run(() => { using var access = database.OpenAccess(); using var table = QueryPreview.Load(access, sql, 1000, out bool truncated); return new QueryResultSnapshot(table, truncated, State.Connection, source); });
         w.Stop(); Results.Set(result);
-        QuerySummary = $"{result.Rows.Length:N0} rows / {result.Columns.Length} columns" + (result.Truncated ? " · First 1,000 rows only. Export to retrieve the full result." : "");
+        QuerySummary = $"{source} · {result.Rows.Length:N0} rows / {result.Columns.Length} columns" + (result.Truncated ? " · First 1,000 rows only. Export to retrieve the full result." : "");
         await desktop.ShowResultsAsync(Results);
         State.Status = $"Query completed in {w.Elapsed.TotalSeconds:F1} s: " + QuerySummary;
-    });
+    }
     public Task OpenResultsAsync() => RunAsync("Open results", async w => { w.Start(); if (Results.Current != null) await desktop.ShowResultsAsync(Results); });
     public Task ExecuteSqlAsync() => RunAsync("Run SQL", async w =>
     {

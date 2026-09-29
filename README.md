@@ -44,6 +44,8 @@ Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that suppo
 4. Use the export buttons for the full query result, or **Batch export** for selected tables and views.
 5. Use **Import data**, **Stored procedures**, or **Convert to SQLite** for the corresponding operations.
 
+On **Import data**, select a **Target table** and click **Query data** to inspect it. On **Batch export**, each table/view has its own **Query data** button, independent of the export checkboxes. These actions reuse the results window, show the object name, and preserve your SQL editor and selections. Object previews have the same 1,000-row limit, sorting, paging, and copying as SQL previews.
+
 ### Query preview behavior
 
 - Previews are limited to the first 1,000 rows and displayed in pages of 100. Paging and sorting operate on those preview rows only.

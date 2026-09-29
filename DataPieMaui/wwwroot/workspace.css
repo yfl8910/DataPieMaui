@@ -58,6 +58,9 @@ hr { margin: 28px 0; border: 0; border-top: 1px solid var(--border); }
 .object-list { max-height: 48vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
 .object-row { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid #edf1f4; font-weight: 400; overflow-wrap: anywhere; }
 .object-row:hover { background: #f5f9f7; }
+.object-choice { display: flex; flex-direction: row; align-items: center; gap: 12px; flex: 1; min-width: 0; font-weight: 400; }
+.object-choice > span:last-child { overflow-wrap: anywhere; }
+.object-preview { flex-shrink: 0; }
 input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--green); }
 .type-badge, .version-tag { border-radius: 4px; background: #edf2f5; color: #758894; padding: 3px 8px; font-size: 11px; }
 .type-badge { min-width: 65px; text-align: center; }
