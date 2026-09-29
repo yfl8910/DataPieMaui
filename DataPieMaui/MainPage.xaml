@@ -8,11 +8,11 @@
     <Grid Grid.Row="1" ColumnDefinitions="160,*" ColumnSpacing="20">
       <VerticalStackLayout Spacing="10" IsEnabled="{Binding Idle}">
         <Button Text="数据库连接" Clicked="Navigate" CommandParameter="Connections" />
-        <Button Text="SQL 查询" Clicked="Navigate" CommandParameter="Query" />
-        <Button Text="数据导入" Clicked="Navigate" CommandParameter="Import" />
-        <Button Text="批量导出" Clicked="Navigate" CommandParameter="Export" />
-        <Button Text="存储过程" Clicked="Navigate" CommandParameter="Procedures" />
-        <Button Text="转为 SQLite" Clicked="Navigate" CommandParameter="Migration" />
+        <Button Text="SQL 查询" Clicked="Navigate" CommandParameter="Query" IsVisible="{Binding IsConnected}" />
+        <Button Text="数据导入" Clicked="Navigate" CommandParameter="Import" IsVisible="{Binding IsConnected}" />
+        <Button Text="批量导出" Clicked="Navigate" CommandParameter="Export" IsVisible="{Binding IsConnected}" />
+        <Button Text="存储过程" Clicked="Navigate" CommandParameter="Procedures" IsVisible="{Binding IsConnected}" />
+        <Button Text="转为 SQLite" Clicked="Navigate" CommandParameter="Migration" IsVisible="{Binding CanConvertToSqlite}" />
         <Button Text="关于 DataPieMaui" Clicked="About" BackgroundColor="#68778C" />
       </VerticalStackLayout>
       <Grid Grid.Column="1" x:Name="Workspace" IsEnabled="{Binding Idle}">

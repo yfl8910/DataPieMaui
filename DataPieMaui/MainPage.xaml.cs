@@ -96,6 +96,8 @@ public partial class MainPage : ContentPage
     private void Navigate(object? sender, EventArgs e) => ShowPanel((string)((Button)sender!).CommandParameter);
     private void ShowPanel(string name)
     {
+        if (!state.IsConnected || (name == "Migration" && !state.CanConvertToSqlite))
+            name = "Connections";
         ConnectionsPanel.IsVisible = name == "Connections";
         QueryPanel.IsVisible = name == "Query";
         ImportPanel.IsVisible = name == "Import";
@@ -117,6 +119,7 @@ public partial class MainPage : ContentPage
     private async Task ConnectAsync(Dbinfo record, bool save)
     {
         await database.ConnectAsync(Info(record));
+        state.DatabaseType = database.Connection!.DatabaseType;
         BindSchema();
         state.Connection = record.Dbname + " · " + record.Dbtype;
         if (save) { store.Save(record, true); ReloadConnections(); }
