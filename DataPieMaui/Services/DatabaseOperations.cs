@@ -9,7 +9,7 @@ internal sealed class DatabaseOperations
     public DbSchema? Schema { get; private set; }
     public IDbAccess OpenAccess() => Connection is { } connection
         ? DbAccessFactory.Create(connection.ConnectionString, connection.DatabaseType)
-        : throw new InvalidOperationException("请先连接数据库。");
+        : throw new InvalidOperationException("Connect to a database first.");
 
     public async Task ConnectAsync(DatabaseConnectionInfo connection)
     {
@@ -35,14 +35,14 @@ internal sealed class DatabaseOperations
                 using (var reader = source.GetDataReader(SqlQueryBuilder.BuildSelectAll(table, "SQLITE")))
                     access.BulkInsert(table, reader);
                 break;
-            default: throw new NotSupportedException("不支持的文件格式：" + path);
+            default: throw new NotSupportedException("Unsupported file format: " + path);
         }
     }
 
     public string ConvertToSqlite(string path)
     {
         if (Connection?.DatabaseType != "SQLSERVER" || Schema == null)
-            throw new InvalidOperationException("请先连接 SQL Server。");
+            throw new InvalidOperationException("Connect to SQL Server first.");
         using var access = (SqlServerDbAccess)OpenAccess();
         // The existing converter has process-wide state. The UI serializes all operations.
         SqlServerToSQLite.dbs = Schema;
@@ -52,7 +52,7 @@ internal sealed class DatabaseOperations
         var migration = SqlServerToSQLite.CreateSQLiteDatabase(path, null, true);
         SqlServerToSQLite.CopySqlServerRowsToSQLiteDB(access.ConnectionString, path, null);
         var warnings = migration.ViewErrors.Concat(migration.ProcedureErrors).ToArray();
-        return $"已复制 {SqlServerToSQLite.TotalCopyed:N0} 行。视图转换问题：{migration.ViewErrors.Count}；过程转换问题：{migration.ProcedureErrors.Count}。"
+        return $"Copied {SqlServerToSQLite.TotalCopyed:N0} rows. View conversion issues: {migration.ViewErrors.Count}; procedure conversion issues: {migration.ProcedureErrors.Count}."
             + (warnings.Length == 0 ? "" : Environment.NewLine + string.Join(Environment.NewLine, warnings));
     }
 }

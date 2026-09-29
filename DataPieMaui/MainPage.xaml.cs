@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
-using System.ServiceProcess;
 using DataPieCore;
 using DBUtil;
 using DataPieMaui.Services;
@@ -49,7 +48,7 @@ public partial class MainPage : ContentPage
         base.OnAppearing();
         if (initialized) return;
         initialized = true;
-        await RunAsync("读取连接配置", async () =>
+        await RunAsync("Load connections", async () =>
         {
             await Task.Run(() =>
             {
@@ -64,7 +63,7 @@ public partial class MainPage : ContentPage
     public void NotifyCloseBlocked()
     {
         if (state.Converting) CancelConversion(this, EventArgs.Empty);
-        else state.Status = "任务正在执行，请等待完成后再关闭窗口。";
+        else state.Status = "An operation is running. Please wait until it finishes before closing the window.";
     }
     private async Task RunAsync(string title, Func<Task> action)
     {
@@ -75,20 +74,20 @@ public partial class MainPage : ContentPage
         try
         {
             await action();
-            if (state.Status == title + "…") state.Status = $"{title}完成 · {watch.Elapsed.TotalSeconds:F1} 秒";
+            if (state.Status == title + "…") state.Status = $"{title} completed in {watch.Elapsed.TotalSeconds:F1} s";
         }
         catch (OperationCanceledException)
         {
-            state.Status = "转换已取消。输出数据库可能不完整，请重新导出后再使用。";
+            state.Status = "Conversion canceled. The output database may be incomplete. Export it again before use.";
         }
         catch (ApplicationException ex) when (SqlServerToSQLite._cancelled && ex.Message == "User cancelled the conversion")
         {
-            state.Status = "转换已取消。输出数据库可能不完整，请重新导出后再使用。";
+            state.Status = "Conversion canceled. The output database may be incomplete. Export it again before use.";
         }
         catch (Exception ex)
         {
-            state.Status = title + "失败：" + ex.Message;
-            await DisplayAlertAsync(title + "失败", ex.Message, "确定");
+            state.Status = title + " failed: " + ex.Message;
+            await DisplayAlertAsync(title + " failed", ex.Message, "OK");
         }
         finally { state.Busy = false; }
     }
@@ -139,33 +138,33 @@ public partial class MainPage : ContentPage
         ImportPath.Text = "";
         ImportFolder.Text = "";
         exports.Clear();
-        exports.AddRange(names.Select(n => new SelectableObject(n, "表")));
-        exports.AddRange(database.Schema.ViewNames.Select(n => new SelectableObject(n, "视图")));
+        exports.AddRange(names.Select(n => new SelectableObject(n, "Table")));
+        exports.AddRange(database.Schema.ViewNames.Select(n => new SelectableObject(n, "View")));
         procedures.Clear();
-        procedures.AddRange(database.Schema.Procedures.Select(p => new SelectableObject(p.Name, "过程")));
+        procedures.AddRange(database.Schema.Procedures.Select(p => new SelectableObject(p.Name, "Procedure")));
         ExportObjects.ItemsSource = null; ExportObjects.ItemsSource = exports;
         ProcedureObjects.ItemsSource = null; ProcedureObjects.ItemsSource = procedures;
     }
-    private async void ConnectSaved(object? s, EventArgs e) => await RunAsync("连接数据库", () => ConnectAsync(SavedConnections.SelectedItem as Dbinfo ?? throw new InvalidOperationException("请选择连接。"), false));
-    private async void ConnectEdited(object? s, EventArgs e) => await RunAsync("连接数据库", () => ConnectAsync(ReadConnection(), false));
-    private async void TestConnection(object? s, EventArgs e) => await RunAsync("测试连接", async () =>
+    private async void ConnectSaved(object? s, EventArgs e) => await RunAsync("Connect to database", () => ConnectAsync(SavedConnections.SelectedItem as Dbinfo ?? throw new InvalidOperationException("Select a connection."), false));
+    private async void ConnectEdited(object? s, EventArgs e) => await RunAsync("Connect to database", () => ConnectAsync(ReadConnection(), false));
+    private async void TestConnection(object? s, EventArgs e) => await RunAsync("Test connection", async () =>
     {
         var info = Info(ReadConnection());
         await Task.Run(() => { using var access = DbAccessFactory.Create(info.ConnectionString, info.DatabaseType); access.conn.Open(); });
     });
-    private async void AddConnection(object? s, EventArgs e) => await RunAsync("保存连接", () => { var record = ReadConnection(); record.Id = 0; store.Save(record); ReloadConnections(); return Task.CompletedTask; });
-    private async void UpdateConnection(object? s, EventArgs e) => await RunAsync("更新连接", () =>
+    private async void AddConnection(object? s, EventArgs e) => await RunAsync("Save connection", () => { var record = ReadConnection(); record.Id = 0; store.Save(record); ReloadConnections(); return Task.CompletedTask; });
+    private async void UpdateConnection(object? s, EventArgs e) => await RunAsync("Update connection", () =>
     {
-        if (selectedConnectionId <= 0) throw new InvalidOperationException("请选择需要更新的连接。");
+        if (selectedConnectionId <= 0) throw new InvalidOperationException("Select the connection to update.");
         store.Save(ReadConnection()); ReloadConnections(); return Task.CompletedTask;
     });
-    private async void DeleteConnection(object? s, EventArgs e) => await RunAsync("删除连接", async () =>
+    private async void DeleteConnection(object? s, EventArgs e) => await RunAsync("Delete connection", async () =>
     {
-        if (SavedConnections.SelectedItem is not Dbinfo item) throw new InvalidOperationException("请选择连接。");
-        if (!await DisplayAlertAsync("删除连接", "仅删除保存的连接配置：" + item.Dbname, "删除", "取消")) return;
+        if (SavedConnections.SelectedItem is not Dbinfo item) throw new InvalidOperationException("Select a connection.");
+        if (!await DisplayAlertAsync("Delete connection", "Delete only the saved connection configuration: " + item.Dbname, "Delete", "Cancel")) return;
         store.Delete(item.Id); selectedConnectionId = 0; ReloadConnections();
     });
-    private async void ImportConnections(object? s, EventArgs e) => await RunAsync("导入旧连接配置", async () =>
+    private async void ImportConnections(object? s, EventArgs e) => await RunAsync("Import legacy connections", async () =>
     {
         var path = await WindowsFiles.OpenAsync(".db");
         if (path == null) return;
@@ -177,75 +176,60 @@ public partial class MainPage : ContentPage
     }
     private DBConfig SqlConfig(string name)
     {
-        if (string.IsNullOrWhiteSpace(Server.Text)) throw new InvalidOperationException("请输入服务器地址。");
+        if (string.IsNullOrWhiteSpace(Server.Text)) throw new InvalidOperationException("Enter a server address.");
         return new DBConfig { ProviderName = "SQLSERVER", ServerName = Server.Text.Trim(), DataBase = name, ValidataType = (string?)Authentication.SelectedItem ?? "Windows", UserName = UserName.Text, UserPwd = Password.Text };
     }
-    private async void LoadDatabases(object? s, EventArgs e) => await RunAsync("读取数据库列表", async () =>
+    private async void LoadDatabases(object? s, EventArgs e) => await RunAsync("Load databases", async () =>
     {
         var connection = SqlConfig("master").GetSQLmasterConstring();
         Databases.ItemsSource = await Task.Run(() => { using var access = DbAccessFactory.Create(connection, "SQLSERVER"); return access.GetDataBaseInfo(); });
         Databases.SelectedIndex = Databases.Items.Count > 0 ? 0 : -1;
     });
-    private async void ConnectServer(object? s, EventArgs e) => await RunAsync("连接 SQL Server", () =>
+    private async void ConnectServer(object? s, EventArgs e) => await RunAsync("Connect to SQL Server", () =>
     {
-        var name = Databases.SelectedItem as string ?? throw new InvalidOperationException("请选择数据库。");
+        var name = Databases.SelectedItem as string ?? throw new InvalidOperationException("Select a database.");
         return ConnectAsync(new Dbinfo { Dbname = name, Dbtype = "SQLSERVER", ConnectionStrings = SqlConfig(name).GetConstring() }, true);
     });
-    private async void BrowseSqlite(object? s, EventArgs e) => await RunAsync("选择 SQLite", async () => { var path = await WindowsFiles.OpenAsync(".db", ".sqlite", ".sqlite3"); if (path != null) SqlitePath.Text = path; });
-    private async void ConnectSqlite(object? s, EventArgs e) => await RunAsync("连接 SQLite", () =>
+    private async void BrowseSqlite(object? s, EventArgs e) => await RunAsync("Select SQLite file", async () => { var path = await WindowsFiles.OpenAsync(".db", ".sqlite", ".sqlite3"); if (path != null) SqlitePath.Text = path; });
+    private async void ConnectSqlite(object? s, EventArgs e) => await RunAsync("Connect to SQLite", () =>
     {
-        if (!File.Exists(SqlitePath.Text)) throw new FileNotFoundException("请选择已存在的 SQLite 数据库。");
+        if (!File.Exists(SqlitePath.Text)) throw new FileNotFoundException("Select an existing SQLite database.");
         var path = Path.GetFullPath(SqlitePath.Text);
         return ConnectAsync(new Dbinfo { Dbname = Path.GetFileNameWithoutExtension(path), Dbtype = "SQLITE", ConnectionStrings = new DBConfig { ProviderName = "SQLITE", DataBase = path }.GetConstring() }, true);
     });
-    private async Task ServiceAsync(bool start) => await RunAsync(start ? "启动本机服务" : "停止本机服务", async () =>
-    {
-        if (!start && !await DisplayAlertAsync("停止 SQL Server", "停止本机 MSSQLSERVER 服务会断开其他应用的连接。", "停止", "取消")) return;
-        await Task.Run(() =>
-        {
-            using var service = new ServiceController("MSSQLSERVER", Environment.MachineName);
-            var target = start ? ServiceControllerStatus.Running : ServiceControllerStatus.Stopped;
-            if (service.Status == target) return;
-            if (start && service.Status != ServiceControllerStatus.StartPending) service.Start();
-            if (!start && service.Status != ServiceControllerStatus.StopPending) service.Stop();
-            service.WaitForStatus(target, TimeSpan.FromSeconds(30));
-        });
-    });
-    private async void StartService(object? s, EventArgs e) => await ServiceAsync(true);
-    private async void StopService(object? s, EventArgs e) => await ServiceAsync(false);
-    private string Type => database.Connection?.DatabaseType ?? throw new InvalidOperationException("请先连接数据库。");
-    private static string SelectedTable(Picker picker) => picker.SelectedItem as string ?? throw new InvalidOperationException("请选择数据表。");
+    private string Type => database.Connection?.DatabaseType ?? throw new InvalidOperationException("Connect to a database first.");
+    private static string SelectedTable(Picker picker) => picker.SelectedItem as string ?? throw new InvalidOperationException("Select a table.");
     private void Generate(string kind)
     {
         var name = SelectedTable(QueryTable);
         var table = database.Schema!.Tables.First(t => t.Name == name);
         SqlEditor.Text = kind switch { "UPDATE" => SqlWriter.WriteUpdate(table, Type), "DELETE" => SqlWriter.WriteDelete(table, Type), _ => SqlWriter.WriteSelect(table, Type, 1000) };
     }
-    private async void GenerateSelect(object? s, EventArgs e) => await RunAsync("生成 SELECT", () => { Generate("SELECT"); return Task.CompletedTask; });
-    private async void GenerateUpdate(object? s, EventArgs e) => await RunAsync("生成 UPDATE", () => { Generate("UPDATE"); return Task.CompletedTask; });
-    private async void GenerateDelete(object? s, EventArgs e) => await RunAsync("生成 DELETE", () => { Generate("DELETE"); return Task.CompletedTask; });
+    private async void GenerateSelect(object? s, EventArgs e) => await RunAsync("Generate SELECT", () => { Generate("SELECT"); return Task.CompletedTask; });
+    private async void GenerateUpdate(object? s, EventArgs e) => await RunAsync("Generate UPDATE", () => { Generate("UPDATE"); return Task.CompletedTask; });
+    private async void GenerateDelete(object? s, EventArgs e) => await RunAsync("Generate DELETE", () => { Generate("DELETE"); return Task.CompletedTask; });
     private string QuerySql()
     {
-        if (string.IsNullOrWhiteSpace(SqlEditor.Text)) throw new InvalidOperationException("请输入 SQL。");
+        if (string.IsNullOrWhiteSpace(SqlEditor.Text)) throw new InvalidOperationException("Enter SQL.");
         return SqlEditor.Text;
     }
-    private async void Preview(object? s, EventArgs e) => await RunAsync("查询", async () =>
+    private async void Preview(object? s, EventArgs e) => await RunAsync("Query", async () =>
     {
         if (string.IsNullOrWhiteSpace(SqlEditor.Text)) Generate("SELECT");
         var sql = QuerySql();
         var result = await Task.Run(() => { using var access = database.OpenAccess(); var table = QueryPreview.Load(access, sql, 1000, out bool truncated); return (table, truncated); });
         Results.SetTable(result.table);
         previewTable?.Dispose(); previewTable = result.table;
-        state.Status = $"查询完成 · {result.table.Rows.Count:N0} 行 / {result.table.Columns.Count} 列" + (result.truncated ? " · 仅显示前 1,000 行，导出可获取完整结果。" : "");
+        state.Status = $"Query completed: {result.table.Rows.Count:N0} rows / {result.table.Columns.Count} columns" + (result.truncated ? " · Showing the first 1,000 rows. Export to retrieve the full result." : "");
     });
-    private async void ExecuteSql(object? s, EventArgs e) => await RunAsync("执行 SQL", async () =>
+    private async void ExecuteSql(object? s, EventArgs e) => await RunAsync("Run SQL", async () =>
     {
         var sql = QuerySql();
-        if (!await DisplayAlertAsync("执行 SQL", "将对当前数据库执行编辑器中的 SQL，是否继续？", "执行", "取消")) return;
+        if (!await DisplayAlertAsync("Run SQL", "Run the SQL in the editor against the current database?", "Run", "Cancel")) return;
         int count = await Task.Run(() => { using var access = database.OpenAccess(); return access.ExecuteSql(sql); });
-        state.Status = $"SQL 执行完成 · 影响 {count:N0} 行";
+        state.Status = $"SQL completed: {count:N0} rows affected";
     });
-    private async Task ExportQueryAsync(bool csv, bool wholeTable) => await RunAsync("导出数据", async () =>
+    private async Task ExportQueryAsync(bool csv, bool wholeTable) => await RunAsync("Export data", async () =>
     {
         string name = wholeTable ? SelectedTable(QueryTable) : "Query";
         string sql = wholeTable ? SqlQueryBuilder.BuildSelectAll(name, Type) : QuerySql();
@@ -257,63 +241,63 @@ public partial class MainPage : ContentPage
     private async void ExportQueryCsv(object? s, EventArgs e) => await ExportQueryAsync(true, false);
     private async void ExportTableExcel(object? s, EventArgs e) => await ExportQueryAsync(false, true);
     private async void ExportTableCsv(object? s, EventArgs e) => await ExportQueryAsync(true, true);
-    private async void CopyRow(object? s, EventArgs e) => await RunAsync("复制选中行", () => Clipboard.Default.SetTextAsync(Results.CopyText(false)));
-    private async void CopyAll(object? s, EventArgs e) => await RunAsync("复制预览", () => Clipboard.Default.SetTextAsync(Results.CopyText(true)));
-    private async void BrowseImport(object? s, EventArgs e) => await RunAsync("选择导入文件", async () => { var path = await WindowsFiles.OpenAsync(".xlsx", ".xls", ".csv", ".db"); if (path != null) ImportPath.Text = path; });
-    private async void BrowseImportFolder(object? s, EventArgs e) => await RunAsync("选择文件夹", async () => { var path = await WindowsFiles.FolderAsync(); if (path != null) ImportFolder.Text = path; });
-    private async void ImportFile(object? s, EventArgs e) => await RunAsync("导入文件", async () =>
+    private async void CopyRow(object? s, EventArgs e) => await RunAsync("Copy selected row", () => Clipboard.Default.SetTextAsync(Results.CopyText(false)));
+    private async void CopyAll(object? s, EventArgs e) => await RunAsync("Copy preview", () => Clipboard.Default.SetTextAsync(Results.CopyText(true)));
+    private async void BrowseImport(object? s, EventArgs e) => await RunAsync("Select import file", async () => { var path = await WindowsFiles.OpenAsync(".xlsx", ".xls", ".csv", ".db"); if (path != null) ImportPath.Text = path; });
+    private async void BrowseImportFolder(object? s, EventArgs e) => await RunAsync("Select folder", async () => { var path = await WindowsFiles.FolderAsync(); if (path != null) ImportFolder.Text = path; });
+    private async void ImportFile(object? s, EventArgs e) => await RunAsync("Import file", async () =>
     {
         string table = SelectedTable(ImportTable), path = ImportPath.Text;
-        if (!File.Exists(path)) throw new FileNotFoundException("请选择已存在的文件。");
+        if (!File.Exists(path)) throw new FileNotFoundException("Select an existing file.");
         await Task.Run(() => { using var access = database.OpenAccess(); DatabaseOperations.Import(path, table, access); });
     });
-    private async void ImportDirectory(object? s, EventArgs e) => await RunAsync("批量导入", async () =>
+    private async void ImportDirectory(object? s, EventArgs e) => await RunAsync("Batch import", async () =>
     {
         string table = SelectedTable(ImportTable), folder = ImportFolder.Text;
-        if (!Directory.Exists(folder)) throw new DirectoryNotFoundException("请选择已存在的文件夹。");
+        if (!Directory.Exists(folder)) throw new DirectoryNotFoundException("Select an existing folder.");
         var progress = new Progress<string>(message => state.Status = message);
         await Task.Run(() =>
         {
             var files = ImportFiles.GetFiles(folder);
-            if (files.Count == 0) throw new InvalidOperationException("文件夹中没有 CSV 或 XLSX 文件。");
+            if (files.Count == 0) throw new InvalidOperationException("The folder contains no CSV or XLSX files.");
             using var access = database.OpenAccess();
             for (int i = 0; i < files.Count; i++)
             {
-                ((IProgress<string>)progress).Report($"正在导入 {i + 1}/{files.Count}：{files[i].Name}");
+                ((IProgress<string>)progress).Report($"Importing {i + 1}/{files.Count}: {files[i].Name}");
                 try { DatabaseOperations.Import(files[i].FullName, table, access); }
-                catch (Exception ex) { throw new InvalidOperationException($"文件 {files[i].Name} 导入失败，之前已导入的数据将保留：{ex.Message}", ex); }
+                catch (Exception ex) { throw new InvalidOperationException($"Import failed for {files[i].Name}. Previously imported data has been kept: {ex.Message}", ex); }
             }
         });
-        state.Status = "批量导入完成。";
+        state.Status = "Batch import completed.";
     });
-    private async void ExportTemplate(object? s, EventArgs e) => await RunAsync("导出模板", async () =>
+    private async void ExportTemplate(object? s, EventArgs e) => await RunAsync("Export template", async () =>
     {
         string table = SelectedTable(ImportTable), type = Type;
         var path = await WindowsFiles.SaveAsync(table + "_template", ".xlsx"); if (path == null) return;
         await Task.Run(() => { using var access = database.OpenAccess(); using var reader = access.GetDataReader(SqlQueryBuilder.BuildSelectAll(table, type) + " where 1=2"); ExcelIO.SaveMiniExcel(path, reader, table); });
     });
-    private async void ClearTable(object? s, EventArgs e) => await RunAsync("清空数据表", async () =>
+    private async void ClearTable(object? s, EventArgs e) => await RunAsync("Clear table", async () =>
     {
         string table = SelectedTable(ImportTable);
-        if (!await DisplayAlertAsync("清空数据表", $"将删除 {table} 中的全部数据。此操作不可撤销。", "清空", "取消")) return;
+        if (!await DisplayAlertAsync("Clear table", $"Delete all data in {table}? This action cannot be undone.", "Clear", "Cancel")) return;
         await Task.Run(() => { using var access = database.OpenAccess(); access.TruncateTable(table); });
         Results.SetTable(null); previewTable?.Dispose(); previewTable = null;
     });
     private void SelectAllExports(object? s, EventArgs e) { foreach (var item in exports) item.Selected = true; }
     private void ClearExports(object? s, EventArgs e) { foreach (var item in exports) item.Selected = false; }
     private void ClearProcedures(object? s, EventArgs e) { foreach (var item in procedures) item.Selected = false; }
-    private async Task ExportBatchAsync(string mode) => await RunAsync("批量导出", async () =>
+    private async Task ExportBatchAsync(string mode) => await RunAsync("Batch export", async () =>
     {
         var names = exports.Where(x => x.Selected).Select(x => x.Name).ToArray();
-        if (names.Length == 0) throw new InvalidOperationException("请勾选需要导出的表或视图。");
+        if (names.Length == 0) throw new InvalidOperationException("Select the tables or views to export.");
         string type = Type;
         var path = mode == "csv" ? await WindowsFiles.FolderAsync() : await WindowsFiles.SaveAsync(names[0], ".xlsx");
         if (path == null) return;
         var outputs = names.Select(name => Path.Combine(path, WindowsFiles.SafeName(name) + ".csv")).ToArray();
         if (mode == "csv")
         {
-            if (outputs.Distinct(StringComparer.OrdinalIgnoreCase).Count() != outputs.Length) throw new InvalidOperationException("部分表名转换为文件名后重复，请分批导出到不同文件夹。");
-            if (outputs.Any(File.Exists) && !await DisplayAlertAsync("覆盖 CSV", "目标文件夹包含同名 CSV 文件，是否覆盖？", "覆盖", "取消")) return;
+            if (outputs.Distinct(StringComparer.OrdinalIgnoreCase).Count() != outputs.Length) throw new InvalidOperationException("Some table names produce identical file names. Export them separately to different folders.");
+            if (outputs.Any(File.Exists) && !await DisplayAlertAsync("Replace CSV files", "The destination contains CSV files with the same names. Replace them?", "Replace", "Cancel")) return;
         }
         await Task.Run(() =>
         {
@@ -326,11 +310,11 @@ public partial class MainPage : ContentPage
     private async void ExportMiniExcel(object? s, EventArgs e) => await ExportBatchAsync("mini");
     private async void ExportEpplus(object? s, EventArgs e) => await ExportBatchAsync("epplus");
     private async void ExportCsvFolder(object? s, EventArgs e) => await ExportBatchAsync("csv");
-    private async void RunProcedures(object? s, EventArgs e) => await RunAsync("执行存储过程", async () =>
+    private async void RunProcedures(object? s, EventArgs e) => await RunAsync("Run stored procedures", async () =>
     {
         var names = procedures.Where(x => x.Selected).Select(x => x.Name).ToArray();
-        if (names.Length == 0) throw new InvalidOperationException("请勾选存储过程。");
-        if (!await DisplayAlertAsync("执行存储过程", $"将依次运行 {names.Length} 个过程，过程可能修改数据。", "执行", "取消")) return;
+        if (names.Length == 0) throw new InvalidOperationException("Select stored procedures.");
+        if (!await DisplayAlertAsync("Run stored procedures", $"Run {names.Length} procedures in sequence? They may modify data.", "Run", "Cancel")) return;
         var warnings = await Task.Run(() =>
         {
             using var access = database.OpenAccess(); var messages = new List<string>();
@@ -343,11 +327,11 @@ public partial class MainPage : ContentPage
             }
             return messages;
         });
-        if (warnings.Count > 0) { state.Status = "过程执行完成，存在跳过的 SQL。"; await DisplayAlertAsync("部分执行警告", string.Join(Environment.NewLine, warnings), "确定"); }
+        if (warnings.Count > 0) { state.Status = "Procedures completed with skipped SQL statements."; await DisplayAlertAsync("Partial execution warning", string.Join(Environment.NewLine, warnings), "OK"); }
     });
-    private async void ConvertSqlite(object? s, EventArgs e) => await RunAsync("转换 SQLite", async () =>
+    private async void ConvertSqlite(object? s, EventArgs e) => await RunAsync("Convert to SQLite", async () =>
     {
-        if (Type != "SQLSERVER") throw new InvalidOperationException("请先连接 SQL Server。");
+        if (Type != "SQLSERVER") throw new InvalidOperationException("Connect to SQL Server first.");
         string? path = await WindowsFiles.SaveAsync(database.Schema!.Name, ".db"); if (path == null) return;
         SqlServerToSQLite._cancelled = false;
         SqlServerToSQLite.TotalCopyed = 0;
@@ -355,13 +339,13 @@ public partial class MainPage : ContentPage
         SqlServerToSQLite.Done = false;
         state.Converting = true;
         var timer = Dispatcher.CreateTimer(); timer.Interval = TimeSpan.FromSeconds(1);
-        timer.Tick += (_, _) => state.Status = $"{(SqlServerToSQLite._cancelled ? "正在取消" : "正在转换")} · {SqlServerToSQLite.currentProcessTable ?? "读取结构"} · 已复制 {SqlServerToSQLite.TotalCopyed:N0} 行";
+        timer.Tick += (_, _) => state.Status = $"{(SqlServerToSQLite._cancelled ? "Canceling" : "Converting")} · {SqlServerToSQLite.currentProcessTable ?? "Reading schema"} · {SqlServerToSQLite.TotalCopyed:N0} rows copied";
         timer.Start();
-        try { var result = await Task.Run(() => database.ConvertToSqlite(path)); timer.Stop(); state.Status = result; await DisplayAlertAsync("转换结果", state.Status, "确定"); }
+        try { var result = await Task.Run(() => database.ConvertToSqlite(path)); timer.Stop(); state.Status = result; await DisplayAlertAsync("Conversion results", state.Status, "OK"); }
         finally { timer.Stop(); state.Converting = false; }
     });
-    private void CancelConversion(object? s, EventArgs e) { if (state.Converting) { SqlServerToSQLite._cancelled = true; state.Status = "已请求取消，正在等待当前数据库操作结束…"; } }
-    private async void About(object? s, EventArgs e) => await DisplayAlertAsync("DataPieMaui", "Windows · .NET MAUI 10\nSQL Server / SQLite 数据导入、导出及查询工具。\n\n保留 DataPieCore 转换引擎与原项目许可证。", "确定");
+    private void CancelConversion(object? s, EventArgs e) { if (state.Converting) { SqlServerToSQLite._cancelled = true; state.Status = "Cancellation requested. Waiting for the current database operation to finish..."; } }
+    private async void About(object? s, EventArgs e) => await DisplayAlertAsync("DataPieMaui", "Windows · .NET MAUI 10\nImport, export, and query SQL Server and SQLite databases.\n\nUses the DataPieCore conversion engine and the original project license.", "OK");
 }
 
 public sealed class SelectableObject(string name, string kind) : INotifyPropertyChanged

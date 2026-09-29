@@ -23,7 +23,6 @@
     <MauiFont Include="Resources\Fonts\*" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.12" />
     <ProjectReference Include="..\DataPieCore\DataPieCore.csproj" />
   </ItemGroup>
 </Project>

@@ -9,8 +9,8 @@ public class WorkspaceState : INotifyPropertyChanged
     private string? databaseType;
     private bool busy;
     private bool converting;
-    private string status = "请选择或创建数据库连接。";
-    private string connection = "未连接";
+    private string status = "Select or create a database connection.";
+    private string connection = "Not connected";
     public string? DatabaseType
     {
         get => databaseType;
