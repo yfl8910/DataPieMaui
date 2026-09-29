@@ -65,16 +65,27 @@ public partial class MainPage : ContentPage
         if (state.Converting) CancelConversion(this, EventArgs.Empty);
         else state.Status = "An operation is running. Please wait until it finishes before closing the window.";
     }
-    private async Task RunAsync(string title, Func<Task> action)
+    private Task RunAsync(string title, Func<Task> action) => RunAsync(title, watch =>
+    {
+        watch.Start();
+        return action();
+    });
+
+    // Operations with pickers or confirmations start their clock after the final confirmation.
+    private async Task RunAsync(string title, Func<Stopwatch, Task> action)
     {
         if (state.Busy) return;
         state.Busy = true;
         state.Status = title + "…";
-        var watch = Stopwatch.StartNew();
+        var watch = new Stopwatch();
         try
         {
-            await action();
-            if (state.Status == title + "…") state.Status = $"{title} completed in {watch.Elapsed.TotalSeconds:F1} s";
+            await action(watch);
+            bool started = watch.IsRunning || watch.ElapsedTicks > 0;
+            watch.Stop();
+            if (state.Status == title + "…") state.Status = started
+                ? $"{title} completed in {watch.Elapsed.TotalSeconds:F1} s"
+                : title + " canceled.";
         }
         catch (OperationCanceledException)
         {
@@ -89,7 +100,7 @@ public partial class MainPage : ContentPage
             state.Status = title + " failed: " + ex.Message;
             await DisplayAlertAsync(title + " failed", ex.Message, "OK");
         }
-        finally { state.Busy = false; }
+        finally { watch.Stop(); state.Busy = false; }
     }
 
     private void Navigate(object? sender, EventArgs e) => ShowPanel((string)((Button)sender!).CommandParameter);
@@ -158,16 +169,18 @@ public partial class MainPage : ContentPage
         if (selectedConnectionId <= 0) throw new InvalidOperationException("Select the connection to update.");
         store.Save(ReadConnection()); ReloadConnections(); return Task.CompletedTask;
     });
-    private async void DeleteConnection(object? s, EventArgs e) => await RunAsync("Delete connection", async () =>
+    private async void DeleteConnection(object? s, EventArgs e) => await RunAsync("Delete connection", async watch =>
     {
         if (SavedConnections.SelectedItem is not Dbinfo item) throw new InvalidOperationException("Select a connection.");
         if (!await DisplayAlertAsync("Delete connection", "Delete only the saved connection configuration: " + item.Dbname, "Delete", "Cancel")) return;
+        watch.Start();
         store.Delete(item.Id); selectedConnectionId = 0; ReloadConnections();
     });
-    private async void ImportConnections(object? s, EventArgs e) => await RunAsync("Import legacy connections", async () =>
+    private async void ImportConnections(object? s, EventArgs e) => await RunAsync("Import legacy connections", async watch =>
     {
         var path = await WindowsFiles.OpenAsync(".db");
         if (path == null) return;
+        watch.Start();
         await Task.Run(() => store.ImportLegacy(path)); ReloadConnections();
     });
     private void AuthenticationChanged(object? s, EventArgs e)
@@ -222,19 +235,21 @@ public partial class MainPage : ContentPage
         previewTable?.Dispose(); previewTable = result.table;
         state.Status = $"Query completed: {result.table.Rows.Count:N0} rows / {result.table.Columns.Count} columns" + (result.truncated ? " · Showing the first 1,000 rows. Export to retrieve the full result." : "");
     });
-    private async void ExecuteSql(object? s, EventArgs e) => await RunAsync("Run SQL", async () =>
+    private async void ExecuteSql(object? s, EventArgs e) => await RunAsync("Run SQL", async watch =>
     {
         var sql = QuerySql();
         if (!await DisplayAlertAsync("Run SQL", "Run the SQL in the editor against the current database?", "Run", "Cancel")) return;
+        watch.Start();
         int count = await Task.Run(() => { using var access = database.OpenAccess(); return access.ExecuteSql(sql); });
         state.Status = $"SQL completed: {count:N0} rows affected";
     });
-    private async Task ExportQueryAsync(bool csv, bool wholeTable) => await RunAsync("Export data", async () =>
+    private async Task ExportQueryAsync(bool csv, bool wholeTable) => await RunAsync("Export data", async watch =>
     {
         string name = wholeTable ? SelectedTable(QueryTable) : "Query";
         string sql = wholeTable ? SqlQueryBuilder.BuildSelectAll(name, Type) : QuerySql();
         string? path = await WindowsFiles.SaveAsync(name, csv ? ".csv" : ".xlsx");
         if (path == null) return;
+        watch.Start();
         await Task.Run(() => { using var access = database.OpenAccess(); using var reader = access.GetDataReader(sql); if (csv) CsvExporter.SaveCsv(reader, path); else ExcelIO.SaveMiniExcel(path, reader, name); });
     });
     private async void ExportQueryExcel(object? s, EventArgs e) => await ExportQueryAsync(false, false);
@@ -270,23 +285,25 @@ public partial class MainPage : ContentPage
         });
         state.Status = "Batch import completed.";
     });
-    private async void ExportTemplate(object? s, EventArgs e) => await RunAsync("Export template", async () =>
+    private async void ExportTemplate(object? s, EventArgs e) => await RunAsync("Export template", async watch =>
     {
         string table = SelectedTable(ImportTable), type = Type;
         var path = await WindowsFiles.SaveAsync(table + "_template", ".xlsx"); if (path == null) return;
+        watch.Start();
         await Task.Run(() => { using var access = database.OpenAccess(); using var reader = access.GetDataReader(SqlQueryBuilder.BuildSelectAll(table, type) + " where 1=2"); ExcelIO.SaveMiniExcel(path, reader, table); });
     });
-    private async void ClearTable(object? s, EventArgs e) => await RunAsync("Clear table", async () =>
+    private async void ClearTable(object? s, EventArgs e) => await RunAsync("Clear table", async watch =>
     {
         string table = SelectedTable(ImportTable);
         if (!await DisplayAlertAsync("Clear table", $"Delete all data in {table}? This action cannot be undone.", "Clear", "Cancel")) return;
+        watch.Start();
         await Task.Run(() => { using var access = database.OpenAccess(); access.TruncateTable(table); });
         Results.SetTable(null); previewTable?.Dispose(); previewTable = null;
     });
     private void SelectAllExports(object? s, EventArgs e) { foreach (var item in exports) item.Selected = true; }
     private void ClearExports(object? s, EventArgs e) { foreach (var item in exports) item.Selected = false; }
     private void ClearProcedures(object? s, EventArgs e) { foreach (var item in procedures) item.Selected = false; }
-    private async Task ExportBatchAsync(string mode) => await RunAsync("Batch export", async () =>
+    private async Task ExportBatchAsync(string mode) => await RunAsync("Batch export", async watch =>
     {
         var names = exports.Where(x => x.Selected).Select(x => x.Name).ToArray();
         if (names.Length == 0) throw new InvalidOperationException("Select the tables or views to export.");
@@ -299,6 +316,7 @@ public partial class MainPage : ContentPage
             if (outputs.Distinct(StringComparer.OrdinalIgnoreCase).Count() != outputs.Length) throw new InvalidOperationException("Some table names produce identical file names. Export them separately to different folders.");
             if (outputs.Any(File.Exists) && !await DisplayAlertAsync("Replace CSV files", "The destination contains CSV files with the same names. Replace them?", "Replace", "Cancel")) return;
         }
+        watch.Start();
         await Task.Run(() =>
         {
             using var access = database.OpenAccess();
@@ -310,11 +328,12 @@ public partial class MainPage : ContentPage
     private async void ExportMiniExcel(object? s, EventArgs e) => await ExportBatchAsync("mini");
     private async void ExportEpplus(object? s, EventArgs e) => await ExportBatchAsync("epplus");
     private async void ExportCsvFolder(object? s, EventArgs e) => await ExportBatchAsync("csv");
-    private async void RunProcedures(object? s, EventArgs e) => await RunAsync("Run stored procedures", async () =>
+    private async void RunProcedures(object? s, EventArgs e) => await RunAsync("Run stored procedures", async watch =>
     {
         var names = procedures.Where(x => x.Selected).Select(x => x.Name).ToArray();
         if (names.Length == 0) throw new InvalidOperationException("Select stored procedures.");
         if (!await DisplayAlertAsync("Run stored procedures", $"Run {names.Length} procedures in sequence? They may modify data.", "Run", "Cancel")) return;
+        watch.Start();
         var warnings = await Task.Run(() =>
         {
             using var access = database.OpenAccess(); var messages = new List<string>();
@@ -327,12 +346,14 @@ public partial class MainPage : ContentPage
             }
             return messages;
         });
-        if (warnings.Count > 0) { state.Status = "Procedures completed with skipped SQL statements."; await DisplayAlertAsync("Partial execution warning", string.Join(Environment.NewLine, warnings), "OK"); }
+        watch.Stop();
+        if (warnings.Count > 0) { state.Status = $"Procedures completed in {watch.Elapsed.TotalSeconds:F1} s with skipped SQL statements."; await DisplayAlertAsync("Partial execution warning", string.Join(Environment.NewLine, warnings), "OK"); }
     });
-    private async void ConvertSqlite(object? s, EventArgs e) => await RunAsync("Convert to SQLite", async () =>
+    private async void ConvertSqlite(object? s, EventArgs e) => await RunAsync("Convert to SQLite", async watch =>
     {
         if (Type != "SQLSERVER") throw new InvalidOperationException("Connect to SQL Server first.");
         string? path = await WindowsFiles.SaveAsync(database.Schema!.Name, ".db"); if (path == null) return;
+        watch.Start();
         SqlServerToSQLite._cancelled = false;
         SqlServerToSQLite.TotalCopyed = 0;
         SqlServerToSQLite.currentProcessTable = null;
