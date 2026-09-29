@@ -29,6 +29,42 @@ long Count(string path, string table)
 }
 try
 {
+    await Test("Result snapshot owns data and preserves typed sorting", () =>
+    {
+        using var source = new DataTable();
+        source.Columns.Add("Number", typeof(int));
+        source.Columns.Add("Date", typeof(DateTime));
+        source.Columns.Add("Bytes", typeof(byte[]));
+        byte[] bytes = [1, 2];
+        source.Rows.Add(10, new DateTime(2026, 1, 1), bytes);
+        source.Rows.Add(2, new DateTime(2025, 1, 1), new byte[] { 3 });
+        source.Rows.Add(DBNull.Value, DBNull.Value, DBNull.Value);
+        var snapshot = new QueryResultSnapshot(source, true, "Test database");
+        source.Rows[0][0] = 99; bytes[0] = 9; source.Clear();
+        Check(snapshot.Rows.Length == 3 && (int)snapshot.Rows[0][0]! == 10, "Snapshot changed with source");
+        Check(QueryResultSnapshot.Format(snapshot.Rows[0][2]) == "0102", "Binary snapshot was shared");
+        Check(snapshot.Sort(0, false).SequenceEqual(new[] { 2, 1, 0 }), "Numeric/NULL ordering failed");
+        Check(snapshot.Sort(1, true).SequenceEqual(new[] { 0, 1, 2 }), "Date ordering failed");
+        Check(snapshot.Truncated && snapshot.Connection == "Test database", "Missing preview context");
+        return Task.CompletedTask;
+    });
+    await Test("Result copy keeps selection, sort order and escaped cells", () =>
+    {
+        using var source = new DataTable();
+        source.Columns.Add("Text"); source.Columns.Add("Nullable");
+        source.Rows.Add("line\t\"quoted\"\nnext", DBNull.Value);
+        source.Rows.Add("second", "value");
+        var snapshot = new QueryResultSnapshot(source, false, "Test");
+        string selected = snapshot.CopyText(new[] { 0 });
+        Check(selected.Contains("\"line\t\"\"quoted\"\"\nnext\"\tNULL") && !selected.Contains("second"), "Selected row escaping failed");
+        string all = snapshot.CopyText(new[] { 1, 0 });
+        Check(all.IndexOf("second", StringComparison.Ordinal) < all.IndexOf("quoted", StringComparison.Ordinal), "Copy order differs from display");
+        var session = new QueryResultSession(); int changes = 0;
+        session.Changed += () => changes++;
+        session.Set(snapshot); session.Set(null);
+        Check(changes == 2 && session.Current == null, "Result reset not propagated");
+        return Task.CompletedTask;
+    });
     var path = Path.Combine(root, "source.db"); SQLiteConnection.CreateFile(path);
     Sql(path, "CREATE TABLE Items (Id INTEGER PRIMARY KEY, Name TEXT); INSERT INTO Items VALUES (1, '中文,quote'); INSERT INTO Items VALUES (2, 'second'); CREATE VIEW ItemNames AS SELECT Name FROM Items;");
     var operations = new DatabaseOperations();

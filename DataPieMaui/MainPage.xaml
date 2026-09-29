@@ -90,8 +90,11 @@
           <FlexLayout Grid.Row="3" Wrap="Wrap" JustifyContent="Start">
             <Button Text="Preview query" Clicked="Preview" Margin="0,0,8,6" /><Button Text="Run SQL" Clicked="ExecuteSql" Margin="0,0,8,6" /><Button Text="Query to Excel" Clicked="ExportQueryExcel" Margin="0,0,8,6" /><Button Text="Query to CSV" Clicked="ExportQueryCsv" Margin="0,0,8,6" /><Button Text="Table to Excel" Clicked="ExportTableExcel" Margin="0,0,8,6" /><Button Text="Table to CSV" Clicked="ExportTableCsv" Margin="0,0,8,6" />
           </FlexLayout>
-          <controls:QueryResultsView Grid.Row="4" x:Name="Results" />
-          <VerticalStackLayout Grid.Row="5" Spacing="8"><FlexLayout Wrap="Wrap"><Button Text="Copy selected row" Clicked="CopyRow" Margin="0,0,8,6" /><Button Text="Copy all preview rows" Clicked="CopyAll" Margin="0,0,8,6" /></FlexLayout><Label Text="Click a column header to sort · Scroll horizontally for more columns" /></VerticalStackLayout>
+          <VerticalStackLayout Grid.Row="4" Spacing="12" Padding="0,12">
+            <Label x:Name="QuerySummary" Text="Run a preview to open the result table in a separate window." TextColor="#68778C" />
+            <Button x:Name="OpenResultsButton" Text="Open results" Clicked="OpenResults" IsEnabled="False" HorizontalOptions="Start" />
+            <Label Text="Results open in a separate window with sorting, paging, and copy controls. A new preview updates that window." TextColor="#68778C" />
+          </VerticalStackLayout>
         </Grid>
         <ScrollView x:Name="ImportPanel" IsVisible="False">
           <VerticalStackLayout Spacing="14">

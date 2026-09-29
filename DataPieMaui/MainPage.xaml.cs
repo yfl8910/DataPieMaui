@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Data;
 using System.Diagnostics;
 using DataPieCore;
 using DBUtil;
@@ -15,7 +14,8 @@ public partial class MainPage : ContentPage
     private readonly ConnectionStore store;
     private readonly List<SelectableObject> exports = new();
     private readonly List<SelectableObject> procedures = new();
-    private DataTable? previewTable;
+    private readonly QueryResultSession resultSession = new();
+    private Window? resultWindow;
     private bool initialized;
     private int selectedConnectionId;
 
@@ -60,6 +60,48 @@ public partial class MainPage : ContentPage
     }
 
     public bool IsOperationRunning => state.Busy;
+    public void CloseResults()
+    {
+        if (resultWindow is { } window) Application.Current!.CloseWindow(window);
+    }
+
+    private void ResetResults()
+    {
+        resultSession.Set(null);
+        OpenResultsButton.IsEnabled = false;
+        QuerySummary.Text = "Run a preview to open the result table in a separate window.";
+    }
+
+    private void ShowResultsWindow()
+    {
+        if (resultSession.Current == null) return;
+        if (resultWindow is { } existing)
+        {
+            if (existing.Handler?.PlatformView is Microsoft.UI.Xaml.Window native)
+            {
+                if (native.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized } presenter) presenter.Restore();
+                native.Activate();
+            }
+            return;
+        }
+        try { _ = Microsoft.Web.WebView2.Core.CoreWebView2Environment.GetAvailableBrowserVersionString(); }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Query results require Microsoft Edge WebView2 Runtime. Install it, then click Open results to view this preview.", ex);
+        }
+        var page = new Controls.QueryResultsPage(resultSession);
+        var window = new Window(page) { Title = "DataPieMaui · Query results", Width = 1100, Height = 750, MinimumWidth = 640, MinimumHeight = 420 };
+        window.Destroying += (_, _) =>
+        {
+            if (ReferenceEquals(resultWindow, window)) resultWindow = null;
+            page.Release();
+        };
+        resultWindow = window;
+        try { Application.Current!.OpenWindow(window); }
+        catch { resultWindow = null; page.Release(); throw; }
+    }
+
+    private async void OpenResults(object? sender, EventArgs e) => await RunAsync("Open results", () => { ShowResultsWindow(); return Task.CompletedTask; });
     public void NotifyCloseBlocked()
     {
         if (state.Converting) CancelConversion(this, EventArgs.Empty);
@@ -142,9 +184,7 @@ public partial class MainPage : ContentPage
         ImportTable.ItemsSource = names.ToList();
         QueryTable.SelectedIndex = names.Count > 0 ? 0 : -1;
         ImportTable.SelectedIndex = names.Count > 0 ? 0 : -1;
-        Results.SetTable(null);
-        previewTable?.Dispose();
-        previewTable = null;
+        ResetResults();
         SqlEditor.Text = "";
         ImportPath.Text = "";
         ImportFolder.Text = "";
@@ -231,9 +271,14 @@ public partial class MainPage : ContentPage
         if (string.IsNullOrWhiteSpace(SqlEditor.Text)) Generate("SELECT");
         var sql = QuerySql();
         var result = await Task.Run(() => { using var access = database.OpenAccess(); var table = QueryPreview.Load(access, sql, 1000, out bool truncated); return (table, truncated); });
-        Results.SetTable(result.table);
-        previewTable?.Dispose(); previewTable = result.table;
-        state.Status = $"Query completed: {result.table.Rows.Count:N0} rows / {result.table.Columns.Count} columns" + (result.truncated ? " · Showing the first 1,000 rows. Export to retrieve the full result." : "");
+        using (result.table)
+        {
+            resultSession.Set(new QueryResultSnapshot(result.table, result.truncated, state.Connection));
+            QuerySummary.Text = $"{result.table.Rows.Count:N0} rows / {result.table.Columns.Count} columns" + (result.truncated ? " · First 1,000 rows only. Export to retrieve the full result." : "");
+        }
+        OpenResultsButton.IsEnabled = true;
+        ShowResultsWindow();
+        state.Status = "Query completed: " + QuerySummary.Text;
     });
     private async void ExecuteSql(object? s, EventArgs e) => await RunAsync("Run SQL", async watch =>
     {
@@ -256,8 +301,6 @@ public partial class MainPage : ContentPage
     private async void ExportQueryCsv(object? s, EventArgs e) => await ExportQueryAsync(true, false);
     private async void ExportTableExcel(object? s, EventArgs e) => await ExportQueryAsync(false, true);
     private async void ExportTableCsv(object? s, EventArgs e) => await ExportQueryAsync(true, true);
-    private async void CopyRow(object? s, EventArgs e) => await RunAsync("Copy selected row", () => Clipboard.Default.SetTextAsync(Results.CopyText(false)));
-    private async void CopyAll(object? s, EventArgs e) => await RunAsync("Copy preview", () => Clipboard.Default.SetTextAsync(Results.CopyText(true)));
     private async void BrowseImport(object? s, EventArgs e) => await RunAsync("Select import file", async () => { var path = await WindowsFiles.OpenAsync(".xlsx", ".xls", ".csv", ".db"); if (path != null) ImportPath.Text = path; });
     private async void BrowseImportFolder(object? s, EventArgs e) => await RunAsync("Select folder", async () => { var path = await WindowsFiles.FolderAsync(); if (path != null) ImportFolder.Text = path; });
     private async void ImportFile(object? s, EventArgs e) => await RunAsync("Import file", async () =>
@@ -298,7 +341,7 @@ public partial class MainPage : ContentPage
         if (!await DisplayAlertAsync("Clear table", $"Delete all data in {table}? This action cannot be undone.", "Clear", "Cancel")) return;
         watch.Start();
         await Task.Run(() => { using var access = database.OpenAccess(); access.TruncateTable(table); });
-        Results.SetTable(null); previewTable?.Dispose(); previewTable = null;
+        ResetResults();
     });
     private void SelectAllExports(object? s, EventArgs e) { foreach (var item in exports) item.Selected = true; }
     private void ClearExports(object? s, EventArgs e) { foreach (var item in exports) item.Selected = false; }

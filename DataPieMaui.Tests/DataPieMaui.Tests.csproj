@@ -13,5 +13,6 @@
     <Compile Include="..\DataPieMaui\Services\DBConfig.cs" Link="Services\DBConfig.cs" />
     <Compile Include="..\DataPieMaui\Services\DatabaseOperations.cs" Link="Services\DatabaseOperations.cs" />
     <Compile Include="..\DataPieMaui\Services\ImportFiles.cs" Link="Services\ImportFiles.cs" />
+    <Compile Include="..\DataPieMaui\Services\QueryResultSnapshot.cs" Link="Services\QueryResultSnapshot.cs" />
   </ItemGroup>
 </Project>

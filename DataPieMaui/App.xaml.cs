@@ -5,6 +5,7 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", Path.Combine(FileSystem.AppDataDirectory, "WebView2"));
         UserAppTheme = AppTheme.Light;
         System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
     }
@@ -18,7 +19,7 @@ public partial class App : Application
             var native = (Microsoft.UI.Xaml.Window)window.Handler!.PlatformView!;
             native.AppWindow.Closing += (_, args) =>
             {
-                if (!page.IsOperationRunning) return;
+                if (!page.IsOperationRunning) { page.CloseResults(); return; }
                 args.Cancel = true;
                 page.NotifyCloseBlocked();
             };

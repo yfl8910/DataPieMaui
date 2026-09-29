@@ -1,0 +1,100 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using DataPieMaui.Services
+@implements IDisposable
+
+<main>
+    <header><div><h1>Query results</h1><p>@snapshot?.Connection</p></div><span class="badge">Read-only preview</span></header>
+    @if (snapshot is null)
+    {
+        <div class="empty">Run a query in the main window to view results.</div>
+    }
+    else
+    {
+        <div class="toolbar">
+            <strong>@snapshot.Rows.Length.ToString("N0") rows · @snapshot.Columns.Length columns</strong>
+            <button @onclick="() => Copy(false)" disabled="@(selected is null)">Copy selected row</button>
+            <button @onclick="() => Copy(true)" disabled="@(order.Length == 0)">Copy all preview rows</button>
+        </div>
+        @if (snapshot.Truncated)
+        {
+            <div class="notice">Showing the first 1,000 rows. Use export in the main window to retrieve the full result.</div>
+        }
+        <div class="table-scroll" tabindex="0" aria-label="Query result table">
+            <table>
+                <thead><tr>
+                    <th class="row-number">#</th>
+                    @for (int c = 0; c < snapshot.Columns.Length; c++)
+                    {
+                        int column = c;
+                        <th aria-sort="@(sortColumn == c ? (descending ? "descending" : "ascending") : "none")">
+                            <button @onclick="() => Sort(column)" disabled="@(snapshot.Types[c] == typeof(byte[]))">@snapshot.Columns[c] @(sortColumn == c ? (descending ? "▼" : "▲") : "")</button>
+                        </th>
+                    }
+                </tr></thead>
+                <tbody>
+                    @foreach (int index in order.Skip(page * PageSize).Take(PageSize))
+                    {
+                        <tr @key="index" class="@(selected == index ? "selected" : "")" tabindex="0" aria-selected="@(selected == index)" @onclick="() => Select(index)" @onkeydown="e => SelectWithKey(e, index)">
+                            <td class="row-number">@(index + 1)</td>
+                            @foreach (var cell in snapshot.Rows[index])
+                            {
+                                <td class="@(cell is null or DBNull ? "null" : "")" title="@QueryResultSnapshot.Format(cell)">@QueryResultSnapshot.Format(cell)</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (order.Length == 0) { <div class="empty">The query returned no rows.</div> }
+        </div>
+        <footer>
+            <span role="status">@message</span>
+            <div class="pagination"><button @onclick="Previous" disabled="@(page == 0)">Previous</button><span>Page @(page + 1) / @PageCount · @PageSize rows per page</span><button @onclick="Next" disabled="@(page + 1 >= PageCount)">Next</button></div>
+        </footer>
+    }
+</main>
+
+@code {
+    [Parameter, EditorRequired] public QueryResultSession Session { get; set; } = default!;
+    private QueryResultSnapshot? snapshot;
+    private int[] order = [];
+    private const int PageSize = 100;
+    private int page, sortColumn = -1;
+    private int? selected;
+    private bool descending, disposed;
+    private string message = "Click a column to sort. Select a row to copy it.";
+    private int PageCount => Math.Max(1, (order.Length + PageSize - 1) / PageSize);
+
+    protected override void OnInitialized() { Session.Changed += Refresh; Load(); }
+    private void Refresh() => _ = InvokeAsync(() => { if (!disposed) { Load(); StateHasChanged(); } });
+    private void Load()
+    {
+        snapshot = Session.Current;
+        order = Enumerable.Range(0, snapshot?.Rows.Length ?? 0).ToArray();
+        page = 0; sortColumn = -1; selected = null; descending = false;
+        message = "Click a column to sort. Select a row to copy it.";
+    }
+    private void Sort(int column)
+    {
+        descending = sortColumn == column && !descending;
+        sortColumn = column;
+        order = snapshot!.Sort(column, descending);
+        page = 0;
+    }
+    private void Select(int index) => selected = index;
+    private void SelectWithKey(KeyboardEventArgs e, int index) { if (e.Key is "Enter" or " ") Select(index); }
+    private void Previous() { if (page > 0) page--; }
+    private void Next() { if (page + 1 < PageCount) page++; }
+    private async Task Copy(bool all)
+    {
+        if (snapshot is null || (!all && selected is null)) return;
+        try
+        {
+            var text = snapshot.CopyText(all ? order : new[] { selected!.Value });
+            await MainThread.InvokeOnMainThreadAsync(() => Clipboard.Default.SetTextAsync(text));
+            message = all ? $"Copied {order.Length:N0} preview rows." : "Copied selected row.";
+        }
+        catch (Exception ex) { message = "Copy failed: " + ex.Message; }
+    }
+    public void Dispose() { disposed = true; Session.Changed -= Refresh; }
+}
