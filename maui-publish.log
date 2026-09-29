@@ -1,0 +1,9 @@
+  正在确定要还原的项目…
+  已还原 D:\Mycode\DataPie3\DataPieCore\DataPieCore.csproj (用时 284 毫秒)。
+  已还原 D:\Mycode\DataPie3\DataPieMaui\DataPieMaui.csproj (用时 299 毫秒)。
+  DataPieCore -> D:\Mycode\DataPie3\DataPieCore\bin\Release\net10.0\DataPieCore.dll
+D:\Mycode\DataPie3\DataPieMaui\Services\DBConfig.cs(26,31): warning CS0618: “SqlConnectionStringBuilder”已过时:“Use the Microsoft.Data.SqlClient package instead.” [D:\Mycode\DataPie3\DataPieMaui\DataPieMaui.csproj]
+D:\Mycode\DataPie3\DataPieMaui\Services\DBConfig.cs(26,31): warning CS0618: “SqlConnectionStringBuilder”已过时:“Use the Microsoft.Data.SqlClient package instead.” [D:\Mycode\DataPie3\DataPieMaui\DataPieMaui.csproj]
+D:\Mycode\DataPie3\DataPieMaui\MainPage.xaml(41,41): XamlC warning XC0023: Binding could be compiled to improve runtime performance if x:DataType is not explicitly null. See https://learn.microsoft.com/dotnet/maui/fundamentals/data-binding/compiled-bindings for more information. [D:\Mycode\DataPie3\DataPieMaui\DataPieMaui.csproj]
+  DataPieMaui -> D:\Mycode\DataPie3\DataPieMaui\bin\Release\net10.0-windows10.0.19041.0\win-x64\DataPieMaui.dll
+  DataPieMaui -> D:\Mycode\DataPie3\artifacts\windows-x64\

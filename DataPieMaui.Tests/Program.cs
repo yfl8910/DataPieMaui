@@ -1,0 +1,160 @@
+using System.Data;
+using System.Data.SQLite;
+using System.Text;
+using DataPieCore;
+using DataPieMaui.Services;
+using DBUtil;
+
+Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+string root = Path.Combine(Path.GetTempPath(), "DataPieMauiTests-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(root);
+int passed = 0;
+async Task Test(string name, Func<Task> test)
+{
+    await test();
+    Console.WriteLine("PASS " + name);
+    passed++;
+}
+void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+string Connection(string path) => new SQLiteConnectionStringBuilder { DataSource = path, FailIfMissing = true }.ToString();
+void Sql(string path, string sql)
+{
+    using var connection = new SQLiteConnection(Connection(path)); connection.Open();
+    using var command = new SQLiteCommand(sql, connection); command.ExecuteNonQuery();
+}
+long Count(string path, string table)
+{
+    using var connection = new SQLiteConnection(Connection(path)); connection.Open();
+    using var command = new SQLiteCommand($"SELECT COUNT(*) FROM [{table}]", connection); return (long)command.ExecuteScalar();
+}
+try
+{
+    var path = Path.Combine(root, "source.db"); SQLiteConnection.CreateFile(path);
+    Sql(path, "CREATE TABLE Items (Id INTEGER PRIMARY KEY, Name TEXT); INSERT INTO Items VALUES (1, '中文,quote'); INSERT INTO Items VALUES (2, 'second'); CREATE VIEW ItemNames AS SELECT Name FROM Items;");
+    var operations = new DatabaseOperations();
+    var info = new DatabaseConnectionInfo("SQLITE", Connection(path), "Fixture");
+    await Test("SQLite native driver, connection and schema", async () =>
+    {
+        await operations.ConnectAsync(info);
+        Check(operations.Schema!.Tables.Any(t => t.Name == "Items"), "Missing table");
+        Check(operations.Schema.ViewNames.Contains("ItemNames"), "Missing view");
+    });
+    await Test("Failed connection preserves current session", async () =>
+    {
+        try { await operations.ConnectAsync(new("SQLITE", Connection(Path.Combine(root, "missing.db")), "Missing")); throw new Exception("Expected failure"); }
+        catch (SQLiteException) { }
+        Check(operations.Connection == info, "Failed switch replaced active session");
+    });
+    await Test("Bounded query preview and dynamic column names", () =>
+    {
+        using var access = operations.OpenAccess();
+        using var data = QueryPreview.Load(access, "SELECT Id AS duplicate, Name AS duplicate FROM Items ORDER BY Id", 1, out bool truncated);
+        Check(truncated && data.Rows.Count == 1 && data.Columns[0].ColumnName != data.Columns[1].ColumnName, "Preview contract failed");
+        return Task.CompletedTask;
+    });
+    var csv = Path.Combine(root, "items.csv"); var excel = Path.Combine(root, "items.xlsx");
+    await Test("Full CSV export is independent of preview limit", () =>
+    {
+        using var access = operations.OpenAccess(); using var reader = access.GetDataReader("SELECT * FROM Items ORDER BY Id");
+        CsvExporter.SaveCsv(reader, csv);
+        var text = File.ReadAllText(csv, Encoding.GetEncoding("GB2312"));
+        Check(text.Contains("中文,quote") && text.Contains("second") && text.Contains("\"中文,quote\""), "CSV export lost data");
+        return Task.CompletedTask;
+    });
+    await Test("Excel export and CSV/XLSX imports", () =>
+    {
+        using (var access = operations.OpenAccess())
+        using (var reader = access.GetDataReader("SELECT * FROM Items")) ExcelIO.SaveMiniExcel(excel, reader, "Items");
+        var destination = Path.Combine(root, "destination.db"); SQLiteConnection.CreateFile(destination);
+        Sql(destination, "CREATE TABLE Items (Id INTEGER, Name TEXT)");
+        using var target = DbAccessFactory.Create(Connection(destination), "SQLITE");
+        DatabaseOperations.Import(csv, "Items", target);
+        DatabaseOperations.Import(excel, "Items", target);
+        Check(Count(destination, "Items") == 4, "Import row count mismatch");
+        DatabaseOperations.Import(path, "Items", target);
+        Check(Count(destination, "Items") == 6, "SQLite file import failed");
+        return Task.CompletedTask;
+    });
+    await Test("Multi-sheet MiniExcel and EPPlus export", () =>
+    {
+        using var access = operations.OpenAccess();
+        foreach (bool epplus in new[] { false, true })
+        {
+            var output = Path.Combine(root, epplus ? "epplus.xlsx" : "multi.xlsx");
+            if (epplus) ExcelIO.ExportSheetsWithEpplus(new[] { "Items", "ItemNames" }, output, access, "SQLITE");
+            else ExcelIO.ExportSheetsWithMiniExcel(new[] { "Items", "ItemNames" }, output, access, "SQLITE");
+            var sheets = MiniExcelLibs.MiniExcel.GetSheetNames(output);
+            Check(sheets.SequenceEqual(new[] { "Items", "ItemNames" }), "Missing worksheet");
+        }
+        return Task.CompletedTask;
+    });
+    await Test("Connection CRUD and idempotent legacy migration", () =>
+    {
+        var legacyPath = Path.Combine(root, "data.db"); var legacy = new ConnectionStore(legacyPath);
+        legacy.Save(new Dbinfo { Dbname = "Legacy", Dbtype = "SQLITE", ConnectionStrings = "Data Source=source.db" });
+        var destination = new ConnectionStore(Path.Combine(root, "connections.db"));
+        destination.ImportLegacy(legacyPath); destination.ImportLegacy(legacyPath);
+        var records = destination.Load(); Check(records.Count == 1, "Duplicate imported connection");
+        var builder = new SQLiteConnectionStringBuilder(records[0].ConnectionStrings);
+        Check(builder.DataSource == path, "Relative legacy path not resolved");
+        records[0].Dbname = "Renamed"; destination.Save(records[0]);
+        Check(destination.Load().Single().Dbname == "Renamed", "Update failed");
+        destination.Delete(records[0].Id); Check(destination.Load().Count == 0, "Delete failed");
+        Check(legacy.Load().Single().ConnectionStrings == "Data Source=source.db", "Legacy source modified");
+        return Task.CompletedTask;
+    });
+    await Test("SQL Server authentication string construction", () =>
+    {
+        var config = new DBConfig { ProviderName = "SQLSERVER", ServerName = "localhost", DataBase = "sample", ValidataType = "Windows" };
+        var integrated = new System.Data.SqlClient.SqlConnectionStringBuilder(config.GetConstring());
+        Check(integrated.IntegratedSecurity && integrated.InitialCatalog == "sample", "Windows auth failed");
+        config.ValidataType = "SQL Server"; config.UserName = "test"; config.UserPwd = "a;b=\"c";
+        var sqlAuth = new System.Data.SqlClient.SqlConnectionStringBuilder(config.GetConstring());
+        Check(!sqlAuth.IntegratedSecurity && sqlAuth.Password == config.UserPwd, "Password escaping failed");
+        return Task.CompletedTask;
+    });
+    await Test("Folder import includes only supported batch formats", () =>
+    {
+        File.WriteAllText(Path.Combine(root, "ignored.txt"), "ignore");
+        var files = ImportFiles.GetFiles(root);
+        Check(files.Any(f => f.Name == "items.csv") && files.All(f => f.Extension is ".csv" or ".xlsx"), "Batch filter changed");
+        return Task.CompletedTask;
+    });
+    await Test("SQLite procedure conversion and execution", () =>
+    {
+        var converted = Path.Combine(root, "converted.db");
+        SqlServerToSQLite._cancelled = false;
+        SqlServerToSQLite.dbs = new DbSchema
+        {
+            Name = "Converted",
+            Tables = new() { new TableStruct { Name = "Items", TableSchemaName = "dbo", Columns = new() { new Column { Name = "Id", Type = "int", Default = "", IsPrimaryKey = true }, new Column { Name = "Name", Type = "nvarchar", Default = "", MaxLength = 100, IsNullable = true } } } },
+            Procedures = new() { new Proc { Name = "AddItem", SchemaName = "dbo", CreateSql = "CREATE PROCEDURE dbo.AddItem AS BEGIN INSERT INTO dbo.Items (Id, Name) VALUES (1, N'created'); END" } }
+        };
+        var result = SqlServerToSQLite.CreateSQLiteDatabase(converted, null, true);
+        Check(result.ProcedureErrors.Count == 0, "Procedure conversion warnings: " + string.Join(";", result.ProcedureErrors));
+        using var access = DbAccessFactory.Create(Connection(converted), "SQLITE");
+        var proc = access.GetProcs().Single(); access.RunProcedure(proc.Name);
+        Check(Count(converted, "Items") == 1, "Procedure did not insert");
+        return Task.CompletedTask;
+    });
+    await Test("Conversion cancellation remains effective", () =>
+    {
+        SqlServerToSQLite._cancelled = true;
+        try { SqlServerToSQLite.CreateSQLiteDatabase(Path.Combine(root, "cancelled.db"), null, true); throw new Exception("Expected cancellation"); }
+        catch (ApplicationException ex) when (ex.Message == "User cancelled the conversion") { }
+        finally { SqlServerToSQLite._cancelled = false; }
+        return Task.CompletedTask;
+    });
+    Console.WriteLine($"{passed} migration regression checks passed.");
+    return 0;
+}
+catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+finally
+{
+    SQLiteConnection.ClearAllPools();
+    Directory.Delete(root, recursive: true);
+}
+
+
+
+

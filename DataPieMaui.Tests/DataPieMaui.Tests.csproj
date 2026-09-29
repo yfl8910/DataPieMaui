@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DataPieCore\DataPieCore.csproj" />
+    <Compile Include="..\DataPieMaui\Services\ConnectionStore.cs" Link="Services\ConnectionStore.cs" />
+    <Compile Include="..\DataPieMaui\Services\DatabaseConnectionInfo.cs" Link="Services\DatabaseConnectionInfo.cs" />
+    <Compile Include="..\DataPieMaui\Services\DBConfig.cs" Link="Services\DBConfig.cs" />
+    <Compile Include="..\DataPieMaui\Services\DatabaseOperations.cs" Link="Services\DatabaseOperations.cs" />
+    <Compile Include="..\DataPieMaui\Services\ImportFiles.cs" Link="Services\ImportFiles.cs" />
+  </ItemGroup>
+</Project>

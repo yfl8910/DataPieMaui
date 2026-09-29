@@ -1,0 +1,65 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30803.129
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataPieMaui", "DataPieMaui\DataPieMaui.csproj", "{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataPieCore", "DataPieCore\DataPieCore.csproj", "{5B3A7137-4908-41B3-BC67-1049112608B7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataPieMaui.Tests", "DataPieMaui.Tests\DataPieMaui.Tests.csproj", "{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Debug|x64.Build.0 = Debug|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Debug|x86.Build.0 = Debug|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Release|x64.ActiveCfg = Release|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Release|x64.Build.0 = Release|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Release|x86.ActiveCfg = Release|Any CPU
+		{5B3A7137-4908-41B3-BC67-1049112608B7}.Release|x86.Build.0 = Release|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Debug|x64.Build.0 = Debug|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Debug|x86.Build.0 = Debug|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Release|x64.ActiveCfg = Release|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Release|x64.Build.0 = Release|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Release|x86.ActiveCfg = Release|Any CPU
+		{93BB9297-2D63-4CD5-A94F-83C58C47FFCD}.Release|x86.Build.0 = Release|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Debug|x64.Build.0 = Debug|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Debug|x86.Build.0 = Debug|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Release|x64.ActiveCfg = Release|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Release|x64.Build.0 = Release|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Release|x86.ActiveCfg = Release|Any CPU
+		{297AB8E7-8F6E-41DF-B8B0-EFD97A53A17D}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {6A8257DB-EB3D-4B5E-869F-876D673DF5F7}
+	EndGlobalSection
+EndGlobal
