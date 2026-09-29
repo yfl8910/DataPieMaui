@@ -1,26 +1,31 @@
- **/bin
-**/obj
+# Visual Studio local settings and caches
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.pubxml.user
 
-bin/
-obj/
-
-*.dll
-*.pdb
-*.exe
-*.cache
-.vs
-bin/
-tmp/
-obj/
-
-# Build results
+# Build and publish output (at any project depth)
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
 x64/
 x86/
+AppPackages/
 
-.vs
-.vs/DataPieMaui/DesignTimeBuild/.dtbcache.v2
-/.vs
+# Compiled binaries and caches
+*.dll
+*.pdb
+*.exe
+*.cache
+
+# Temporary files and test output
+tmp/
+TestResults/
+*.trx
+*.log
