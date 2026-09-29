@@ -1,0 +1,9 @@
+<section class="card">
+    <div class="actions align-end"><label class="grow">Table<select @bind="W.Form.QueryTable"><option value="">Select a table</option>@foreach (var name in W.Tables) { <option value="@name">@name</option> }</select></label>
+        @foreach (var kind in new[] { "SELECT", "UPDATE", "DELETE" }) { <button @onclick="() => W.GenerateAsync(kind)">@kind</button> }
+    </div>
+    <label>SQL editor<textarea class="sql-editor" @bind="W.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="Enter SQL. Preview shows up to 1,000 rows."></textarea></label>
+    <div class="actions"><button class="primary" @onclick="W.PreviewAsync">Preview query</button><button @onclick="W.ExecuteSqlAsync">Run SQL</button><span class="action-divider"></span><button @onclick="() => W.ExportQueryAsync(false, false)">Query to Excel</button><button @onclick="() => W.ExportQueryAsync(true, false)">Query to CSV</button><button @onclick="() => W.ExportQueryAsync(false, true)">Table to Excel</button><button @onclick="() => W.ExportQueryAsync(true, true)">Table to CSV</button></div>
+</section>
+<section class="card result-summary"><div><h2>Query results</h2><p>@W.QuerySummary</p><p class="muted">Sort, page, and copy data in the independent results window.</p></div><button @onclick="W.OpenResultsAsync" disabled="@(W.Results.Current is null)">Open results</button></section>
+@code { [CascadingParameter] public WorkspaceController W { get; set; } = default!; }

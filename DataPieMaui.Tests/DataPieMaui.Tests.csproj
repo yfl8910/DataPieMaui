@@ -1,10 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RootNamespace>DataPieMaui</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\DataPieCore\DataPieCore.csproj" />
@@ -14,5 +15,12 @@
     <Compile Include="..\DataPieMaui\Services\DatabaseOperations.cs" Link="Services\DatabaseOperations.cs" />
     <Compile Include="..\DataPieMaui\Services\ImportFiles.cs" Link="Services\ImportFiles.cs" />
     <Compile Include="..\DataPieMaui\Services\QueryResultSnapshot.cs" Link="Services\QueryResultSnapshot.cs" />
+    <Compile Include="..\DataPieMaui\Services\IDesktopServices.cs" Link="Services\IDesktopServices.cs" />
+    <Compile Include="..\DataPieMaui\Services\WorkspaceController.cs" Link="Services\WorkspaceController.cs" />
+    <Compile Include="..\DataPieMaui\Services\WorkspaceDialogs.cs" Link="Services\WorkspaceDialogs.cs" />
+    <Compile Include="..\DataPieMaui\ViewModels\WorkspaceState.cs" Link="ViewModels\WorkspaceState.cs" />
+    <Compile Include="..\DataPieMaui\ViewModels\WorkspaceForm.cs" Link="ViewModels\WorkspaceForm.cs" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Content Include="..\DataPieMaui\Components\**\*.razor" Exclude="..\DataPieMaui\Components\QueryResults.razor" Link="Components\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

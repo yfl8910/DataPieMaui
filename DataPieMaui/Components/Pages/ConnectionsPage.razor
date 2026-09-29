@@ -1,0 +1,38 @@
+<section class="card">
+    <div class="tabs" aria-label="Connection type">
+        @foreach (var tab in new[] { ("SqlServer", "SQL Server"), ("Sqlite", "SQLite"), ("Saved", "Saved connections") })
+        {
+            <button class="@(W.Form.ConnectionTab == tab.Item1 ? "active" : "")" @onclick="() => W.Form.ConnectionTab = tab.Item1">@tab.Item2</button>
+        }
+    </div>
+    @if (W.Form.ConnectionTab == "SqlServer")
+    {
+        <h2>Connect to SQL Server</h2>
+        <div class="form-grid">
+            <label>Server<input @bind="W.Form.Server" @bind:event="oninput" placeholder="(local) or server\instance" /></label>
+            <label>Authentication<select @bind="W.Form.Authentication"><option>Windows</option><option>SQL Server</option></select></label>
+            <label>Username<input @bind="W.Form.UserName" @bind:event="oninput" disabled="@(W.Form.Authentication == "Windows")" autocomplete="off" /></label>
+            <label>Password<input type="password" @bind="W.Form.Password" @bind:event="oninput" disabled="@(W.Form.Authentication == "Windows")" autocomplete="off" /></label>
+        </div>
+        <div class="actions align-end"><button @onclick="W.LoadDatabasesAsync">Load databases</button><label class="grow">Database<select @bind="W.Form.DatabaseName"><option value="">Select a database</option>@foreach (var name in W.Databases) { <option value="@name">@name</option> }</select></label><button class="primary" @onclick="W.ConnectServerAsync">Connect and save</button></div>
+    }
+    else if (W.Form.ConnectionTab == "Sqlite")
+    {
+        <h2>Connect to SQLite</h2><p class="muted">Choose an existing local database. The connection is saved automatically.</p>
+        <div class="actions align-end"><label class="grow">Database file<input @bind="W.Form.SqlitePath" @bind:event="oninput" placeholder="Path to a SQLite database" /></label><button @onclick="W.BrowseSqliteAsync">Browse file</button></div>
+        <div class="actions"><button class="primary" @onclick="W.ConnectSqliteAsync">Connect and save</button></div>
+    }
+    else
+    {
+        <h2>Saved connections</h2>
+        <div class="actions align-end"><label class="grow">Connection<select value="@W.Form.SelectedConnectionId" @onchange="Select"><option value="0">Select a connection</option>@foreach (var item in W.Connections) { <option value="@item.Id">@item.Dbname · @item.Dbtype</option> }</select></label><button class="primary" @onclick="W.ConnectSavedAsync">Connect</button><button class="danger" @onclick="W.DeleteConnectionAsync">Delete</button><button @onclick="W.ImportConnectionsAsync">Import legacy settings</button></div>
+        <hr /><h2>Edit connection</h2>
+        <div class="form-grid"><label>Name<input @bind="W.Form.ConnectionName" @bind:event="oninput" /></label><label>Database type<select @bind="W.Form.ConnectionType"><option>SQLSERVER</option><option>SQLITE</option></select></label></div>
+        <label>Connection string<input type="password" @bind="W.Form.ConnectionString" @bind:event="oninput" autocomplete="off" /></label>
+        <div class="actions"><button @onclick="W.TestConnectionAsync">Test</button><button @onclick="() => W.SaveConnectionAsync(true)">Save as new</button><button @onclick="() => W.SaveConnectionAsync(false)">Update selected</button><button class="primary" @onclick="W.ConnectEditedAsync">Connect</button></div>
+    }
+</section>
+@code {
+    [CascadingParameter] public WorkspaceController W { get; set; } = default!;
+    private void Select(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out int id)) W.SelectConnection(id); }
+}

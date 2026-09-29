@@ -2,36 +2,31 @@ namespace DataPieMaui.Services;
 
 internal static class WindowsFiles
 {
-    private static nint WindowHandle => WinRT.Interop.WindowNative.GetWindowHandle(
-        Application.Current!.Windows[0].Handler!.PlatformView);
+    private static nint WindowHandle(Window owner) => WinRT.Interop.WindowNative.GetWindowHandle(
+        owner.Handler?.PlatformView ?? throw new InvalidOperationException("The application window is not ready."));
 
-    public static async Task<string?> OpenAsync(params string[] extensions)
+    public static async Task<string?> OpenAsync(Window owner, params string[] extensions)
     {
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
         foreach (var extension in extensions) picker.FileTypeFilter.Add(extension);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle(owner));
         return (await picker.PickSingleFileAsync())?.Path;
     }
 
-    public static async Task<string?> SaveAsync(string name, string extension)
+    public static async Task<string?> SaveAsync(Window owner, string name, string extension)
     {
-        var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = SafeName(name) };
+        var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = WorkspaceController.SafeFileName(name) };
         picker.FileTypeChoices.Add(extension.TrimStart('.').ToUpperInvariant(), new[] { extension });
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle(owner));
         return (await picker.PickSaveFileAsync())?.Path;
     }
 
-    public static async Task<string?> FolderAsync()
+    public static async Task<string?> FolderAsync(Window owner)
     {
         var picker = new Windows.Storage.Pickers.FolderPicker();
         picker.FileTypeFilter.Add("*");
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle(owner));
         return (await picker.PickSingleFolderAsync())?.Path;
     }
 
-    public static string SafeName(string name)
-    {
-        var safe = string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).TrimEnd('.', ' ');
-        return string.IsNullOrWhiteSpace(safe) ? "export" : safe;
-    }
 }

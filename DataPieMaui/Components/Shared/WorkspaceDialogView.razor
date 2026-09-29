@@ -1,0 +1,26 @@
+@inject IJSRuntime JS
+@implements IDisposable
+
+@if (Dialogs.Current is { } dialog)
+{
+    <dialog id="workspace-dialog" class="app-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-message">
+        <h2 id="dialog-title">@dialog.Title</h2>
+        <p id="dialog-message">@dialog.Message</p>
+        <div class="actions dialog-actions">
+            @if (dialog.CanCancel) { <button data-dismiss @onclick="() => Dialogs.Complete(false)">Cancel</button> }
+            <button class="primary" data-accept @onclick="() => Dialogs.Complete(true)">@dialog.Accept</button>
+        </div>
+    </dialog>
+}
+
+@code {
+    [Parameter, EditorRequired] public WorkspaceDialogs Dialogs { get; set; } = default!;
+    private bool disposed;
+    protected override void OnInitialized() => Dialogs.Changed += Refresh;
+    private void Refresh() => _ = InvokeAsync(() => { if (!disposed) StateHasChanged(); });
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Dialogs.Current != null) await JS.InvokeVoidAsync("dataPie.showDialog", "workspace-dialog");
+    }
+    public void Dispose() { disposed = true; Dialogs.Changed -= Refresh; }
+}

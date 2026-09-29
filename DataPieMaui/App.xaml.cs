@@ -19,11 +19,12 @@ public partial class App : Application
             var native = (Microsoft.UI.Xaml.Window)window.Handler!.PlatformView!;
             native.AppWindow.Closing += (_, args) =>
             {
-                if (!page.IsOperationRunning) { page.CloseResults(); return; }
+                if (page.Workspace.CanClose) { page.Close(); return; }
                 args.Cancel = true;
-                page.NotifyCloseBlocked();
+                page.Workspace.NotifyCloseBlocked();
             };
         };
+        window.Destroying += (_, _) => page.Release();
         return window;
     }
 }

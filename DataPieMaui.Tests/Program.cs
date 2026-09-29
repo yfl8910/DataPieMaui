@@ -181,7 +181,8 @@ try
         finally { SqlServerToSQLite._cancelled = false; }
         return Task.CompletedTask;
     });
-    Console.WriteLine($"{passed} migration regression checks passed.");
+    await WorkspaceChecks.Run(root, Test, args.Contains("--render-ui"));
+    Console.WriteLine($"{passed} regression checks passed.");
     return 0;
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

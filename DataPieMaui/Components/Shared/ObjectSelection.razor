@@ -1,0 +1,18 @@
+<div class="object-list" role="group" aria-label="@Label">
+    @if (Items.Count == 0) { <p class="empty">No @Label.ToLowerInvariant() available in this database.</p> }
+    @foreach (var item in Items)
+    {
+        <div class="object-row" @key="item">
+            <label class="object-choice"><input type="checkbox" @bind="item.Selected" /><span class="type-badge">@item.Kind</span><span>@item.Name</span></label>
+            @if (OnPreview.HasDelegate)
+            {
+                <button class="object-preview" aria-label="@($"Query data: {item.Name}")" @onclick="() => OnPreview.InvokeAsync(item.Name)">Query data</button>
+            }
+        </div>
+    }
+</div>
+@code {
+    [Parameter, EditorRequired] public List<SelectableObject> Items { get; set; } = [];
+    [Parameter] public string Label { get; set; } = "Objects";
+    [Parameter] public EventCallback<string> OnPreview { get; set; }
+}

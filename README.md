@@ -1,10 +1,11 @@
 # DataPieMaui
 
-A Windows desktop workspace for querying, importing, exporting, and converting SQL Server and SQLite data. Built with .NET 10, .NET MAUI, and a Blazor Hybrid query-results window.
+A Windows desktop workspace for querying, importing, exporting, and converting SQL Server and SQLite data. Built with .NET 10 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace and a separate query-results window.
 
 ## Features
 
 - Connect to SQL Server using Windows or SQL Server authentication, or open a local SQLite database.
+- Navigate between Blazor pages without losing SQL or form inputs; review operations in shared confirmation dialogs and a persistent status bar.
 - Save and manage connections, including importing legacy connection settings.
 - Generate SELECT, UPDATE, and DELETE statements and execute SQL.
 - Preview query results in a separate, resizable Blazor window with dynamic columns, typed sorting, pagination, and copying.
@@ -17,7 +18,7 @@ A Windows desktop workspace for querying, importing, exporting, and converting S
 
 - Windows x64. The project declares Windows 10 version 1809 as its minimum OS version.
 - .NET 10 SDK and the `maui-windows` workload for development.
-- Microsoft Edge WebView2 Runtime for the Blazor results window, including when running a published copy.
+- Microsoft Edge WebView2 Runtime for the entire application interface, including when running a published copy. If it is missing, the native host displays an installation message instead of opening the workspace.
 - Access to NuGet when restoring dependencies for the first time.
 
 The current project targets Windows only.
@@ -53,6 +54,8 @@ Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that suppo
 
 For operations with a save picker or confirmation dialog, elapsed-time measurement starts after the final confirmation, excluding time spent choosing a destination or waiting to confirm.
 
+Only one operation can run at a time. Navigation and operation buttons are disabled while it runs; conversion cancellation remains available in the status bar. Confirmation dialogs support keyboard focus and Escape to cancel. Native Windows file pickers remain in use for opening files and choosing export destinations.
+
 ### Local data and conversion
 
 Saved connections are stored in `%LOCALAPPDATA%\DataPie\connections.db`. Connection strings are stored without application-level encryption and can contain database passwords; treat this file as private configuration.
@@ -83,14 +86,30 @@ The test project is a console-based regression runner. Run it with:
 dotnet run --project DataPieMaui.Tests\DataPieMaui.Tests.csproj -c Release
 ```
 
-Checks cover SQLite access, connection management, query previews, import/export, procedure conversion, cancellation, result snapshots, typed sorting, and copy formatting. These checks do not automate desktop-window interactions or require a live SQL Server instance.
+Checks cover SQLite access, connection management, query previews, import/export, procedure conversion, cancellation, result snapshots, typed sorting, and copy formatting. Workspace checks also exercise confirmation and cancellation, concurrent-operation protection, state retention, and rendering of the actual Razor pages. These checks use a test desktop adapter; they do not automate native window/file-picker interactions or require a live SQL Server instance.
+
+To also write static page previews to the ignored `tmp/ui-review/` directory, run:
+
+```powershell
+dotnet run --project DataPieMaui.Tests\DataPieMaui.Tests.csproj -c Release -- --render-ui
+```
+
+These previews are render snapshots, not an interactive web version of the desktop application.
+
+## UI architecture
+
+- `MainPage.cs` hosts the main `BlazorWebView` and provides a native fallback when WebView2 is missing.
+- `Components/Workspace.razor` provides navigation and the status bar; `Components/Pages/` contains the business pages, and `Components/Shared/` contains shared controls and dialogs.
+- `WorkspaceController` coordinates database actions, confirmations, operation locking, progress, and elapsed time. `WorkspaceForm` retains inputs across page changes.
+- `IDesktopServices` separates the workspace from Windows-specific operations. `WindowsDesktopServices` dispatches native work to the UI thread, binds file pickers to their owner, and manages the result window.
+- `DataPieCore` remains the database/import/export engine. Razor components run locally; no web server is required.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `DataPieMaui/` | MAUI application, pages, services, and window management |
-| `DataPieMaui/Components/` | Blazor query-results component |
+| `DataPieMaui/` | Native MAUI host, services, state, and window management |
+| `DataPieMaui/Components/` | Blazor workspace, business pages, dialogs, and query results |
 | `DataPieMaui/wwwroot/` | Local HTML, CSS, and Blazor host assets |
 | `DataPieCore/` | Database access, import/export, and SQL Server-to-SQLite conversion |
 | `DataPieMaui.Tests/` | Console regression checks |

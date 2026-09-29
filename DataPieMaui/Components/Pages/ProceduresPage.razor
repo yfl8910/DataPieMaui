@@ -1,0 +1,3 @@
+<div class="callout">Run procedures without required parameters. Converted SQLite scripts may report skipped statements after execution.</div>
+<section class="card"><h2>Available procedures</h2><ObjectSelection Items="W.Procedures" Label="Procedures" /><div class="actions"><button class="primary" @onclick="W.RunProceduresAsync">Run selected procedures</button><button @onclick="() => W.SelectAll(false, true)">Clear selection</button></div></section>
+@code { [CascadingParameter] public WorkspaceController W { get; set; } = default!; }

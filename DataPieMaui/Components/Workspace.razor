@@ -1,0 +1,74 @@
+@implements IDisposable
+
+<div class="workspace-shell">
+    <div class="workspace-body" inert="@(Controller.Dialogs.Current is not null)">
+        <aside class="sidebar">
+            <div class="brand"><span class="brand-icon">D</span><div>DataPie<span>DATABASE WORKSPACE</span></div></div>
+            <nav aria-label="Workspace sections">
+                @foreach (var item in navigation)
+                {
+                    bool enabled = item.Id is "Connections" or "About" || Controller.State.IsConnected && (item.Id != "Migration" || Controller.State.CanConvertToSqlite);
+                    <button class="nav-item @(Controller.Section == item.Id ? "active" : "")" disabled="@(!enabled || Controller.State.Busy)" aria-current="@(Controller.Section == item.Id ? "page" : null)" @onclick="() => Controller.Navigate(item.Id)"><span class="nav-symbol">@item.Icon</span>@item.Label</button>
+                }
+            </nav>
+            <div class="sidebar-note">Local desktop workspace<br />SQL Server &amp; SQLite</div>
+        </aside>
+        <div class="workspace-main">
+            <header class="topbar"><span>Workspace / <strong>@Title</strong></span><span class="connection-pill"><i class="@(Controller.State.IsConnected ? "connected" : "")"></i>@Controller.State.Connection</span></header>
+            <main class="page-content">
+                <div class="page-heading"><p class="eyebrow">DATAPIE</p><h1>@Title</h1><p>@Description</p></div>
+                <CascadingValue Value="Controller" IsFixed="true">
+                    <ErrorBoundary @ref="boundary">
+                        <ChildContent>
+                            <fieldset class="page-fields" disabled="@Controller.State.Busy">
+                                @switch (Controller.Section)
+                                {
+                                    case "Connections": <ConnectionsPage /> break;
+                                    case "Query": <QueryPage /> break;
+                                    case "Import": <ImportPage /> break;
+                                    case "Export": <ExportPage /> break;
+                                    case "Procedures": <ProceduresPage /> break;
+                                    case "Migration": <MigrationPage /> break;
+                                    case "About": <AboutPage /> break;
+                                }
+                            </fieldset>
+                        </ChildContent>
+                        <ErrorContent><div class="callout danger">The page could not be displayed. <button @onclick="Recover">Reload page</button></div></ErrorContent>
+                    </ErrorBoundary>
+                </CascadingValue>
+            </main>
+        </div>
+        <footer class="statusbar" aria-live="polite">
+            <span class="status-dot @(Controller.State.Busy ? "working" : "")"></span>
+            <span class="status-text">@Controller.State.Status</span>
+            @if (Controller.State.Converting) { <button class="danger" @onclick="Controller.CancelConversion">Cancel conversion</button> }
+        </footer>
+    </div>
+    <WorkspaceDialogView Dialogs="Controller.Dialogs" />
+</div>
+
+@code {
+    [Parameter, EditorRequired] public WorkspaceController Controller { get; set; } = default!;
+    private bool disposed;
+    private ErrorBoundary? boundary;
+    private readonly (string Id, string Label, string Icon, string Description)[] navigation =
+    [
+        ("Connections", "Database connection", "◎", "Connect to a database or manage your saved connections."),
+        ("Query", "SQL query", "⌘", "Write SQL, preview results, and export your data."),
+        ("Import", "Import data", "↓", "Bring files into an existing database table."),
+        ("Export", "Batch export", "↑", "Export selected tables and views to Excel or CSV."),
+        ("Procedures", "Stored procedures", "▷", "Run selected procedures in sequence."),
+        ("Migration", "Convert to SQLite", "⇄", "Create a portable SQLite copy of your SQL Server database."),
+        ("About", "About", "ⓘ", "A local workspace for your database tasks.")
+    ];
+    private string Title => navigation.First(x => x.Id == Controller.Section).Label;
+    private string Description => navigation.First(x => x.Id == Controller.Section).Description;
+    protected override async Task OnInitializedAsync()
+    {
+        Controller.Changed += Refresh;
+        await Controller.InitializeAsync();
+    }
+    private void Refresh() => _ = InvokeAsync(() => { if (!disposed) StateHasChanged(); });
+    private void Recover() => boundary?.Recover();
+    public void Dispose() { disposed = true; Controller.Changed -= Refresh; }
+}
