@@ -16,7 +16,7 @@
         <div class="workspace-main">
             <header class="topbar"><span>Workspace / <strong>@Title</strong></span><span class="connection-pill"><i class="@(Controller.Context.State.IsConnected ? "connected" : "")"></i>@Controller.Context.State.Connection</span></header>
             <main class="page-content">
-                <div class="page-heading"><p class="eyebrow">DATAPIE</p><h1>@Title</h1><p>@Description</p></div>
+                <div class="page-heading"><p>@Description</p></div>
                 <CascadingValue Value="Controller" IsFixed="true">
                     <ErrorBoundary @ref="boundary">
                         <ChildContent>

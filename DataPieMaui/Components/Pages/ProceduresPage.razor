@@ -1,7 +1,6 @@
 @using DBUtil
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
-<div class="callout">Run procedures without required parameters. Converted SQLite scripts may report skipped statements after execution.</div>
 <section class="card"><h2>Available procedures</h2><ObjectSelection Items="Model.Procedures" Label="Procedures" /><div class="actions"><button class="primary" @onclick="RunProceduresAsync">Run selected procedures</button><button @onclick="ClearSelection">Clear selection</button></div></section>
 
 @code {

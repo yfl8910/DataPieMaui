@@ -3,7 +3,7 @@
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
 <section class="card">
-    <div class="actions align-end"><label class="grow">Target table<select @bind="Model.Form.ImportTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label><button @onclick="PreviewImportTableAsync" disabled="@(string.IsNullOrEmpty(Model.Form.ImportTable))">Query data</button><button @onclick="ExportTemplateAsync">Export blank template</button><button class="danger" @onclick="ClearTableAsync">Clear target table</button></div>
+    <div class="actions align-end"><label class="grow">Target table<select @bind="Model.Form.ImportTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label><button @onclick="PreviewImportTableAsync" disabled="@(string.IsNullOrEmpty(Model.Form.ImportTable))">Query data</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Delete</button></div>
 </section>
 <section class="card"><h2>Import a file</h2><p class="muted">Excel, CSV, or a SQLite database containing a table with the same name.</p>
     <div class="actions align-end"><label class="grow">Source file<input @bind="Model.Form.ImportPath" @bind:event="oninput" placeholder="Select a file to import" /></label><button @onclick="() => BrowseImportAsync(false)">Browse file</button><button class="primary" @onclick="ImportFileAsync">Import file</button></div>

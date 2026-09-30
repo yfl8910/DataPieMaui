@@ -13,7 +13,7 @@ public partial class App : Application
     protected override Window CreateWindow(IActivationState? activationState)
     {
         var page = new MainPage();
-        var window = new Window(page) { Title = "DataPieMaui", Width = 1280, Height = 850, MinimumWidth = 960, MinimumHeight = 650 };
+        var window = new Window(page) { Title = "DataPieMaui", Width = 1024, Height = 760, MinimumWidth = 960, MinimumHeight = 650 };
         window.Created += (_, _) =>
         {
             var native = (Microsoft.UI.Xaml.Window)window.Handler!.PlatformView!;

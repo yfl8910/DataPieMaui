@@ -30,7 +30,7 @@
         <div class="actions align-end"><label class="grow">Connection<select value="@Model.Form.SelectedConnectionId" @onchange="Select"><option value="0">Select a connection</option>@foreach (var item in Model.Connections) { <option value="@item.Id">@item.Dbname · @item.Dbtype</option> }</select></label><button class="primary" @onclick="ConnectSavedAsync">Connect</button><button class="danger" @onclick="DeleteConnectionAsync">Delete</button><button @onclick="ImportConnectionsAsync">Import legacy settings</button></div>
         <hr /><h2>Edit connection</h2>
         <div class="form-grid"><label>Name<input @bind="Model.Form.ConnectionName" @bind:event="oninput" /></label><label>Database type<select @bind="Model.Form.ConnectionType"><option>SQLSERVER</option><option>SQLITE</option></select></label></div>
-        <label>Connection string<input type="password" @bind="Model.Form.ConnectionString" @bind:event="oninput" autocomplete="off" /></label>
+        <label>Connection string<input type="text" @bind="Model.Form.ConnectionString" @bind:event="oninput" autocomplete="off" /></label>
         <div class="actions"><button @onclick="TestConnectionAsync">Test</button><button @onclick="() => SaveConnectionAsync(true)">Save as new</button><button @onclick="() => SaveConnectionAsync(false)">Update selected</button><button class="primary" @onclick="ConnectEditedAsync">Connect</button></div>
     }
 </section>
