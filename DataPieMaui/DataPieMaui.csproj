@@ -22,9 +22,9 @@
     <MauiIcon Include="Resources\AppIcon\appicon.svg" Color="#176B64" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#176B64" BaseSize="128,128" />
     <MauiFont Include="Resources\Fonts\*" />
-    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.110" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.110" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.12" />
     <ProjectReference Include="..\DataPieCore\DataPieCore.csproj" />
   </ItemGroup>
 </Project>
