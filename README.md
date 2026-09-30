@@ -6,7 +6,7 @@ A Windows desktop workspace for querying, importing, exporting, and converting S
 
 - Connect to SQL Server using Windows or SQL Server authentication, or open a local SQLite database.
 - Navigate between Blazor pages without losing SQL or form inputs; review operations in shared confirmation dialogs and a persistent status bar.
-- Save and manage connections, including importing legacy connection settings.
+- Save and manage database connections.
 - Generate SELECT, UPDATE, and DELETE statements and execute SQL.
 - Preview query results in a separate, resizable Blazor window with dynamic columns, typed sorting, pagination, and copying.
 - Export queries and tables to Excel or CSV; export multiple tables or views to worksheets or separate CSV files.

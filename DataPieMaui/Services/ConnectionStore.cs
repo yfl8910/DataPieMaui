@@ -10,27 +10,6 @@ namespace DataPieMaui.Services
         public ConnectionStore(string path = "data.db")
             => connectionString = new SQLiteConnectionStringBuilder { DataSource = path }.ToString();
 
-        public void ImportLegacy(string path)
-        {
-            path = System.IO.Path.GetFullPath(path);
-            using var source = new SQLiteConnection(new SQLiteConnectionStringBuilder
-                { DataSource = path, ReadOnly = true, FailIfMissing = true }.ToString());
-            source.Open();
-            using var command = new SQLiteCommand("SELECT Dbname, ConnectionStrings, UPPER(Dbtype) FROM Dbinfo WHERE UPPER(Dbtype) IN ('SQLSERVER', 'SQLITE')", source);
-            using var reader = command.ExecuteReader();
-            while (reader.Read())
-            {
-                string connection = reader.GetString(1), type = reader.GetString(2);
-                if (type == "SQLITE")
-                {
-                    var builder = new SQLiteConnectionStringBuilder(connection);
-                    if (!string.IsNullOrEmpty(builder.DataSource) && builder.DataSource != ":memory:" && !System.IO.Path.IsPathRooted(builder.DataSource))
-                        builder.DataSource = System.IO.Path.GetFullPath(builder.DataSource, System.IO.Path.GetDirectoryName(path)!);
-                    connection = builder.ToString();
-                }
-                Save(new Dbinfo { Dbname = reader.GetString(0), ConnectionStrings = connection, Dbtype = type }, true);
-            }
-        }
         private SQLiteConnection Open()
         {
             var connection = new SQLiteConnection(connectionString);
@@ -92,6 +71,3 @@ namespace DataPieMaui.Services
         public string Dbtype { get; set; } = string.Empty;
     }
 }
-
-
-

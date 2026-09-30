@@ -148,19 +148,16 @@ try
         }
         return Task.CompletedTask;
     });
-    await Test("Connection CRUD and idempotent legacy migration", () =>
+    await Test("Connection CRUD and duplicate prevention", () =>
     {
-        var legacyPath = Path.Combine(root, "data.db"); var legacy = new ConnectionStore(legacyPath);
-        legacy.Save(new Dbinfo { Dbname = "Legacy", Dbtype = "SQLITE", ConnectionStrings = "Data Source=source.db" });
         var destination = new ConnectionStore(Path.Combine(root, "connections.db"));
-        destination.ImportLegacy(legacyPath); destination.ImportLegacy(legacyPath);
-        var records = destination.Load(); Check(records.Count == 1, "Duplicate imported connection");
-        var builder = new SQLiteConnectionStringBuilder(records[0].ConnectionStrings);
-        Check(builder.DataSource == path, "Relative legacy path not resolved");
+        var record = new Dbinfo { Dbname = "Fixture", Dbtype = "SQLITE", ConnectionStrings = Connection(path) };
+        destination.Save(record, true); destination.Save(record, true);
+        var records = destination.Load(); Check(records.Count == 1, "Duplicate saved connection");
+        Check(records[0].ConnectionStrings == record.ConnectionStrings, "Connection string changed");
         records[0].Dbname = "Renamed"; destination.Save(records[0]);
         Check(destination.Load().Single().Dbname == "Renamed", "Update failed");
         destination.Delete(records[0].Id); Check(destination.Load().Count == 0, "Delete failed");
-        Check(legacy.Load().Single().ConnectionStrings == "Data Source=source.db", "Legacy source modified");
         return Task.CompletedTask;
     });
     await Test("SQL Server authentication string construction", () =>
