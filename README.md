@@ -102,7 +102,10 @@ These previews are render snapshots, not an interactive web version of the deskt
 
 - `MainPage.cs` hosts the main `BlazorWebView` and provides a native fallback when WebView2 is missing.
 - `Components/Workspace.razor` provides navigation and the status bar; `Components/Pages/` contains the business pages, and `Components/Shared/` contains shared controls and dialogs.
-- `WorkspaceController` coordinates database actions, confirmations, operation locking, progress, and elapsed time. `WorkspaceForm` retains inputs across page changes.
+- All business pages, including login and connection management, keep their markup and page-specific workflows together in a single `.razor` file using an `@code` block. The static About page needs no code block.
+- `WorkspaceController` composes shared services and coordinates navigation and native-window lifecycle. Pages use `WorkspacePageBase` to access shared state and the operation runner. The connection page initializes saved connections once per workspace; revisiting the page preserves loaded configuration and operation status.
+- `Services/Shared/WorkspaceContext` owns session state and the shared capabilities for one workspace. Shared services survive navigation; `WorkspaceForm` retains input values when page components are recreated. `DatabaseConversionService` owns conversion execution, progress, and cancellation so the status bar and native close handler do not depend on a page instance.
+- `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by every page. `QueryPreviewService` shares table/view and SQL result loading, and `FileNames` shares export filename normalization.
 - `IDesktopServices` separates the workspace from Windows-specific operations. `WindowsDesktopServices` dispatches native work to the UI thread, binds file pickers to their owner, and manages the result window.
 - `DataPieCore` remains the database/import/export engine. Razor components run locally; no web server is required.
 
@@ -112,6 +115,8 @@ These previews are render snapshots, not an interactive web version of the deskt
 | --- | --- |
 | `DataPieMaui/` | Native MAUI host, services, state, and window management |
 | `DataPieMaui/Components/` | Blazor workspace, business pages, dialogs, and query results |
+| `DataPieMaui/Components/Pages/*.razor` | Page markup and page-specific workflows in one file |
+| `DataPieMaui/Services/Shared/` | Shared context, operation execution, result previews, and utilities |
 | `DataPieMaui/wwwroot/` | Local HTML, CSS, and Blazor host assets |
 | `DataPieCore/` | Database access, import/export, and SQL Server-to-SQLite conversion |
 | `DataPieMaui.Tests/` | Console regression checks |

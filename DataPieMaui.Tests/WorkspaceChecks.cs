@@ -1,5 +1,6 @@
 using System.Data.SQLite;
 using DataPieMaui.Components;
+using DataPieMaui.Components.Pages;
 using DataPieMaui.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -22,90 +23,108 @@ internal static class WorkspaceChecks
         }
         var desktop = new FakeDesktop();
         var workspace = new WorkspaceController(desktop, Path.Combine(root, "workspace-connections.db"));
+        var connectionsPage = new ConnectionsPage { Workspace = workspace };
+        var queryPage = new QueryPage { Workspace = workspace };
+        var importPage = new ImportPage { Workspace = workspace };
+        var exportPage = new ExportPage { Workspace = workspace };
+        var proceduresPage = new ProceduresPage { Workspace = workspace };
         await test("Blazor workspace connects, previews and keeps inputs across pages", async () =>
         {
-            await workspace.InitializeAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            workspace.Form.SqlitePath = path;
-            await workspace.ConnectSqliteAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.State.IsConnected && workspace.Section == "Query", "Connection did not open query page");
-            Check(workspace.Connections.Count == 1 && workspace.Tables.Contains("Items"), "Connection/schema missing");
-            workspace.Form.Sql = "SELECT * FROM Items ORDER BY Id";
-            await workspace.PreviewAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Results.Current?.Rows.Length == 2 && desktop.ResultWindows == 1, "Preview not passed to desktop host");
-            workspace.Navigate("Import"); workspace.Form.ImportPath = "remember.csv"; workspace.Navigate("Query");
-            Check(workspace.Form.Sql.Contains("ORDER BY Id") && workspace.Form.ImportPath == "remember.csv", "Navigation lost inputs");
-            await workspace.OpenResultsAsync();
+            await connectionsPage.InitializeAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            workspace.Context.Form.SqlitePath = path;
+            await connectionsPage.ConnectSqliteAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Context.State.IsConnected && workspace.Context.Section == "Query", "Connection did not open query page");
+            Check(workspace.Context.Connections.Count == 1 && workspace.Context.Tables.Contains("Items"), "Connection/schema missing");
+            workspace.Context.Form.Sql = "SELECT * FROM Items ORDER BY Id";
+            await queryPage.PreviewAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Context.Results.Current?.Rows.Length == 2 && desktop.ResultWindows == 1, "Preview not passed to desktop host");
+            workspace.Navigate("Import"); workspace.Context.Form.ImportPath = "remember.csv"; workspace.Navigate("Query");
+            Check(workspace.Context.Form.Sql.Contains("ORDER BY Id") && workspace.Context.Form.ImportPath == "remember.csv", "Navigation lost inputs");
+            queryPage = new QueryPage { Workspace = workspace };
+            await queryPage.OpenResultsAsync();
             Check(desktop.ResultWindows == 2, "Reopen results not dispatched");
+        });
+        await test("Connection page recreation preserves loaded configuration and status", async () =>
+        {
+            var connections = workspace.Context.Connections;
+            var status = workspace.Context.State.Status;
+            connectionsPage = new ConnectionsPage { Workspace = workspace };
+            await connectionsPage.InitializeAsync();
+            Check(ReferenceEquals(connections, workspace.Context.Connections), "Recreated page reloaded connection configuration");
+            Check(workspace.Context.State.Status == status && !workspace.IsOperationRunning, "Recreated page changed operation status");
         });
         await test("Import and export object previews share results without changing page inputs or selection", async () =>
         {
-            string sql = workspace.Form.Sql;
+            string sql = workspace.Context.Form.Sql;
             workspace.Navigate("Import");
-            await workspace.PreviewImportTableAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Results.Current?.Source == "Table · Items" && workspace.Results.Current.Rows.Length == 2, "Wrong import target preview");
-            Check(workspace.Section == "Import" && workspace.Form.Sql == sql, "Preview changed navigation or SQL editor");
+            await importPage.PreviewImportTableAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Context.Results.Current?.Source == "Table · Items" && workspace.Context.Results.Current.Rows.Length == 2, "Wrong import target preview");
+            Check(workspace.Context.Section == "Import" && workspace.Context.Form.Sql == sql, "Preview changed navigation or SQL editor");
             workspace.Navigate("Export");
-            var view = workspace.Exports.Single(x => x.Name == "ItemNames"); view.Selected = true;
-            await workspace.PreviewObjectAsync(view.Name).WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Results.Current?.Source == "View · ItemNames" && workspace.Results.Current.Columns.SequenceEqual(new[] { "Name" }), "Wrong view preview");
-            Check(view.Selected && workspace.Form.Sql == sql && workspace.Form.ImportTable == "Items" && workspace.Section == "Export", "Preview changed user choices");
+            var view = workspace.Context.Exports.Single(x => x.Name == "ItemNames"); view.Selected = true;
+            await exportPage.PreviewObjectAsync(view.Name).WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Context.Results.Current?.Source == "View · ItemNames" && workspace.Context.Results.Current.Columns.SequenceEqual(new[] { "Name" }), "Wrong view preview");
+            Check(view.Selected && workspace.Context.Form.Sql == sql && workspace.Context.Form.ImportTable == "Items" && workspace.Context.Section == "Export", "Preview changed user choices");
             view.Selected = false;
-            await workspace.PreviewObjectAsync("ManyRows").WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Results.Current is { Truncated: true } limited && limited.Rows.Length == 1000, "Object preview ignored row limit");
-            var pending = workspace.PreviewObjectAsync("not in schema");
-            Check(workspace.Dialogs.Current?.Title == "Query data failed", "Unknown object was not rejected");
-            workspace.Dialogs.Complete(true); await pending;
+            await exportPage.PreviewObjectAsync("ManyRows").WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Context.Results.Current is { Truncated: true } limited && limited.Rows.Length == 1000, "Object preview ignored row limit");
+            var pending = exportPage.PreviewObjectAsync("not in schema");
+            Check(workspace.Context.Dialogs.Current?.Title == "Query data failed", "Unknown object was not rejected");
+            workspace.Context.Dialogs.Complete(true); await pending;
             workspace.Navigate("Query");
         });
         await test("Confirmation prevents execution and concurrent operations; cancel is safe", async () =>
         {
-            workspace.Form.Sql = "INSERT INTO Items VALUES(3, 'third')";
-            var running = workspace.ExecuteSqlAsync();
-            Check(workspace.Dialogs.Current?.CanCancel == true && workspace.State.Busy, "Missing confirmation or busy guard");
+            workspace.Context.Form.Sql = "INSERT INTO Items VALUES(3, 'third')";
+            var running = queryPage.ExecuteSqlAsync();
+            Check(workspace.Context.Dialogs.Current?.CanCancel == true && workspace.Context.State.Busy, "Missing confirmation or busy guard");
             Check(Count(connection) == 2, "SQL ran before confirmation");
             int calls = desktop.ResultWindows;
-            await workspace.PreviewAsync();
+            await queryPage.PreviewAsync();
+            await importPage.ImportFileAsync();
+            await exportPage.ExportBatchAsync("csv");
+            Check(workspace.Context.Dialogs.Current?.Title == "Run SQL", "Page actions do not share the confirmation/operation guard");
             workspace.Navigate("Export");
-            Check(desktop.ResultWindows == calls && workspace.Section == "Query", "Concurrent action bypassed guard");
-            workspace.Dialogs.Complete(false);
+            Check(desktop.ResultWindows == calls && workspace.Context.Section == "Query", "Concurrent action bypassed guard");
+            workspace.Context.Dialogs.Complete(false);
             await running.WaitAsync(TimeSpan.FromSeconds(10));
-            Check(Count(connection) == 2 && !workspace.State.Busy && workspace.State.Status == "Run SQL canceled.", "Cancel reported completion or changed data");
-            running = workspace.ExecuteSqlAsync();
-            workspace.Dialogs.Complete(true);
+            Check(Count(connection) == 2 && !workspace.Context.State.Busy && workspace.Context.State.Status == "Run SQL canceled.", "Cancel reported completion or changed data");
+            running = queryPage.ExecuteSqlAsync();
+            workspace.Context.Dialogs.Complete(true);
             await running.WaitAsync(TimeSpan.FromSeconds(10));
-            Check(Count(connection) == 3 && workspace.State.Status.Contains("rows affected"), "Confirmed SQL did not run");
+            Check(Count(connection) == 3 && workspace.Context.State.Status.Contains("rows affected"), "Confirmed SQL did not run");
         });
         await test("Save picker cancellation, CSV overwrite confirmation and export", async () =>
         {
-            workspace.Form.Sql = "SELECT * FROM Items";
+            workspace.Context.Form.Sql = "SELECT * FROM Items";
             desktop.Save = () => Task.FromResult<string?>(null);
-            await workspace.ExportQueryAsync(true, false);
-            Check(workspace.State.Status == "Export data canceled.", "Picker cancellation reported success");
+            await queryPage.ExportQueryAsync(true, false);
+            Check(workspace.Context.State.Status == "Export data canceled.", "Picker cancellation reported success");
             var export = Path.Combine(root, "workspace-export.csv");
             desktop.Save = () => Task.FromResult<string?>(export);
-            await workspace.ExportQueryAsync(true, false).WaitAsync(TimeSpan.FromSeconds(10));
+            await queryPage.ExportQueryAsync(true, false).WaitAsync(TimeSpan.FromSeconds(10));
             Check(File.ReadAllText(export).Contains("third"), "Query export incomplete");
             var folder = Path.Combine(root, "workspace-exports"); Directory.CreateDirectory(folder);
             var existing = Path.Combine(folder, "Items.csv"); File.WriteAllText(existing, "keep me");
-            desktop.Folder = folder; workspace.SelectAll(false);
-            workspace.Exports.Single(x => x.Name == "Items").Selected = true;
-            var running = workspace.ExportBatchAsync("csv");
-            Check(workspace.Dialogs.Current?.Title == "Replace CSV files", "Missing overwrite confirmation");
-            workspace.Dialogs.Complete(false); await running;
+            desktop.Folder = folder; exportPage.SelectAll(false);
+            workspace.Context.Exports.Single(x => x.Name == "Items").Selected = true;
+            var running = exportPage.ExportBatchAsync("csv");
+            Check(workspace.Context.Dialogs.Current?.Title == "Replace CSV files", "Missing overwrite confirmation");
+            workspace.Context.Dialogs.Complete(false); await running;
             Check(File.ReadAllText(existing) == "keep me", "Cancel overwrote the file");
-            running = workspace.ExportBatchAsync("csv"); workspace.Dialogs.Complete(true); await running.WaitAsync(TimeSpan.FromSeconds(10));
+            running = exportPage.ExportBatchAsync("csv"); workspace.Context.Dialogs.Complete(true); await running.WaitAsync(TimeSpan.FromSeconds(10));
             Check(File.ReadAllText(existing).Contains("third"), "Batch CSV export failed");
         });
         await test("Failed connection preserves workspace and releases operation guard", async () =>
         {
-            string before = workspace.State.Connection;
-            workspace.Form.SqlitePath = Path.Combine(root, "missing-workspace.db");
-            var running = workspace.ConnectSqliteAsync();
-            Check(workspace.Dialogs.Current?.Title.Contains("failed") == true, "No error dialog");
+            string before = workspace.Context.State.Connection;
+            workspace.Context.Form.SqlitePath = Path.Combine(root, "missing-workspace.db");
+            var running = connectionsPage.ConnectSqliteAsync();
+            Check(workspace.Context.Dialogs.Current?.Title.Contains("failed") == true, "No error dialog");
             Check(workspace.CanClose, "Error dialog prevents closing app");
-            workspace.Dialogs.Complete(true); await running;
-            Check(workspace.State.Connection == before && workspace.Results.Current != null && !workspace.IsOperationRunning, "Failure discarded workspace or left it locked");
-            workspace.Form.SqlitePath = path;
+            workspace.Context.Dialogs.Complete(true); await running;
+            Check(workspace.Context.State.Connection == before && workspace.Context.Results.Current != null && !workspace.IsOperationRunning, "Failure discarded workspace or left it locked");
+            workspace.Context.Form.SqlitePath = path;
         });
         await test("Blazor pages render, encode input and show accessible confirmations", async () =>
         {
@@ -113,14 +132,14 @@ internal static class WorkspaceChecks
             services.AddSingleton<IJSRuntime, NoopJs>();
             services.AddSingleton<IErrorBoundaryLogger, BoundaryLogger>();
             await using var provider = services.BuildServiceProvider();
-            workspace.Form.Sql = "SELECT '<script>alert(1)</script>'";
+            workspace.Context.Form.Sql = "SELECT '<script>alert(1)</script>'";
             var pages = new[]
             {
                 ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("Import", "Source folder"),
                 ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("About", "Blazor Hybrid")
             };
             // Render the conversion page without connecting to an external SQL Server.
-            workspace.State.DatabaseType = "SQLSERVER";
+            workspace.Context.State.DatabaseType = "SQLSERVER";
             foreach (var (section, expected) in pages)
             {
                 workspace.Navigate(section);
@@ -137,10 +156,10 @@ internal static class WorkspaceChecks
                 Check(!html.Contains("workspace-body\" inert"), "Idle workspace is inert");
                 if (renderUi) SaveHtml(section, html);
             }
-            workspace.State.DatabaseType = "SQLITE";
+            workspace.Context.State.DatabaseType = "SQLITE";
             workspace.Navigate("Query");
             // Initialization has already completed, so a static render can display a pending dialog.
-            var dialogTask = workspace.Dialogs.ConfirmAsync("Confirm test", "<script>not markup</script>", "Run");
+            var dialogTask = workspace.Context.Dialogs.ConfirmAsync("Confirm test", "<script>not markup</script>", "Run");
             await using (var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>()))
             {
                 string html = await renderer.Dispatcher.InvokeAsync(async () =>
@@ -152,24 +171,24 @@ internal static class WorkspaceChecks
                 Check(!html.Contains("<script>not markup</script>"), "Dialog message rendered as markup");
                 if (renderUi) SaveHtml("Dialog", html);
             }
-            workspace.Dialogs.Complete(false); Check(!await dialogTask, "Dialog cancellation failed");
+            workspace.Context.Dialogs.Complete(false); Check(!await dialogTask, "Dialog cancellation failed");
         });
         await test("Clear table confirmation resets the result snapshot", async () =>
         {
-            var running = workspace.ClearTableAsync();
-            workspace.Dialogs.Complete(false); await running;
+            var running = importPage.ClearTableAsync();
+            workspace.Context.Dialogs.Complete(false); await running;
             Check(Count(connection) == 3, "Canceled clear changed data");
-            running = workspace.ClearTableAsync(); workspace.Dialogs.Complete(true); await running.WaitAsync(TimeSpan.FromSeconds(10));
-            Check(Count(connection) == 0 && workspace.Results.Current == null, "Clear left data or stale results");
+            running = importPage.ClearTableAsync(); workspace.Context.Dialogs.Complete(true); await running.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(Count(connection) == 0 && workspace.Context.Results.Current == null, "Clear left data or stale results");
         });
         await test("Workspace file and folder import use the selected target", async () =>
         {
-            workspace.Form.ImportPath = Path.Combine(root, "workspace-export.csv");
-            await workspace.ImportFileAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            workspace.Context.Form.ImportPath = Path.Combine(root, "workspace-export.csv");
+            await importPage.ImportFileAsync().WaitAsync(TimeSpan.FromSeconds(10));
             Check(Count(connection) == 3, "Single-file import failed");
-            workspace.Form.ImportFolder = Path.Combine(root, "workspace-exports");
-            await workspace.ImportDirectoryAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Check(Count(connection) == 6 && workspace.State.Status.StartsWith("Batch import completed"), "Batch import or completion status failed");
+            workspace.Context.Form.ImportFolder = Path.Combine(root, "workspace-exports");
+            await importPage.ImportDirectoryAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(Count(connection) == 6 && workspace.Context.State.Status.StartsWith("Batch import completed"), "Batch import or completion status failed");
         });
         await test("Workspace procedure execution waits for confirmation", async () =>
         {
@@ -179,15 +198,15 @@ internal static class WorkspaceChecks
             {
                 access.Open(); using var command = new SQLiteCommand("DELETE FROM Items", access); command.ExecuteNonQuery();
             }
-            workspace.Form.SqlitePath = converted;
-            await workspace.ConnectSqliteAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Procedures.Count == 1 && workspace.Results.Current == null, "Schema/results did not refresh on database switch");
-            workspace.Procedures[0].Selected = true;
-            var running = workspace.RunProceduresAsync();
-            Check(workspace.Dialogs.Current?.Title == "Run stored procedures" && Count(convertedConnection) == 0, "Procedure ran before confirmation");
-            workspace.Dialogs.Complete(false); await running;
+            workspace.Context.Form.SqlitePath = converted;
+            await connectionsPage.ConnectSqliteAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Context.Procedures.Count == 1 && workspace.Context.Results.Current == null, "Schema/results did not refresh on database switch");
+            workspace.Context.Procedures[0].Selected = true;
+            var running = proceduresPage.RunProceduresAsync();
+            Check(workspace.Context.Dialogs.Current?.Title == "Run stored procedures" && Count(convertedConnection) == 0, "Procedure ran before confirmation");
+            workspace.Context.Dialogs.Complete(false); await running;
             Check(Count(convertedConnection) == 0, "Canceled procedure changed data");
-            running = workspace.RunProceduresAsync(); workspace.Dialogs.Complete(true); await running.WaitAsync(TimeSpan.FromSeconds(10));
+            running = proceduresPage.RunProceduresAsync(); workspace.Context.Dialogs.Complete(true); await running.WaitAsync(TimeSpan.FromSeconds(10));
             Check(Count(convertedConnection) == 1, "Confirmed procedure did not execute");
         });
     }

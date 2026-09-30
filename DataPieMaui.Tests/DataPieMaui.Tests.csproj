@@ -17,6 +17,8 @@
     <Compile Include="..\DataPieMaui\Services\QueryResultSnapshot.cs" Link="Services\QueryResultSnapshot.cs" />
     <Compile Include="..\DataPieMaui\Services\IDesktopServices.cs" Link="Services\IDesktopServices.cs" />
     <Compile Include="..\DataPieMaui\Services\WorkspaceController.cs" Link="Services\WorkspaceController.cs" />
+    <Compile Include="..\DataPieMaui\Services\Shared\*.cs" Link="Services\Shared\%(Filename)%(Extension)" />
+    <Compile Include="..\DataPieMaui\Components\Pages\*.cs" Link="Components\Pages\%(Filename)%(Extension)" />
     <Compile Include="..\DataPieMaui\Services\WorkspaceDialogs.cs" Link="Services\WorkspaceDialogs.cs" />
     <Compile Include="..\DataPieMaui\ViewModels\WorkspaceState.cs" Link="ViewModels\WorkspaceState.cs" />
     <Compile Include="..\DataPieMaui\ViewModels\WorkspaceForm.cs" Link="ViewModels\WorkspaceForm.cs" />

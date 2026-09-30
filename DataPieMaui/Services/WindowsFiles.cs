@@ -15,7 +15,7 @@ internal static class WindowsFiles
 
     public static async Task<string?> SaveAsync(Window owner, string name, string extension)
     {
-        var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = WorkspaceController.SafeFileName(name) };
+        var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = Shared.FileNames.SafeFileName(name) };
         picker.FileTypeChoices.Add(extension.TrimStart('.').ToUpperInvariant(), new[] { extension });
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle(owner));
         return (await picker.PickSaveFileAsync())?.Path;

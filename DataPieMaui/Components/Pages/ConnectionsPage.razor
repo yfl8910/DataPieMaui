@@ -1,38 +1,153 @@
+@using DBUtil
+@inherits WorkspacePageBase
 <section class="card">
     <div class="tabs" aria-label="Connection type">
         @foreach (var tab in new[] { ("SqlServer", "SQL Server"), ("Sqlite", "SQLite"), ("Saved", "Saved connections") })
         {
-            <button class="@(W.Form.ConnectionTab == tab.Item1 ? "active" : "")" @onclick="() => W.Form.ConnectionTab = tab.Item1">@tab.Item2</button>
+            <button class="@(Model.Form.ConnectionTab == tab.Item1 ? "active" : "")" @onclick="() => Model.Form.ConnectionTab = tab.Item1">@tab.Item2</button>
         }
     </div>
-    @if (W.Form.ConnectionTab == "SqlServer")
+    @if (Model.Form.ConnectionTab == "SqlServer")
     {
         <h2>Connect to SQL Server</h2>
         <div class="form-grid">
-            <label>Server<input @bind="W.Form.Server" @bind:event="oninput" placeholder="(local) or server\instance" /></label>
-            <label>Authentication<select @bind="W.Form.Authentication"><option>Windows</option><option>SQL Server</option></select></label>
-            <label>Username<input @bind="W.Form.UserName" @bind:event="oninput" disabled="@(W.Form.Authentication == "Windows")" autocomplete="off" /></label>
-            <label>Password<input type="password" @bind="W.Form.Password" @bind:event="oninput" disabled="@(W.Form.Authentication == "Windows")" autocomplete="off" /></label>
+            <label>Server<input @bind="Model.Form.Server" @bind:event="oninput" placeholder="(local) or server\instance" /></label>
+            <label>Authentication<select @bind="Model.Form.Authentication"><option>Windows</option><option>SQL Server</option></select></label>
+            <label>Username<input @bind="Model.Form.UserName" @bind:event="oninput" disabled="@(Model.Form.Authentication == "Windows")" autocomplete="off" /></label>
+            <label>Password<input type="password" @bind="Model.Form.Password" @bind:event="oninput" disabled="@(Model.Form.Authentication == "Windows")" autocomplete="off" /></label>
         </div>
-        <div class="actions align-end"><button @onclick="W.LoadDatabasesAsync">Load databases</button><label class="grow">Database<select @bind="W.Form.DatabaseName"><option value="">Select a database</option>@foreach (var name in W.Databases) { <option value="@name">@name</option> }</select></label><button class="primary" @onclick="W.ConnectServerAsync">Connect and save</button></div>
+        <div class="actions align-end"><button @onclick="LoadDatabasesAsync">Load databases</button><label class="grow">Database<select @bind="Model.Form.DatabaseName"><option value="">Select a database</option>@foreach (var name in Model.Databases) { <option value="@name">@name</option> }</select></label><button class="primary" @onclick="ConnectServerAsync">Connect and save</button></div>
     }
-    else if (W.Form.ConnectionTab == "Sqlite")
+    else if (Model.Form.ConnectionTab == "Sqlite")
     {
         <h2>Connect to SQLite</h2><p class="muted">Choose an existing local database. The connection is saved automatically.</p>
-        <div class="actions align-end"><label class="grow">Database file<input @bind="W.Form.SqlitePath" @bind:event="oninput" placeholder="Path to a SQLite database" /></label><button @onclick="W.BrowseSqliteAsync">Browse file</button></div>
-        <div class="actions"><button class="primary" @onclick="W.ConnectSqliteAsync">Connect and save</button></div>
+        <div class="actions align-end"><label class="grow">Database file<input @bind="Model.Form.SqlitePath" @bind:event="oninput" placeholder="Path to a SQLite database" /></label><button @onclick="BrowseSqliteAsync">Browse file</button></div>
+        <div class="actions"><button class="primary" @onclick="ConnectSqliteAsync">Connect and save</button></div>
     }
     else
     {
         <h2>Saved connections</h2>
-        <div class="actions align-end"><label class="grow">Connection<select value="@W.Form.SelectedConnectionId" @onchange="Select"><option value="0">Select a connection</option>@foreach (var item in W.Connections) { <option value="@item.Id">@item.Dbname · @item.Dbtype</option> }</select></label><button class="primary" @onclick="W.ConnectSavedAsync">Connect</button><button class="danger" @onclick="W.DeleteConnectionAsync">Delete</button><button @onclick="W.ImportConnectionsAsync">Import legacy settings</button></div>
+        <div class="actions align-end"><label class="grow">Connection<select value="@Model.Form.SelectedConnectionId" @onchange="Select"><option value="0">Select a connection</option>@foreach (var item in Model.Connections) { <option value="@item.Id">@item.Dbname · @item.Dbtype</option> }</select></label><button class="primary" @onclick="ConnectSavedAsync">Connect</button><button class="danger" @onclick="DeleteConnectionAsync">Delete</button><button @onclick="ImportConnectionsAsync">Import legacy settings</button></div>
         <hr /><h2>Edit connection</h2>
-        <div class="form-grid"><label>Name<input @bind="W.Form.ConnectionName" @bind:event="oninput" /></label><label>Database type<select @bind="W.Form.ConnectionType"><option>SQLSERVER</option><option>SQLITE</option></select></label></div>
-        <label>Connection string<input type="password" @bind="W.Form.ConnectionString" @bind:event="oninput" autocomplete="off" /></label>
-        <div class="actions"><button @onclick="W.TestConnectionAsync">Test</button><button @onclick="() => W.SaveConnectionAsync(true)">Save as new</button><button @onclick="() => W.SaveConnectionAsync(false)">Update selected</button><button class="primary" @onclick="W.ConnectEditedAsync">Connect</button></div>
+        <div class="form-grid"><label>Name<input @bind="Model.Form.ConnectionName" @bind:event="oninput" /></label><label>Database type<select @bind="Model.Form.ConnectionType"><option>SQLSERVER</option><option>SQLITE</option></select></label></div>
+        <label>Connection string<input type="password" @bind="Model.Form.ConnectionString" @bind:event="oninput" autocomplete="off" /></label>
+        <div class="actions"><button @onclick="TestConnectionAsync">Test</button><button @onclick="() => SaveConnectionAsync(true)">Save as new</button><button @onclick="() => SaveConnectionAsync(false)">Update selected</button><button class="primary" @onclick="ConnectEditedAsync">Connect</button></div>
     }
 </section>
+
 @code {
-    [CascadingParameter] public WorkspaceController W { get; set; } = default!;
-    private void Select(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out int id)) W.SelectConnection(id); }
+    private ConnectionStore Store => Context.ConnectionStore;
+    protected override Task OnInitializedAsync() => InitializeAsync();
+
+    public Task InitializeAsync() => Context.ConnectionsInitialized ? Task.CompletedTask : RunAsync("Load connections", async watch =>
+    {
+        if (Context.ConnectionsInitialized) { watch.Start(); return; }
+        watch.Start();
+        await Task.Run(() =>
+        {
+            foreach (var path in new[] { Path.Combine(AppContext.BaseDirectory, "data.db"), Path.Combine(Environment.CurrentDirectory, "data.db") }.Distinct(StringComparer.OrdinalIgnoreCase))
+                if (File.Exists(path)) Store.ImportLegacy(path);
+        });
+        await ReloadConnectionsAsync();
+        Context.ConnectionsInitialized = true;
+    });
+
+    private async Task ReloadConnectionsAsync() => Connections = await Task.Run(Store.Load);
+    public void SelectConnection(int id)
+    {
+        if (IsOperationRunning) return;
+        Form.SelectedConnectionId = id;
+        if (Connections.FirstOrDefault(x => x.Id == id) is { } item)
+        {
+            Form.ConnectionName = item.Dbname;
+            Form.ConnectionType = item.Dbtype;
+            Form.ConnectionString = item.ConnectionStrings;
+        }
+        Notify();
+    }
+    private Dbinfo ReadConnection() => new() { Id = Form.SelectedConnectionId, Dbname = Form.ConnectionName.Trim(), Dbtype = Form.ConnectionType, ConnectionStrings = Form.ConnectionString };
+    private Dbinfo SelectedConnection() => Connections.FirstOrDefault(x => x.Id == Form.SelectedConnectionId) ?? throw new InvalidOperationException("Select a connection.");
+    private static DatabaseConnectionInfo Info(Dbinfo record) => new(record.Dbtype, record.ConnectionStrings, record.Dbname);
+
+    private async Task ConnectAsync(Dbinfo record, bool save)
+    {
+        await Database.ConnectAsync(Info(record));
+        State.DatabaseType = Database.Connection!.DatabaseType;
+        Tables = Database.Schema!.Tables.Select(t => t.Name).ToArray();
+        Form.QueryTable = Form.ImportTable = Tables.FirstOrDefault() ?? "";
+        Form.Sql = Form.ImportPath = Form.ImportFolder = "";
+        Results.Set(null);
+        QuerySummary = "Run a preview to open the result table in a separate window.";
+        Exports.Clear();
+        Exports.AddRange(Tables.Select(n => new SelectableObject(n, "Table")));
+        Exports.AddRange(Database.Schema.ViewNames.Select(n => new SelectableObject(n, "View")));
+        Procedures.Clear();
+        Procedures.AddRange(Database.Schema.Procedures.Select(p => new SelectableObject(p.Name, "Procedure")));
+        State.Connection = record.Dbname + " · " + record.Dbtype;
+        if (save) { await Task.Run(() => Store.Save(record, true)); await ReloadConnectionsAsync(); }
+        Section = "Query";
+    }
+
+    public Task ConnectSavedAsync() => RunAsync("Connect to database", async watch => { watch.Start(); await ConnectAsync(SelectedConnection(), false); });
+    public Task ConnectEditedAsync() => RunAsync("Connect to database", async watch => { watch.Start(); await ConnectAsync(ReadConnection(), false); });
+    public Task TestConnectionAsync() => RunAsync("Test connection", async watch =>
+    {
+        var info = Info(ReadConnection()); watch.Start();
+        await Task.Run(() => { using var access = DbAccessFactory.Create(info.ConnectionString, info.DatabaseType); access.conn.Open(); });
+    });
+    public Task SaveConnectionAsync(bool create) => RunAsync(create ? "Save connection" : "Update connection", async watch =>
+    {
+        var record = ReadConnection();
+        if (create) record.Id = 0;
+        else if (record.Id <= 0) throw new InvalidOperationException("Select the connection to update.");
+        watch.Start();
+        await Task.Run(() => Store.Save(record)); await ReloadConnectionsAsync();
+    });
+    public Task DeleteConnectionAsync() => RunAsync("Delete connection", async watch =>
+    {
+        var item = SelectedConnection();
+        if (!await Dialogs.ConfirmAsync("Delete connection", "Delete only the saved connection configuration: " + item.Dbname, "Delete")) return;
+        watch.Start();
+        await Task.Run(() => Store.Delete(item.Id)); Form.SelectedConnectionId = 0; await ReloadConnectionsAsync();
+    });
+    public Task ImportConnectionsAsync() => RunAsync("Import legacy connections", async watch =>
+    {
+        var path = await Desktop.OpenAsync(".db");
+        if (path == null) return;
+        watch.Start();
+        await Task.Run(() => Store.ImportLegacy(path)); await ReloadConnectionsAsync();
+    });
+    private DBConfig SqlConfig(string name) => new()
+    {
+        ProviderName = "SQLSERVER", ServerName = Required(Form.Server, "Enter a server address.").Trim(), DataBase = name,
+        ValidataType = Form.Authentication, UserName = Form.UserName, UserPwd = Form.Password
+    };
+    public Task LoadDatabasesAsync() => RunAsync("Load databases", async watch =>
+    {
+        var connection = SqlConfig("master").GetSQLmasterConstring(); watch.Start();
+        Databases = await Task.Run(() => { using var access = DbAccessFactory.Create(connection, "SQLSERVER"); return access.GetDataBaseInfo().ToArray(); });
+        Form.DatabaseName = Databases.FirstOrDefault() ?? "";
+    });
+    public Task ConnectServerAsync() => RunAsync("Connect to SQL Server", async watch =>
+    {
+        var name = Required(Form.DatabaseName, "Select a database."); watch.Start();
+        await ConnectAsync(new Dbinfo { Dbname = name, Dbtype = "SQLSERVER", ConnectionStrings = SqlConfig(name).GetConstring() }, true);
+    });
+    public Task BrowseSqliteAsync() => RunAsync("Select SQLite file", async watch =>
+    {
+        var path = await Desktop.OpenAsync(".db", ".sqlite", ".sqlite3");
+        if (path == null) return;
+        watch.Start(); Form.SqlitePath = path;
+    });
+    public Task ConnectSqliteAsync() => RunAsync("Connect to SQLite", async watch =>
+    {
+        if (!File.Exists(Form.SqlitePath)) throw new FileNotFoundException("Select an existing SQLite database.");
+        var path = Path.GetFullPath(Form.SqlitePath); watch.Start();
+        await ConnectAsync(new Dbinfo { Dbname = Path.GetFileNameWithoutExtension(path), Dbtype = "SQLITE", ConnectionStrings = new DBConfig { ProviderName = "SQLITE", DataBase = path }.GetConstring() }, true);
+    });
+
+    private void Select(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id)) SelectConnection(id);
+    }
 }

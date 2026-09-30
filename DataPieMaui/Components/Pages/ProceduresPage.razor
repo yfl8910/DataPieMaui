@@ -1,3 +1,40 @@
+@using DBUtil
+@using DataPieMaui.Services.Shared
+@inherits WorkspacePageBase
 <div class="callout">Run procedures without required parameters. Converted SQLite scripts may report skipped statements after execution.</div>
-<section class="card"><h2>Available procedures</h2><ObjectSelection Items="W.Procedures" Label="Procedures" /><div class="actions"><button class="primary" @onclick="W.RunProceduresAsync">Run selected procedures</button><button @onclick="() => W.SelectAll(false, true)">Clear selection</button></div></section>
-@code { [CascadingParameter] public WorkspaceController W { get; set; } = default!; }
+<section class="card"><h2>Available procedures</h2><ObjectSelection Items="Model.Procedures" Label="Procedures" /><div class="actions"><button class="primary" @onclick="RunProceduresAsync">Run selected procedures</button><button @onclick="ClearSelection">Clear selection</button></div></section>
+
+@code {
+    public void ClearSelection()
+    {
+        if (IsOperationRunning) return;
+        foreach (var item in Procedures) item.Selected = false;
+        Notify();
+    }
+
+    public Task RunProceduresAsync() => RunAsync("Run stored procedures", async watch =>
+    {
+        var names = Procedures.Where(x => x.Selected).Select(x => x.Name).ToArray();
+        if (names.Length == 0) throw new InvalidOperationException("Select stored procedures.");
+        if (!await Dialogs.ConfirmAsync("Run stored procedures", $"Run {names.Length} procedures in sequence? They may modify data.", "Run")) return;
+        watch.Start();
+        var warnings = await Task.Run(() =>
+        {
+            using var access = Database.OpenAccess(); var messages = new List<string>();
+            var scripts = access is SQLiteDbAccess ? access.GetProcs() : new List<Proc>();
+            foreach (var name in names)
+            {
+                access.RunProcedure(name);
+                var warning = scripts.FirstOrDefault(p => p.Name == name)?.ScriptWarning;
+                if (!string.IsNullOrEmpty(warning)) messages.Add(name + ": " + warning);
+            }
+            return messages;
+        });
+        watch.Stop();
+        if (warnings.Count > 0)
+        {
+            State.Status = $"Procedures completed in {watch.Elapsed.TotalSeconds:F1} s with skipped SQL statements.";
+            await Dialogs.AlertAsync("Partial execution warning", string.Join(Environment.NewLine, warnings));
+        }
+    });
+}

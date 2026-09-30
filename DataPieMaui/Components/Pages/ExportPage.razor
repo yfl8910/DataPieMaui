@@ -1,5 +1,48 @@
-<section class="card"><div class="section-heading"><h2>Tables and views</h2><div class="actions"><button @onclick="() => W.SelectAll(true)">Select all</button><button @onclick="() => W.SelectAll(false)">Clear selection</button></div></div>
-    <ObjectSelection Items="W.Exports" Label="Tables and views" OnPreview="W.PreviewObjectAsync" />
-    <div class="actions"><button class="primary" @onclick='() => W.ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => W.ExportBatchAsync("epplus")'>Excel (EPPlus)</button><button @onclick='() => W.ExportBatchAsync("csv")'>CSV folder</button></div>
+@using DataPieCore
+@using DataPieMaui.Services.Shared
+@inherits WorkspacePageBase
+<section class="card"><div class="section-heading"><h2>Tables and views</h2><div class="actions"><button @onclick="() => SelectAll(true)">Select all</button><button @onclick="() => SelectAll(false)">Clear selection</button></div></div>
+    <ObjectSelection Items="Model.Exports" Label="Tables and views" OnPreview="PreviewObjectAsync" />
+    <div class="actions"><button class="primary" @onclick='() => ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => ExportBatchAsync("epplus")'>Excel (EPPlus)</button><button @onclick='() => ExportBatchAsync("csv")'>CSV folder</button></div>
 </section>
-@code { [CascadingParameter] public WorkspaceController W { get; set; } = default!; }
+
+@code {
+    public void SelectAll(bool selected)
+    {
+        if (IsOperationRunning) return;
+        foreach (var item in Exports) item.Selected = selected;
+        Notify();
+    }
+
+    public Task PreviewObjectAsync(string name) => Context.Preview.PreviewObjectAsync(name);
+
+    public Task ExportBatchAsync(string mode) => RunAsync("Batch export", async watch =>
+    {
+        var names = Exports.Where(x => x.Selected).Select(x => x.Name).ToArray();
+        if (names.Length == 0) throw new InvalidOperationException("Select the tables or views to export.");
+        string type = Type;
+        var path = mode == "csv" ? await Desktop.FolderAsync() : await Desktop.SaveAsync(names[0], ".xlsx");
+        if (path == null) return;
+        var outputs = names.Select(name => Path.Combine(path, FileNames.SafeFileName(name) + ".csv")).ToArray();
+        if (mode == "csv")
+        {
+            if (outputs.Distinct(StringComparer.OrdinalIgnoreCase).Count() != outputs.Length) throw new InvalidOperationException("Some table names produce identical file names. Export them separately to different folders.");
+            if (outputs.Any(File.Exists) && !await Dialogs.ConfirmAsync("Replace CSV files", "The destination contains CSV files with the same names. Replace them?", "Replace")) return;
+        }
+        watch.Start();
+        await Task.Run(() =>
+        {
+            using var access = Database.OpenAccess();
+            if (mode == "epplus") ExcelIO.ExportSheetsWithEpplus(names, path, access, type);
+            else if (mode == "mini") ExcelIO.ExportSheetsWithMiniExcel(names, path, access, type);
+            else
+            {
+                for (int i = 0; i < names.Length; i++)
+                {
+                    using var reader = access.GetDataReader(SqlQueryBuilder.BuildSelectAll(names[i], type));
+                    CsvExporter.SaveCsv(reader, outputs[i]);
+                }
+            }
+        });
+    });
+}

@@ -42,7 +42,7 @@ public sealed class MainPage : ContentPage
 
     public void Close()
     {
-        Workspace.Dialogs.Complete(false);
+        Workspace.Context.Dialogs.Complete(false);
         desktop.CloseResults();
     }
     public void Release() { Close(); webView?.Handler?.DisconnectHandler(); }

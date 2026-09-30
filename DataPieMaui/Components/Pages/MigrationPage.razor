@@ -1,7 +1,18 @@
+
+@inherits WorkspacePageBase
 <section class="card"><div class="migration-mark">SQL Server <span>→</span> SQLite</div><h2>Create a SQLite database</h2>
     <p>Export tables, supported views, and procedure scripts from the current SQL Server database.</p>
     <div class="callout">Keep the generated <strong>StoredProcedures</strong> folder alongside the output database. Unsupported SQL is reported in the conversion results.</div>
     <p class="muted">Progress appears in the status bar. You can request cancellation while conversion is running. A canceled or failed conversion may leave an incomplete database.</p>
-    <div class="actions"><button class="primary" @onclick="W.ConvertSqliteAsync">Choose destination and convert</button></div>
+    <div class="actions"><button class="primary" @onclick="ConvertSqliteAsync">Choose destination and convert</button></div>
 </section>
-@code { [CascadingParameter] public WorkspaceController W { get; set; } = default!; }
+
+@code {
+    public Task ConvertSqliteAsync() => RunAsync("Convert to SQLite", async watch =>
+    {
+        if (Type != "SQLSERVER") throw new InvalidOperationException("Connect to SQL Server first.");
+        var path = await Desktop.SaveAsync(Database.Schema!.Name, ".db");
+        if (path == null) return;
+        await Workspace.Conversion.ConvertAsync(path, watch);
+    });
+}

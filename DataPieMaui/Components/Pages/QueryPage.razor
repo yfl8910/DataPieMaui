@@ -1,9 +1,72 @@
+@using DataPieCore
+@using DataPieMaui.Services.Shared
+@inherits WorkspacePageBase
 <section class="card">
-    <div class="actions align-end"><label class="grow">Table<select @bind="W.Form.QueryTable"><option value="">Select a table</option>@foreach (var name in W.Tables) { <option value="@name">@name</option> }</select></label>
-        @foreach (var kind in new[] { "SELECT", "UPDATE", "DELETE" }) { <button @onclick="() => W.GenerateAsync(kind)">@kind</button> }
+    <div class="actions align-end"><label class="grow">Table<select @bind="Model.Form.QueryTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label>
+        @foreach (var kind in new[] { "SELECT", "UPDATE", "DELETE" }) { <button @onclick="() => GenerateAsync(kind)">@kind</button> }
     </div>
-    <label>SQL editor<textarea class="sql-editor" @bind="W.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="Enter SQL. Preview shows up to 1,000 rows."></textarea></label>
-    <div class="actions"><button class="primary" @onclick="W.PreviewAsync">Preview query</button><button @onclick="W.ExecuteSqlAsync">Run SQL</button><span class="action-divider"></span><button @onclick="() => W.ExportQueryAsync(false, false)">Query to Excel</button><button @onclick="() => W.ExportQueryAsync(true, false)">Query to CSV</button><button @onclick="() => W.ExportQueryAsync(false, true)">Table to Excel</button><button @onclick="() => W.ExportQueryAsync(true, true)">Table to CSV</button></div>
+    <label>SQL editor<textarea class="sql-editor" @bind="Model.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="Enter SQL. Preview shows up to 1,000 rows."></textarea></label>
+    <div class="actions"><button class="primary" @onclick="PreviewAsync">Preview query</button><button @onclick="ExecuteSqlAsync">Run SQL</button><span class="action-divider"></span><button @onclick="() => ExportQueryAsync(false, false)">Query to Excel</button><button @onclick="() => ExportQueryAsync(true, false)">Query to CSV</button><button @onclick="() => ExportQueryAsync(false, true)">Table to Excel</button><button @onclick="() => ExportQueryAsync(true, true)">Table to CSV</button></div>
 </section>
-<section class="card result-summary"><div><h2>Query results</h2><p>@W.QuerySummary</p><p class="muted">Sort, page, and copy data in the independent results window.</p></div><button @onclick="W.OpenResultsAsync" disabled="@(W.Results.Current is null)">Open results</button></section>
-@code { [CascadingParameter] public WorkspaceController W { get; set; } = default!; }
+<section class="card result-summary"><div><h2>Query results</h2><p>@Model.QuerySummary</p><p class="muted">Sort, page, and copy data in the independent results window.</p></div><button @onclick="OpenResultsAsync" disabled="@(Model.Results.Current is null)">Open results</button></section>
+
+@code {
+    private void Generate(string kind)
+    {
+        var name = Required(Form.QueryTable, "Select a table.");
+        var table = Database.Schema!.Tables.First(t => t.Name == name);
+        Form.Sql = kind switch
+        {
+            "UPDATE" => SqlWriter.WriteUpdate(table, Type),
+            "DELETE" => SqlWriter.WriteDelete(table, Type),
+            _ => SqlWriter.WriteSelect(table, Type, 1000)
+        };
+    }
+
+    public Task GenerateAsync(string kind) => RunAsync("Generate " + kind, watch =>
+    {
+        watch.Start();
+        Generate(kind);
+        return Task.CompletedTask;
+    });
+
+    public Task PreviewAsync() => RunAsync("Query", async watch =>
+    {
+        if (string.IsNullOrWhiteSpace(Form.Sql)) Generate("SELECT");
+        await Context.Preview.LoadAsync(Form.Sql, "SQL query", watch);
+    });
+    public Task OpenResultsAsync() => RunAsync("Open results", async watch =>
+    {
+        watch.Start();
+        if (Results.Current != null) await Desktop.ShowResultsAsync(Results);
+    });
+
+    public Task ExecuteSqlAsync() => RunAsync("Run SQL", async watch =>
+    {
+        var sql = Required(Form.Sql, "Enter SQL.");
+        if (!await Dialogs.ConfirmAsync("Run SQL", "Run the SQL in the editor against the current database?", "Run")) return;
+        watch.Start();
+        int count = await Task.Run(() =>
+        {
+            using var access = Database.OpenAccess();
+            return access.ExecuteSql(sql);
+        });
+        watch.Stop();
+        State.Status = $"SQL completed in {watch.Elapsed.TotalSeconds:F1} s: {count:N0} rows affected";
+    });
+    public Task ExportQueryAsync(bool csv, bool wholeTable) => RunAsync("Export data", async watch =>
+    {
+        string name = wholeTable ? Required(Form.QueryTable, "Select a table.") : "Query";
+        string sql = wholeTable ? SqlQueryBuilder.BuildSelectAll(name, Type) : Required(Form.Sql, "Enter SQL.");
+        var path = await Desktop.SaveAsync(name, csv ? ".csv" : ".xlsx");
+        if (path == null) return;
+        watch.Start();
+        await Task.Run(() =>
+        {
+            using var access = Database.OpenAccess();
+            using var reader = access.GetDataReader(sql);
+            if (csv) CsvExporter.SaveCsv(reader, path);
+            else ExcelIO.SaveMiniExcel(path, reader, name);
+        });
+    });
+}
