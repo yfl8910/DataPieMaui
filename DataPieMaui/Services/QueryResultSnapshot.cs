@@ -1,57 +1,45 @@
-using System.Data;
-using System.Globalization;
+using DataPieCore;
 using System.Text;
 
 namespace DataPieMaui.Services;
 
 public sealed class QueryResultSnapshot
 {
-    public string[] Columns { get; }
-    public Type[] Types { get; }
-    public object?[][] Rows { get; }
-    public bool Truncated { get; }
+    private readonly QueryPreviewResult data;
+    public int RowCount => data.RowCount;
+    public int ColumnCount => data.ColumnCount;
+    public bool Truncated => data.Truncated;
     public string Connection { get; }
     public string Source { get; }
+    public string GetColumnName(int column) => data.GetColumnName(column);
+    public Type GetColumnType(int column) => data.GetColumnType(column);
+    public bool IsNull(int row, int column) => data.IsNull(row, column);
+    public string FormatCell(int row, int column) => data.FormatCell(row, column);
 
-    public QueryResultSnapshot(DataTable table, bool truncated, string connection, string source = "SQL query")
+    // The immutable result is shared, without copying rows or binary buffers.
+    public QueryResultSnapshot(QueryPreviewResult data, string connection, string source = "SQL query")
     {
-        Columns = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToArray();
-        Types = table.Columns.Cast<DataColumn>().Select(c => c.DataType).ToArray();
-        Rows = table.Rows.Cast<DataRow>().Select(r => r.ItemArray.Select(v => v is byte[] bytes ? bytes.ToArray() : v).ToArray()).ToArray();
-        Truncated = truncated;
+        this.data = data;
         Connection = connection;
         Source = source;
     }
-
-    public static string Format(object? value) => value switch
-    {
-        null or DBNull => "NULL",
-        byte[] bytes => Convert.ToHexString(bytes),
-        _ => Convert.ToString(value, CultureInfo.CurrentCulture) ?? ""
-    };
 
     public string CopyText(IEnumerable<int> indices)
     {
         static string Escape(string text) => text.IndexOfAny(['\t', '\r', '\n', '"']) < 0 ? text : "\"" + text.Replace("\"", "\"\"") + "\"";
         var output = new StringBuilder();
-        output.AppendLine(string.Join('\t', Columns.Select(Escape)));
+        output.AppendLine(string.Join('\t', Enumerable.Range(0, ColumnCount).Select(c => Escape(GetColumnName(c)))));
         foreach (int index in indices)
-            output.AppendLine(string.Join('\t', Rows[index].Select(v => Escape(Format(v)))));
+            output.AppendLine(string.Join('\t', Enumerable.Range(0, ColumnCount).Select(c => Escape(FormatCell(index, c)))));
         return output.ToString();
     }
 
     public int[] Sort(int column, bool descending)
     {
-        // Keep original types so 2 sorts before 10 and dates sort chronologically.
-        var comparer = Comparer<object?>.Create((a, b) =>
-        {
-            if (a is null or DBNull) return b is null or DBNull ? 0 : -1;
-            if (b is null or DBNull) return 1;
-            return System.Collections.Comparer.Default.Compare(a, b);
-        });
-        var indices = Enumerable.Range(0, Rows.Length);
-        if (Types[column] == typeof(byte[])) return indices.ToArray();
-        return (descending ? indices.OrderByDescending(i => Rows[i][column], comparer) : indices.OrderBy(i => Rows[i][column], comparer)).ToArray();
+        var indices = Enumerable.Range(0, RowCount);
+        if (GetColumnType(column) == typeof(byte[])) return indices.ToArray();
+        var comparer = Comparer<int>.Create((a, b) => data.Compare(a, b, column));
+        return (descending ? indices.OrderByDescending(i => i, comparer) : indices.OrderBy(i => i, comparer)).ToArray();
     }
 }
 

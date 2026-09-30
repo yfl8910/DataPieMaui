@@ -37,7 +37,7 @@ internal static class WorkspaceChecks
             Check(workspace.Context.Connections.Count == 1 && workspace.Context.Tables.Contains("Items"), "Connection/schema missing");
             workspace.Context.Form.Sql = "SELECT * FROM Items ORDER BY Id";
             await queryPage.PreviewAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Context.Results.Current?.Rows.Length == 2 && desktop.ResultWindows == 1, "Preview not passed to desktop host");
+            Check(workspace.Context.Results.Current?.RowCount == 2 && desktop.ResultWindows == 1, "Preview not passed to desktop host");
             workspace.Navigate("Import"); workspace.Context.Form.ImportPath = "remember.csv"; workspace.Navigate("Query");
             Check(workspace.Context.Form.Sql.Contains("ORDER BY Id") && workspace.Context.Form.ImportPath == "remember.csv", "Navigation lost inputs");
             queryPage = new QueryPage { Workspace = workspace };
@@ -58,16 +58,16 @@ internal static class WorkspaceChecks
             string sql = workspace.Context.Form.Sql;
             workspace.Navigate("Import");
             await importPage.PreviewImportTableAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Context.Results.Current?.Source == "Table · Items" && workspace.Context.Results.Current.Rows.Length == 2, "Wrong import target preview");
+            Check(workspace.Context.Results.Current?.Source == "Table · Items" && workspace.Context.Results.Current.RowCount == 2, "Wrong import target preview");
             Check(workspace.Context.Section == "Import" && workspace.Context.Form.Sql == sql, "Preview changed navigation or SQL editor");
             workspace.Navigate("Export");
             var view = workspace.Context.Exports.Single(x => x.Name == "ItemNames"); view.Selected = true;
             await exportPage.PreviewObjectAsync(view.Name).WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Context.Results.Current?.Source == "View · ItemNames" && workspace.Context.Results.Current.Columns.SequenceEqual(new[] { "Name" }), "Wrong view preview");
+            Check(workspace.Context.Results.Current?.Source == "View · ItemNames" && workspace.Context.Results.Current.ColumnCount == 1 && workspace.Context.Results.Current.GetColumnName(0) == "Name", "Wrong view preview");
             Check(view.Selected && workspace.Context.Form.Sql == sql && workspace.Context.Form.ImportTable == "Items" && workspace.Context.Section == "Export", "Preview changed user choices");
             view.Selected = false;
             await exportPage.PreviewObjectAsync("ManyRows").WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Context.Results.Current is { Truncated: true } limited && limited.Rows.Length == 1000, "Object preview ignored row limit");
+            Check(workspace.Context.Results.Current is { Truncated: true } limited && limited.RowCount == 1000, "Object preview ignored row limit");
             var pending = exportPage.PreviewObjectAsync("not in schema");
             Check(workspace.Context.Dialogs.Current?.Title == "Query data failed", "Unknown object was not rejected");
             workspace.Context.Dialogs.Complete(true); await pending;

@@ -19,12 +19,12 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
         var result = await Task.Run(() =>
         {
             using var access = Database.OpenAccess();
-            using var table = QueryPreview.Load(access, sql, 1000, out bool truncated);
-            return new QueryResultSnapshot(table, truncated, State.Connection, source);
+            var data = QueryPreview.Load(access, sql, 1000);
+            return new QueryResultSnapshot(data, State.Connection, source);
         });
         watch.Stop();
         Results.Set(result);
-        QuerySummary = $"{source} · {result.Rows.Length:N0} rows / {result.Columns.Length} columns" + (result.Truncated ? " · First 1,000 rows only. Export to retrieve the full result." : "");
+        QuerySummary = $"{source} · {result.RowCount:N0} rows / {result.ColumnCount} columns" + (result.Truncated ? " · First 1,000 rows only. Export to retrieve the full result." : "");
         await Desktop.ShowResultsAsync(Results);
         State.Status = $"Query completed in {watch.Elapsed.TotalSeconds:F1} s: " + QuerySummary;
     }

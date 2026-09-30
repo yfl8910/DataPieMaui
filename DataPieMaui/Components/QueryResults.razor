@@ -12,7 +12,7 @@
     else
     {
         <div class="toolbar">
-            <strong>@snapshot.Rows.Length.ToString("N0") rows · @snapshot.Columns.Length columns</strong>
+            <strong>@snapshot.RowCount.ToString("N0") rows · @snapshot.ColumnCount columns</strong>
             <button @onclick="() => Copy(false)" disabled="@(selected is null)">Copy selected row</button>
             <button @onclick="() => Copy(true)" disabled="@(order.Length == 0)">Copy all preview rows</button>
         </div>
@@ -24,11 +24,11 @@
             <table>
                 <thead><tr>
                     <th class="row-number">#</th>
-                    @for (int c = 0; c < snapshot.Columns.Length; c++)
+                    @for (int c = 0; c < snapshot.ColumnCount; c++)
                     {
                         int column = c;
                         <th aria-sort="@(sortColumn == c ? (descending ? "descending" : "ascending") : "none")">
-                            <button @onclick="() => Sort(column)" disabled="@(snapshot.Types[c] == typeof(byte[]))">@snapshot.Columns[c] @(sortColumn == c ? (descending ? "▼" : "▲") : "")</button>
+                            <button @onclick="() => Sort(column)" disabled="@(snapshot.GetColumnType(c) == typeof(byte[]))">@snapshot.GetColumnName(c) @(sortColumn == c ? (descending ? "▼" : "▲") : "")</button>
                         </th>
                     }
                 </tr></thead>
@@ -37,9 +37,10 @@
                     {
                         <tr @key="index" class="@(selected == index ? "selected" : "")" tabindex="0" aria-selected="@(selected == index)" @onclick="() => Select(index)" @onkeydown="e => SelectWithKey(e, index)">
                             <td class="row-number">@(index + 1)</td>
-                            @foreach (var cell in snapshot.Rows[index])
+                            @for (int c = 0; c < snapshot.ColumnCount; c++)
                             {
-                                <td class="@(cell is null or DBNull ? "null" : "")" title="@QueryResultSnapshot.Format(cell)">@QueryResultSnapshot.Format(cell)</td>
+                                var text = snapshot.FormatCell(index, c);
+                                <td class="@(snapshot.IsNull(index, c) ? "null" : "")" title="@text">@text</td>
                             }
                         </tr>
                     }
@@ -70,7 +71,7 @@
     private void Load()
     {
         snapshot = Session.Current;
-        order = Enumerable.Range(0, snapshot?.Rows.Length ?? 0).ToArray();
+        order = Enumerable.Range(0, snapshot?.RowCount ?? 0).ToArray();
         page = 0; sortColumn = -1; selected = null; descending = false;
         message = "Click a column to sort. Select a row to copy it.";
     }

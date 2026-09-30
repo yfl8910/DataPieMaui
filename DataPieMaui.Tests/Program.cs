@@ -39,10 +39,13 @@ try
         source.Rows.Add(10, new DateTime(2026, 1, 1), bytes);
         source.Rows.Add(2, new DateTime(2025, 1, 1), new byte[] { 3 });
         source.Rows.Add(DBNull.Value, DBNull.Value, DBNull.Value);
-        var snapshot = new QueryResultSnapshot(source, true, "Test database");
+        source.Rows.Add(99, DBNull.Value, DBNull.Value);
+        QueryPreviewResult result;
+        using (var reader = source.CreateDataReader()) result = QueryPreviewResult.Read(reader, 3);
+        var snapshot = new QueryResultSnapshot(result, "Test database");
         source.Rows[0][0] = 99; bytes[0] = 9; source.Clear();
-        Check(snapshot.Rows.Length == 3 && (int)snapshot.Rows[0][0]! == 10, "Snapshot changed with source");
-        Check(QueryResultSnapshot.Format(snapshot.Rows[0][2]) == "0102", "Binary snapshot was shared");
+        Check(snapshot.RowCount == 3 && snapshot.FormatCell(0, 0) == "10", "Snapshot changed with source");
+        Check(snapshot.FormatCell(0, 2) == "0102", "Binary snapshot was shared");
         Check(snapshot.Sort(0, false).SequenceEqual(new[] { 2, 1, 0 }), "Numeric/NULL ordering failed");
         Check(snapshot.Sort(1, true).SequenceEqual(new[] { 0, 1, 2 }), "Date ordering failed");
         Check(snapshot.Truncated && snapshot.Connection == "Test database", "Missing preview context");
@@ -54,7 +57,8 @@ try
         source.Columns.Add("Text"); source.Columns.Add("Nullable");
         source.Rows.Add("line\t\"quoted\"\nnext", DBNull.Value);
         source.Rows.Add("second", "value");
-        var snapshot = new QueryResultSnapshot(source, false, "Test");
+        using var reader = source.CreateDataReader();
+        var snapshot = new QueryResultSnapshot(QueryPreviewResult.Read(reader, 1000), "Test");
         string selected = snapshot.CopyText(new[] { 0 });
         Check(selected.Contains("\"line\t\"\"quoted\"\"\nnext\"\tNULL") && !selected.Contains("second"), "Selected row escaping failed");
         string all = snapshot.CopyText(new[] { 1, 0 });
@@ -84,8 +88,28 @@ try
     await Test("Bounded query preview and dynamic column names", () =>
     {
         using var access = operations.OpenAccess();
-        using var data = QueryPreview.Load(access, "SELECT Id AS duplicate, Name AS duplicate FROM Items ORDER BY Id", 1, out bool truncated);
-        Check(truncated && data.Rows.Count == 1 && data.Columns[0].ColumnName != data.Columns[1].ColumnName, "Preview contract failed");
+        var data = QueryPreview.Load(access, "SELECT Id AS duplicate, Name AS duplicate FROM Items ORDER BY Id", 1);
+        Check(data.Truncated && data.RowCount == 1 && data.GetColumnName(0) != data.GetColumnName(1), "Preview contract failed");
+        return Task.CompletedTask;
+    });
+    await Test("Direct preview preserves blobs after disposal and handles row boundaries", () =>
+    {
+        Sql(path, "CREATE TABLE Blobs (Id INTEGER, Payload BLOB); INSERT INTO Blobs VALUES (1, X'0102'), (2, X''), (3, NULL), (4, X'FF');");
+        QueryPreviewResult result;
+        using (var access = operations.OpenAccess())
+        {
+            result = QueryPreview.Load(access, "SELECT * FROM Blobs ORDER BY Id", 4);
+            Check(!result.Truncated && result.RowCount == 4, "Exact limit marked truncated");
+            var empty = QueryPreview.Load(access, "SELECT * FROM Blobs WHERE 1=0", 1);
+            Check(empty.RowCount == 0 && empty.ColumnCount == 2 && !empty.Truncated, "Empty schema lost");
+            var limited = QueryPreview.Load(access, "SELECT * FROM Blobs ORDER BY Id", 3);
+            Check(limited.Truncated && limited.RowCount == 3, "Limit-plus-one failed");
+        }
+        Check(result.FormatCell(0, 1) == "0102" && result.FormatCell(3, 1) == "FF", "Binary changed after reader disposal");
+        Check(result.FormatCell(1, 1) == "" && result.IsNull(2, 1), "Empty binary confused with NULL");
+        var external = (byte[])result.GetValue(0, 1);
+        external[0] = 99;
+        Check(result.FormatCell(0, 1) == "0102", "Mutable binary backing storage escaped");
         return Task.CompletedTask;
     });
     var csv = Path.Combine(root, "items.csv"); var excel = Path.Combine(root, "items.xlsx");
@@ -191,7 +215,3 @@ finally
     SQLiteConnection.ClearAllPools();
     Directory.Delete(root, recursive: true);
 }
-
-
-
-
