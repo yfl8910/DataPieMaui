@@ -13,7 +13,7 @@ public static class QueryPreview
         if (access.conn.State != ConnectionState.Open) access.conn.Open();
         using var command = access.conn.CreateCommand();
         command.CommandText = sql;
-        command.CommandTimeout = 30;
+        command.CommandTimeout = 1000;
         using var reader = command.ExecuteReader();
         var result = QueryPreviewResult.Read(reader, limit);
         if (result.Truncated) command.Cancel();
