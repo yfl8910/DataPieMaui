@@ -30,6 +30,7 @@ public sealed class DatabaseConversionService(WorkspaceContext context) : Worksp
         State.Converting = false;
         State.Status = $"Conversion completed in {watch.Elapsed.TotalSeconds:F1} s. " + result;
         await Dialogs.AlertAsync("Conversion results", State.Status);
+        State.Status += " · File: " + Path.GetFullPath(path);
     }
     private async Task UpdateConversionProgressAsync(CancellationToken token)
     {

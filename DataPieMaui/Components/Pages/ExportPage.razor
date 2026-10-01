@@ -44,5 +44,9 @@
                 }
             }
         });
+        watch.Stop();
+        State.Status = $"Batch export completed in {watch.Elapsed.TotalSeconds:F1} s · "
+            + (mode == "csv" ? "Files: " + string.Join("; ", outputs.Select(Path.GetFullPath))
+                : "File: " + Path.GetFullPath(path));
     });
 }

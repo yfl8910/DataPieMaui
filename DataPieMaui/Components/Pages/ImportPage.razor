@@ -68,6 +68,8 @@
             using var reader = access.GetDataReader(SqlQueryBuilder.BuildSelectAll(table, type) + " where 1=2");
             ExcelIO.SaveMiniExcel(path, reader, table);
         });
+        watch.Stop();
+        State.Status = $"Export template completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}";
     });
     public Task ClearTableAsync() => RunAsync("Clear table", async watch =>
     {

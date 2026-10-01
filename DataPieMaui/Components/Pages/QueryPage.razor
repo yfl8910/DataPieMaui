@@ -68,5 +68,7 @@
             if (csv) CsvExporter.SaveCsv(reader, path);
             else ExcelIO.SaveMiniExcel(path, reader, name);
         });
+        watch.Stop();
+        State.Status = $"Export data completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}";
     });
 }

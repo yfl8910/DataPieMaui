@@ -104,6 +104,8 @@ internal static class WorkspaceChecks
             desktop.Save = () => Task.FromResult<string?>(export);
             await queryPage.ExportQueryAsync(true, false).WaitAsync(TimeSpan.FromSeconds(10));
             Check(File.ReadAllText(export).Contains("third"), "Query export incomplete");
+            Check(workspace.Context.State.Status.Contains("Export data completed in")
+                && workspace.Context.State.Status.Contains(Path.GetFullPath(export)), "Query export status missing completion or file path");
             var folder = Path.Combine(root, "workspace-exports"); Directory.CreateDirectory(folder);
             var existing = Path.Combine(folder, "Items.csv"); File.WriteAllText(existing, "keep me");
             desktop.Folder = folder; exportPage.SelectAll(false);
@@ -114,6 +116,8 @@ internal static class WorkspaceChecks
             Check(File.ReadAllText(existing) == "keep me", "Cancel overwrote the file");
             running = exportPage.ExportBatchAsync("csv"); workspace.Context.Dialogs.Complete(true); await running.WaitAsync(TimeSpan.FromSeconds(10));
             Check(File.ReadAllText(existing).Contains("third"), "Batch CSV export failed");
+            Check(workspace.Context.State.Status.Contains("Batch export completed in")
+                && workspace.Context.State.Status.Contains(Path.GetFullPath(existing)), "Batch export status missing completion or file path");
         });
         await test("Failed connection preserves workspace and releases operation guard", async () =>
         {
