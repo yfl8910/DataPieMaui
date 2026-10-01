@@ -67,6 +67,7 @@
     private async Task ConnectAsync(Dbinfo record, bool save)
     {
         await Database.ConnectAsync(Info(record));
+        Context.SchemaBrowser.Reset();
         State.DatabaseType = Database.Connection!.DatabaseType;
         Tables = Database.Schema!.Tables.Select(t => t.Name).ToArray();
         Form.QueryTable = Form.ImportTable = Tables.FirstOrDefault() ?? "";

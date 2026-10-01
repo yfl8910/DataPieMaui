@@ -130,6 +130,25 @@ internal static class WorkspaceChecks
             Check(workspace.Context.State.Connection == before && workspace.Context.Results.Current != null && !workspace.IsOperationRunning, "Failure discarded workspace or left it locked");
             workspace.Context.Form.SqlitePath = path;
         });
+        await test("Schema browser caches details, refreshes and preserves navigation state", async () =>
+        {
+            var browser = workspace.Context.SchemaBrowser;
+            await browser.EnsureAsync();
+            Check(browser.Loaded && browser.Error == "", "Schema load failed: " + browser.Error);
+            browser.ChangeKind("View"); browser.Search = "Item";
+            var item = browser.Objects.Single(o => o.Kind == "View" && o.Name == "ItemNames");
+            await browser.SelectAsync(item);
+            var details = browser.Details;
+            Check(details?.Definition.Contains("SELECT Name") == true, "View definition missing");
+            workspace.Navigate("Schema"); workspace.Navigate("Query"); workspace.Navigate("Schema");
+            await browser.EnsureAsync(); await browser.SelectAsync(item);
+            Check(ReferenceEquals(details, browser.Details) && browser.Search == "Item" && browser.Kind == "View", "Schema state or cache lost");
+            await browser.RefreshAsync();
+            Check(browser.Selected is null && browser.Details is null && browser.Search == "Item", "Refresh did not invalidate details");
+            await browser.SelectAsync(item);
+            Check(!ReferenceEquals(details, browser.Details), "Stale cache survived refresh");
+            workspace.Navigate("Query");
+        });
         await test("Blazor pages render, encode input and show accessible confirmations", async () =>
         {
             var services = new ServiceCollection().AddLogging();
@@ -139,7 +158,7 @@ internal static class WorkspaceChecks
             workspace.Context.Form.Sql = "SELECT '<script>alert(1)</script>'";
             var pages = new[]
             {
-                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("Import", "Source folder"),
+                ("Connections", "Connect to SQL Server"), ("Schema", "SELECT Name"), ("Query", "SQL editor"), ("Import", "Source folder"),
                 ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("About", "Blazor Hybrid")
             };
             // Render the conversion page without connecting to an external SQL Server.
@@ -159,6 +178,15 @@ internal static class WorkspaceChecks
                 Check(!html.Contains("<script>alert(1)</script>"), "SQL rendered as markup");
                 Check(!html.Contains("workspace-body\" inert"), "Idle workspace is inert");
                 if (renderUi) SaveHtml(section, html);
+            }
+            await using (var definitionRenderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>()))
+            {
+                string definitionHtml = await definitionRenderer.Dispatcher.InvokeAsync(async () =>
+                {
+                    var component = await definitionRenderer.RenderComponentAsync<DataPieMaui.Components.Shared.SqlDefinitionView>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Sql"] = "SELECT '<script>alert(1)</script>'" }));
+                    return component.ToHtmlString();
+                });
+                Check(!definitionHtml.Contains("<script>") && definitionHtml.Contains("&lt;script&gt;") && definitionHtml.Contains("Copy SQL"), "Definition is not encoded or copy action missing");
             }
             workspace.Context.State.DatabaseType = "SQLITE";
             workspace.Navigate("Query");
@@ -204,6 +232,7 @@ internal static class WorkspaceChecks
             }
             workspace.Context.Form.SqlitePath = converted;
             await connectionsPage.ConnectSqliteAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(!workspace.Context.SchemaBrowser.Loaded && workspace.Context.SchemaBrowser.Selected is null && workspace.Context.SchemaBrowser.Objects.Count == 0, "Connection switch retained schema cache");
             Check(workspace.Context.Procedures.Count == 1 && workspace.Context.Results.Current == null, "Schema/results did not refresh on database switch");
             workspace.Context.Procedures[0].Selected = true;
             var running = proceduresPage.RunProceduresAsync();

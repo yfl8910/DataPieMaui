@@ -83,3 +83,20 @@ dt { color: #8493a0; } dd { margin: 0; }
 #blazor-error-ui { display: none; position: fixed; bottom: 0; left: 0; right: 0; padding: 18px; background: #fff0db; z-index: 1000; }
 @media (max-width: 1000px) { .workspace-body { grid-template-columns: 205px minmax(0, 1fr); } .page-content { padding: 22px; } .topbar { padding: 16px 22px; } .card { padding: 20px; } }
 @media (max-width: 700px) { .workspace-body { grid-template-columns: 170px minmax(0, 1fr); } .form-grid { grid-template-columns: 1fr; } .topbar { flex-wrap: wrap; } .brand { font-size: 18px; padding-left: 0; } .brand div > span { display: none; } .nav-item { padding: 10px 6px; font-size: 12px; } .page-content { padding: 16px; } }
+
+/* Schema browsing keeps long names and SQL within the available desktop width. */
+.schema-browser { padding: 18px; }
+.schema-browser .tabs { gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.schema-layout { display: grid; grid-template-columns: minmax(140px, 28%) minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+.schema-object-list { max-height: 480px; overflow: auto; border-right: 1px solid var(--border); padding-right: 10px; }
+.schema-object-list button { display: block; width: 100%; text-align: left; overflow-wrap: anywhere; margin-bottom: 5px; }
+.schema-object-list button.active { background: #e7f2ed; color: var(--green); border-color: var(--green); }
+.schema-detail { min-width: 0; }
+.schema-detail h2 { overflow-wrap: anywhere; }
+.schema-detail h3 { font-size: 14px; margin: 12px 0; }
+.schema-table-scroll { overflow: auto; max-height: 340px; }
+.schema-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.schema-table th, .schema-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.schema-table th { position: sticky; top: 0; background: #edf3f5; }
+.schema-definition pre { max-height: 420px; overflow: auto; background: #f5f7f9; padding: 14px; border: 1px solid var(--border); border-radius: 6px; font: 12px/1.6 Consolas, monospace; tab-size: 4; }
+@media (max-width: 850px) { .schema-layout { grid-template-columns: minmax(0, 1fr); } .schema-object-list { max-height: 180px; border-right: 0; border-bottom: 1px solid var(--border); } }

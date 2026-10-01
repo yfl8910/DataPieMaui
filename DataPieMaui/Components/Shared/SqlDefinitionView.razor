@@ -1,0 +1,20 @@
+@inject IJSRuntime JS
+<div class="schema-definition">
+    <div class="actions">
+        <h3>SQL definition</h3>
+        <button @onclick="CopyAsync">Copy SQL</button>
+        <span role="status">@message</span>
+    </div>
+    <pre tabindex="0" aria-label="SQL definition"><code>@Sql</code></pre>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Sql { get; set; } = "";
+    private string message = "";
+    protected override void OnParametersSet() => message = "";
+    private async Task CopyAsync()
+    {
+        try { await JS.InvokeVoidAsync("dataPie.copyText", Sql); message = "SQL copied."; }
+        catch { message = "Copy failed. Select the SQL text and press Ctrl+C."; }
+    }
+}
