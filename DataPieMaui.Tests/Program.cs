@@ -29,6 +29,28 @@ long Count(string path, string table)
 }
 try
 {
+    await Test("Import length validation reports file, data row, column and lengths", () =>
+    {
+        using var data = new DataTable();
+        data.Columns.Add("Name"); data.Columns.Add("Unmapped"); data.Columns.Add("Notes");
+        data.Rows.Add(DBNull.Value, "ignored long value", new string('x', 100));
+        data.Rows.Add("中文", "", "");
+        data.Rows.Add("😀", "", "");
+        data.Rows.Add("中文😀", "", "");
+        using var source = data.CreateDataReader();
+        using var reader = new ImportLengthDataReader(source, new Dictionary<string, int> { ["Name"] = 2 }, "source.xlsx");
+        Check(reader.Read() && reader.IsDBNull(0), "NULL or unmapped/MAX column rejected");
+        Check(reader.Read() && reader.GetString(0) == "中文", "Exact boundary rejected");
+        Check(reader.Read(), "Emoji UTF-16 boundary rejected");
+        try { reader.Read(); throw new Exception("Expected length failure"); }
+        catch (InvalidOperationException ex)
+        {
+            Check(ex.Message.Contains("source.xlsx") && ex.Message.Contains("数据行号：4")
+                && ex.Message.Contains("列名：Name") && ex.Message.Contains("实际长度：4")
+                && ex.Message.Contains("允许长度：2"), "Missing error context");
+        }
+        return Task.CompletedTask;
+    });
     await Test("Result snapshot owns data and preserves typed sorting", () =>
     {
         using var source = new DataTable();

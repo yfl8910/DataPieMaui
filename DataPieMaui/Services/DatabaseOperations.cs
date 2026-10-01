@@ -23,17 +23,20 @@ internal sealed class DatabaseOperations
         Schema = schema;
     }
 
-    public static void Import(string path, string table, IDbAccess access)
+    public static void Import(string path, string table, IDbAccess access, bool validateFieldLengths = false)
     {
         switch (Path.GetExtension(path).ToLowerInvariant())
         {
-            case ".xlsx": ExcelIO.MiniExcelReaderImport(path, table, access); break;
-            case ".xls": ExcelIO.ExcelDataReaderImport(path, table, access); break;
-            case ".csv": ExcelIO.CsvImport(path, table, access); break;
+            case ".xlsx": ExcelIO.MiniExcelReaderImport(path, table, access, validateFieldLengths); break;
+            case ".xls": ExcelIO.ExcelDataReaderImport(path, table, access, validateFieldLengths); break;
+            case ".csv": ExcelIO.CsvImport(path, table, access, validateFieldLengths); break;
             case ".db":
                 using (var source = DbAccessFactory.Create(new DBConfig { ProviderName = "SQLITE", DataBase = path }.GetConstring(), "SQLITE"))
                 using (var reader = source.GetDataReader(SqlQueryBuilder.BuildSelectAll(table, "SQLITE")))
-                    access.BulkInsert(table, reader);
+                    if (validateFieldLengths && access is SqlServerDbAccess sqlServer)
+                        sqlServer.BulkInsert(table, reader, path);
+                    else
+                        access.BulkInsert(table, reader);
                 break;
             default: throw new NotSupportedException("Unsupported file format: " + path);
         }

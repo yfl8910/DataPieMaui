@@ -34,8 +34,10 @@ public sealed class WorkspaceOperationRunner(WorkspaceState State, WorkspaceDial
         catch (Exception ex)
         {
             watch.Stop();
-            State.Status = title + " failed: " + ex.Message;
-            await Dialogs.AlertAsync(title + " failed", ex.Message);
+            string details = ex.ToString();
+            Trace.TraceError("{0} failed: {1}", title, details);
+            State.Status = title + " failed: " + details;
+            await Dialogs.AlertAsync(title + " failed", details);
         }
         finally
         {

@@ -15,7 +15,7 @@ namespace DataPieCore
 {
     public static class ExcelIO
     {
-        public static void ExcelDataReaderImport(string filePath, string tableName, IDbAccess dbAccess)
+        public static void ExcelDataReaderImport(string filePath, string tableName, IDbAccess dbAccess, bool validateFieldLengths = false)
         {
             ArgumentNullException.ThrowIfNull(filePath);
             ArgumentNullException.ThrowIfNull(dbAccess);
@@ -23,10 +23,10 @@ namespace DataPieCore
             using var reader = ExcelReaderFactory.CreateReader(stream);
             SelectWorksheet(reader, tableName);
             using var headerReader = new HeaderRowDataReader(reader);
-            dbAccess.BulkInsert(tableName, headerReader);
+            BulkInsertFile(dbAccess, tableName, headerReader, filePath, validateFieldLengths);
         }
 
-        public static void MiniExcelReaderImport(string filePath, string tableName, IDbAccess dbAccess)
+        public static void MiniExcelReaderImport(string filePath, string tableName, IDbAccess dbAccess, bool validateFieldLengths = false)
         {
             ArgumentNullException.ThrowIfNull(filePath);
             ArgumentNullException.ThrowIfNull(dbAccess);
@@ -38,10 +38,10 @@ namespace DataPieCore
 
             stream.Position = 0;
             using var reader = MiniExcel.GetReader(stream, true, sheetName: sheetName);
-            dbAccess.BulkInsert(tableName, reader);
+            BulkInsertFile(dbAccess, tableName, reader, filePath, validateFieldLengths);
         }
 
-        public static void CsvImport(string filePath, string tableName, IDbAccess dbAccess)
+        public static void CsvImport(string filePath, string tableName, IDbAccess dbAccess, bool validateFieldLengths = false)
         {
             if (filePath is null) throw new ArgumentNullException(nameof(filePath));
             if (dbAccess is null) throw new ArgumentNullException(nameof(dbAccess));
@@ -49,7 +49,15 @@ namespace DataPieCore
             using var stream = OpenReadStream(filePath);
             using var reader = CreateCsvReader(stream);
             using var headerReader = new HeaderRowDataReader(reader);
-            dbAccess.BulkInsert(tableName, headerReader);
+            BulkInsertFile(dbAccess, tableName, headerReader, filePath, validateFieldLengths);
+        }
+
+        private static void BulkInsertFile(IDbAccess access, string tableName, IDataReader reader, string filePath, bool validateFieldLengths)
+        {
+            if (validateFieldLengths && access is SqlServerDbAccess sqlServer)
+                sqlServer.BulkInsert(tableName, reader, filePath);
+            else
+                access.BulkInsert(tableName, reader);
         }
 
         public static int SaveExcel(string filePath, IDataReader reader, string sheetName)

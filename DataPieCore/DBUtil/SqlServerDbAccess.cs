@@ -120,6 +120,12 @@ namespace DBUtil
         #region 批量插入操作
 
         public bool BulkInsert(string tableName, IDataReader reader)
+            => BulkInsert(tableName, reader, null, false);
+
+        public bool BulkInsert(string tableName, IDataReader reader, string sourceFile)
+            => BulkInsert(tableName, reader, sourceFile, true);
+
+        private bool BulkInsert(string tableName, IDataReader reader, string sourceFile, bool validateFieldLengths)
         {
             if (string.IsNullOrWhiteSpace(tableName))
                 throw new ArgumentException(nameof(tableName));
@@ -136,16 +142,29 @@ namespace DBUtil
 
             // Discover columns using the SAME connection used for bulk copy
             var destinationColumns = new HashSet<string>(StringComparer.Ordinal);
+            var lengthLimits = new Dictionary<string, int>(StringComparer.Ordinal);
             using (var schemaCmd = new SqlCommand($"SELECT TOP (0) * FROM {destination}", connection))
             using (var schemaReader = schemaCmd.ExecuteReader())
             {
+                using var schema = validateFieldLengths ? schemaReader.GetSchemaTable() : null;
                 for (int i = 0; i < schemaReader.FieldCount; i++)
+                {
                     destinationColumns.Add(schemaReader.GetName(i));
+                    string type = schemaReader.GetDataTypeName(i);
+                    if (validateFieldLengths && (type == "nvarchar" || type == "nchar"))
+                    {
+                        int size = Convert.ToInt32(schema.Rows[i]["ColumnSize"]);
+                        if (size > 0 && size < int.MaxValue)
+                            lengthLimits.Add(schemaReader.GetName(i), size);
+                    }
+                }
             }
 
             AddColumnMappings(bulkCopy, reader, destinationColumns);
 
-            bulkCopy.WriteToServer(reader);
+            bulkCopy.WriteToServer(validateFieldLengths
+                ? new ImportLengthDataReader(reader, lengthLimits, sourceFile)
+                : reader);
             return true;
         }
 
