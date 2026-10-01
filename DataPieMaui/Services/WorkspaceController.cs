@@ -8,7 +8,9 @@ public sealed class WorkspaceController
     public WorkspaceContext Context { get; }
     public DatabaseConversionService Conversion { get; }
     public bool IsOperationRunning => Context.Operations.IsRunning;
-    public bool CanClose => !IsOperationRunning || Context.Dialogs.Current != null;
+    public bool CanClose => Context.Dialogs.Current?.Editor is { } editor
+        ? !editor.Saving && !editor.Dirty
+        : !IsOperationRunning || Context.Dialogs.Current != null;
     public event Action? Changed
     {
         add => Context.Changed += value;
@@ -32,6 +34,12 @@ public sealed class WorkspaceController
 
     public void NotifyCloseBlocked()
     {
+        if (Context.Dialogs.Current?.Editor is { } editor)
+        {
+            editor.RequestClose();
+            Context.Notify();
+            return;
+        }
         if (Context.State.Converting) Conversion.CancelConversion();
         else Context.State.Status = "An operation is running. Please wait until it finishes before closing the window.";
     }

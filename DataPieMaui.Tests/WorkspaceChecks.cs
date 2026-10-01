@@ -73,6 +73,18 @@ internal static class WorkspaceChecks
             workspace.Context.Dialogs.Complete(true); await pending;
             workspace.Navigate("Query");
         });
+        await test("Export tabs retain selections and select only the active category", () =>
+        {
+            exportPage.ChangeTab("Table"); exportPage.SelectAll(true);
+            Check(workspace.Context.Exports.Where(x => x.Kind == "Table").All(x => x.Selected), "Tables not selected");
+            Check(workspace.Context.Exports.Where(x => x.Kind == "View").All(x => !x.Selected), "Hidden views selected");
+            exportPage.ChangeTab("View"); exportPage.SelectAll(true); exportPage.SelectAll(false);
+            Check(workspace.Context.Exports.Where(x => x.Kind == "Table").All(x => x.Selected), "View clear changed table selection");
+            workspace.Navigate("Query"); workspace.Navigate("Export");
+            Check(workspace.Context.Form.ExportTab == "View", "Export tab lost during navigation");
+            exportPage.ChangeTab("Table"); exportPage.SelectAll(false); workspace.Navigate("Query");
+            return Task.CompletedTask;
+        });
         await test("Confirmation prevents execution and concurrent operations; cancel is safe", async () =>
         {
             workspace.Context.Form.Sql = "INSERT INTO Items VALUES(3, 'third')";
@@ -138,6 +150,7 @@ internal static class WorkspaceChecks
             var pending = workspace.Context.Definitions.ShowAsync(item);
             for (int i = 0; i < 200 && workspace.Context.Dialogs.Current is null && !pending.IsCompleted; i++) await Task.Delay(10);
             Check(workspace.Context.Dialogs.Current?.Sql?.Contains("SELECT Name") == true, "View definition missing");
+            Check(workspace.Context.Dialogs.Current?.Editor?.Original.CanEdit == true, "SQLite view editor was not connected");
             Check(item.Selected, "Viewing a definition changed selection");
             workspace.Context.Dialogs.Complete(true); await pending;
             Check(workspace.Context.Dialogs.Current is null && !workspace.IsOperationRunning, "Definition or operation retained after close");
@@ -168,6 +181,7 @@ internal static class WorkspaceChecks
             foreach (var (section, expected) in pages)
             {
                 workspace.Navigate(section);
+                if (section == "Export") exportPage.ChangeTab("View");
                 await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
                 string html = await renderer.Dispatcher.InvokeAsync(async () =>
                 {
@@ -191,6 +205,27 @@ internal static class WorkspaceChecks
                 });
                 Check(!definitionHtml.Contains("<script>") && definitionHtml.Contains("&lt;script&gt;") && definitionHtml.Contains("Copy SQL"), "Definition is not encoded or copy action missing");
             }
+            var editSession = new DataPieMaui.Services.Shared.DefinitionEditorSession(
+                new DBUtil.DefinitionObject("View", "dbo", "Example", 1),
+                new DBUtil.ObjectDefinition("CREATE VIEW dbo.Example AS SELECT 1 AS Id") { CanEdit = true },
+                "Test server / database", (_, _) => throw new Exception("Rendering must not save"));
+            editSession.BeginEdit(); editSession.Draft = "CREATE VIEW dbo.Example AS SELECT '<script>bad</script>' AS Id";
+            var editDialog = workspace.Context.Dialogs.ShowDefinitionAsync("dbo.Example", editSession.Original.Sql, "", editSession);
+            Check(!workspace.CanClose, "Native window close ignored dirty draft");
+            workspace.NotifyCloseBlocked(); Check(editSession.DiscardAction == "close", "Window close did not prompt");
+            editSession.KeepEditing(); editSession.Review();
+            await using (var editorRenderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>()))
+            {
+                string editorHtml = await editorRenderer.Dispatcher.InvokeAsync(async () =>
+                {
+                    var component = await editorRenderer.RenderComponentAsync<DataPieMaui.Components.Shared.WorkspaceDialogView>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Dialogs"] = workspace.Context.Dialogs }));
+                    return component.ToHtmlString();
+                });
+                Check(editorHtml.Contains("Confirm save") && editorHtml.Contains("Test server / database") && editorHtml.Contains("definition-diff"), "Save review missing target or diff");
+                Check(!editorHtml.Contains("<script>bad</script>"), "Draft SQL rendered as markup");
+                if (renderUi) SaveHtml("DefinitionEdit", editorHtml);
+            }
+            workspace.Context.Dialogs.Complete(false); await editDialog;
             workspace.Context.State.DatabaseType = "SQLITE";
             workspace.Navigate("Query");
             // Initialization has already completed, so a static render can display a pending dialog.

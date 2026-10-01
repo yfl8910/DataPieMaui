@@ -1,0 +1,36 @@
+@using DataPieMaui.Services.Shared
+
+<p class="definition-target">Database: <strong>@Session.Database</strong> · @Session.Target.Kind: <strong>@Session.Target.DisplayName</strong></p>
+@if (!string.IsNullOrEmpty(Session.Error)) { <p class="callout danger" role="alert">@Session.Error</p> }
+@if (!string.IsNullOrEmpty(Session.Message)) { <p role="status">@Session.Message</p> }
+@if (Session.DiscardAction is not null)
+{
+    <p role="alert">Discard your unsaved changes?</p>
+    <div class="actions"><button @onclick="Discard">Discard changes</button><button @onclick="Session.KeepEditing">Keep editing</button></div>
+}
+else if (Session.ReviewSql is not null)
+{
+    <p>Review the changes below. Confirm save updates the definition. Procedure scripts are not executed.</p>
+    <pre class="definition-diff" tabindex="0" aria-label="Definition changes">@foreach (var line in Session.Difference()) { <span class="@line.Kind">@line.Text@("\n")</span> }</pre>
+    <details><summary>Full SQL to be saved</summary><SqlDefinitionView Sql="@Session.ReviewSql" /></details>
+    <div class="actions"><button class="primary" disabled="@Session.Saving" @onclick="Session.ConfirmSaveAsync">@(Session.Saving ? "Saving…" : "Confirm save")</button><button disabled="@Session.Saving" @onclick="Session.BackToEdit">Back to editing</button></div>
+}
+else if (Session.Editing)
+{
+    <label>SQL definition<textarea class="definition-editor" @bind="Session.Draft" @bind:event="oninput" spellcheck="false" disabled="@Session.Saving"></textarea></label>
+    <div class="actions"><button class="primary" disabled="@(!Session.Dirty || Session.Saving)" @onclick="Session.Review">Save changes…</button><button disabled="@Session.Saving" @onclick="Session.CancelEditing">Cancel editing</button></div>
+}
+else
+{
+    <SqlDefinitionView Sql="@Session.Original.Sql" />
+    @if (Session.Original.CanEdit) { <button @onclick="Session.BeginEdit">Edit</button> }
+    else if (!string.IsNullOrEmpty(Session.Original.EditRestriction)) { <p class="muted">@Session.Original.EditRestriction</p> }
+}
+<div class="actions dialog-actions"><button data-dismiss disabled="@Session.Saving" @onclick="Close">Close</button></div>
+
+@code {
+    [Parameter, EditorRequired] public DefinitionEditorSession Session { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    private async Task Close() { if (Session.RequestClose()) await OnClose.InvokeAsync(); }
+    private async Task Discard() { if (Session.Discard()) await OnClose.InvokeAsync(); }
+}

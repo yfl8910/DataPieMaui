@@ -1,16 +1,34 @@
 @using DataPieCore
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
-<section class="card"><div class="section-heading"><h2>Tables and views</h2><div class="actions"><button @onclick="() => SelectAll(true)">Select all</button><button @onclick="() => SelectAll(false)">Clear selection</button></div></div>
-    <ObjectSelection Items="Model.Exports" Label="Tables and views" OnPreview="PreviewObjectAsync" OnDefinition="Context.Definitions.ShowAsync" />
+<section class="card">
+    <div class="tabs" aria-label="Export object types">
+        @foreach (var tab in new[] { ("Table", "Tables"), ("View", "Views") })
+        {
+            <button class="@(Model.Form.ExportTab == tab.Item1 ? "active" : "")" aria-pressed="@(Model.Form.ExportTab == tab.Item1)" @onclick="() => ChangeTab(tab.Item1)">@tab.Item2</button>
+        }
+    </div>
+    <div class="section-heading">
+        <span class="muted">Selected across both tabs: @Model.Exports.Count(x => x.Selected && x.Kind == "Table") tables, @Model.Exports.Count(x => x.Selected && x.Kind == "View") views</span>
+        <div class="actions"><button @onclick="() => SelectAll(true)">Select all</button><button @onclick="() => SelectAll(false)">Clear selection</button></div>
+    </div>
+    <ObjectSelection Items="VisibleItems" Label="@(Model.Form.ExportTab == "Table" ? "Tables" : "Views")" OnPreview="PreviewObjectAsync" OnDefinition="Context.Definitions.ShowAsync" OnSelectionChanged="SelectionChanged" />
     <div class="actions"><button class="primary" @onclick='() => ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => ExportBatchAsync("epplus")'>Excel (EPPlus)</button><button @onclick='() => ExportBatchAsync("csv")'>CSV folder</button></div>
 </section>
 
 @code {
+    private List<SelectableObject> VisibleItems => Exports.Where(x => x.Kind == Form.ExportTab).ToList();
+    public void ChangeTab(string kind)
+    {
+        if (IsOperationRunning || kind is not ("Table" or "View")) return;
+        Form.ExportTab = kind;
+        Notify();
+    }
+    private void SelectionChanged() => Notify();
     public void SelectAll(bool selected)
     {
         if (IsOperationRunning) return;
-        foreach (var item in Exports) item.Selected = selected;
+        foreach (var item in VisibleItems) item.Selected = selected;
         Notify();
     }
 

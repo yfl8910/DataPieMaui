@@ -6,7 +6,14 @@ public sealed record DefinitionObject(string Kind, string Schema, string Name, i
 {
     public string DisplayName => string.IsNullOrEmpty(Schema) ? Name : Schema + "." + Name;
 }
-public sealed record ObjectDefinition(string Sql, string Notice = "");
+public sealed record ObjectDefinition(string Sql, string Notice = "")
+{
+    public bool CanEdit { get; init; }
+    public string EditRestriction { get; init; } = "Editing is not available for this object.";
+    public bool QuotedIdentifier { get; init; } = true;
+    public bool AnsiNulls { get; init; } = true;
+    public string Version { get; init; } = "";
+}
 
 // List calls never read SQL bodies. Single-object definitions are read only on request.
 public interface IDefinitionReader

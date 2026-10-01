@@ -38,7 +38,23 @@ Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that suppo
 
 ## View object definitions
 
-Use **View definition** beside a view on **Batch export**, or beside a procedure on **Stored procedures**. Only clicking this button reads the selected definition; initialization does not read SQL bodies. The read-only dialog supports **Copy SQL** and **Close**. Closing releases the text; reopening reads the latest definition. SQL Server permissions or encryption may prevent viewing a definition. SQLite shows converted procedure scripts. Database conversion still loads the definitions it needs.
+Use **View definition** beside a view on **Batch export**, or beside a procedure on **Stored procedures**. Only clicking this button reads the selected definition; initialization does not read SQL bodies. The dialog supports **Copy SQL**, **Edit** for supported objects, and **Close**. Closing releases the text; reopening reads the latest definition. SQL Server permissions or encryption may prevent viewing a definition. SQLite shows converted procedure scripts. Database conversion still loads the definitions it needs.
+
+### Editing SQL Server definitions
+
+For ordinary SQL Server views and T-SQL procedures, **Edit** opens a draft. **Save changes…** validates one schema-qualified definition and displays a text diff and the full SQL to submit. Only **Confirm save** changes the database. Canceling or closing a modified draft prompts before discarding it.
+
+The editor accepts CREATE, ALTER, or CREATE OR ALTER for the selected object and submits ALTER without executing the procedure. It rejects extra batches, object renames, encrypted definitions, and CLR/native procedures. Syntax validation uses Microsoft ScriptDom's SQL Server 2022 grammar; the server performs semantic validation during save. Indexed views and signed modules remain read-only to avoid losing indexes or signatures. ALTER permission is required. Definitions lacking explicit schema qualification must be qualified before saving.
+
+Saving rechecks the original definition, modification version, and persisted SET options inside a transaction, preserves QUOTED_IDENTIFIER / ANSI_NULLS, and reloads the result before commit. Errors keep the draft for correction. Saves from this editor use a transaction-scoped application lock; external tools such as SSMS do not share that lock, so the optimistic check is not a guarantee against a simultaneous external DDL change between the check and ALTER. Coordinate concurrent schema changes. If a connection fails during commit, reopen the object to verify its actual state before retrying.
+
+### Editing SQLite views and procedure scripts
+
+SQLite uses the same draft, diff, confirmation and unsaved-change controls. Views accept one `CREATE VIEW` statement for the selected `main` view. Saving reserves a database write transaction, checks the original text and schema version, and recreates the view and its triggers atomically. Validation prepares SQL without evaluating it and checks that previously valid views still compile. A view with triggers must retain its column names and order. Failures roll back the replacement and retain the draft. Column compatibility does not guarantee unchanged business semantics of triggers; review those when changing a view's logic.
+
+Converted procedures edit only the SQL body in their existing `StoredProcedures/*.txt` file. Saving checks the active database export, full-file hash, SQL syntax, object references and existing parameter/local names. SELECT/INSERT/UPDATE/DELETE/REPLACE and WITH statements are supported; DDL, transaction and connection commands are rejected. Validation uses EXPLAIN and does not run the procedure. The original metadata header is retained, including parameter defaults, local initializers and conversion warnings. New parameters and changes to conversion metadata are outside this editor's scope.
+
+Each successful script save atomically replaces the file and retains the original as a uniquely named sibling `.bak` file. File permissions must allow this. In-process saves are serialized and the file hash is rechecked immediately before replacement; an external editor can still race that final check, so avoid simultaneous external edits. Backups are retained for manual recovery. Saved scripts are used on the next explicit procedure execution.
 
 ## Using the app
 

@@ -87,3 +87,8 @@ dt { color: #8493a0; } dd { margin: 0; }
 .definition-dialog { width: min(850px, 90vw); }
 .definition-dialog h2 { overflow-wrap: anywhere; }
 .schema-definition pre { max-height: 50vh; overflow: auto; background: #f5f7f9; padding: 14px; border: 1px solid var(--border); border-radius: 6px; font: 12px/1.6 Consolas, monospace; tab-size: 4; }
+.definition-editor { height: 38vh; min-height: 180px; font: 13px/1.6 Consolas, monospace; white-space: pre; overflow: auto; tab-size: 4; }
+.definition-target { overflow-wrap: anywhere; }
+.definition-diff { max-height: 38vh; overflow: auto; border: 1px solid var(--border); padding: 12px; font: 12px/1.6 Consolas, monospace; }
+.definition-diff .removed { background: #ffe7e7; color: #842525; }
+.definition-diff .added { background: #dff4e5; color: #195630; }

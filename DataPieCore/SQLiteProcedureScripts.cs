@@ -13,7 +13,7 @@ using DBUtil;
 
 namespace DataPieCore
 {
-    internal static class SQLiteProcedureScripts
+    internal static partial class SQLiteProcedureScripts
     {
         private const string Header = "-- DataPie SQLite procedure: ";
 

@@ -6,7 +6,7 @@ window.dataPie = {
         dialog.addEventListener('cancel', event => {
             event.preventDefault();
             (dialog.querySelector('[data-dismiss]') || dialog.querySelector('[data-accept]')).click();
-        }, { once: true });
+        });
         dialog.showModal();
         (dialog.querySelector('[data-dismiss]') || dialog.querySelector('[data-accept]')).focus();
     }

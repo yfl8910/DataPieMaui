@@ -16,21 +16,96 @@ namespace DBUtil
             return items;
         }
 
-        public ObjectDefinition ReadDefinition(DefinitionObject item)
+        public ObjectDefinition ReadDefinition(DefinitionObject item) => ReadDefinition(item, null);
+
+        private ObjectDefinition ReadDefinition(DefinitionObject item, IDbTransaction transaction)
         {
             if (item.Kind is not ("View" or "Procedure")) throw new ArgumentException("Only views and procedures have definitions.");
             if (conn.State != ConnectionState.Open) conn.Open();
             using var command = conn.CreateCommand();
+            command.Transaction = transaction;
             command.CommandTimeout = 30;
-            command.CommandText = "SELECT m.definition, CONVERT(int,OBJECTPROPERTYEX(o.object_id,'IsEncrypted')), o.type FROM sys.objects o JOIN sys.schemas s ON s.schema_id=o.schema_id LEFT JOIN sys.sql_modules m ON m.object_id=o.object_id WHERE o.object_id=@id AND s.name=@schema AND o.name=@name AND ((@kind='View' AND o.type='V') OR (@kind='Procedure' AND o.type IN ('P','PC')))";
+            command.CommandText = """
+                SELECT m.definition, CONVERT(int,OBJECTPROPERTYEX(o.object_id,'IsEncrypted')), o.type,
+                       m.uses_quoted_identifier,m.uses_ansi_nulls,o.create_date,o.modify_date,
+                       HAS_PERMS_BY_NAME(QUOTENAME(s.name)+'.'+QUOTENAME(o.name),'OBJECT','ALTER'),
+                       CASE WHEN EXISTS(SELECT 1 FROM sys.indexes i WHERE i.object_id=o.object_id AND i.index_id>0) THEN 1 ELSE 0 END,
+                       CASE WHEN EXISTS(SELECT 1 FROM sys.crypt_properties c WHERE c.class=1 AND c.major_id=o.object_id) THEN 1 ELSE 0 END,
+                       m.uses_native_compilation
+                FROM sys.objects o JOIN sys.schemas s ON s.schema_id=o.schema_id
+                LEFT JOIN sys.sql_modules m ON m.object_id=o.object_id
+                WHERE o.object_id=@id AND s.name=@schema AND o.name=@name
+                  AND ((@kind='View' AND o.type='V') OR (@kind='Procedure' AND o.type IN ('P','PC')))
+                """;
             foreach (var entry in new (string Name, object Value)[] { ("@id", item.Id), ("@schema", item.Schema), ("@name", item.Name), ("@kind", item.Kind) })
             {
                 var parameter = command.CreateParameter(); parameter.ParameterName = entry.Name; parameter.Value = entry.Value; command.Parameters.Add(parameter);
             }
             using var reader = command.ExecuteReader();
             if (!reader.Read()) throw new InvalidOperationException("Object no longer available. Reconnect to refresh the list or check permissions.");
-            if (!reader.IsDBNull(0)) return new(reader.GetString(0));
-            return new("", !reader.IsDBNull(1) && Convert.ToInt32(reader[1]) == 1 ? "The definition is encrypted." : reader.GetString(2).Trim() == "PC" ? "CLR procedures do not have a T-SQL definition." : "Definition unavailable. Check VIEW DEFINITION permission; the object may be encrypted.");
+            bool Flag(int column) => !reader.IsDBNull(column) && Convert.ToInt32(reader[column]) == 1;
+            string sql = reader.IsDBNull(0) ? "" : reader.GetString(0);
+            string restriction = sql.Length == 0 ? (Flag(1) ? "The definition is encrypted." : reader.GetString(2).Trim() == "PC" ? "CLR procedures do not have a T-SQL definition." : "Definition unavailable. Check VIEW DEFINITION permission.") :
+                !Flag(7) ? "ALTER permission is required to edit this object." :
+                Flag(8) ? "Indexed views are read-only here: ALTER VIEW would remove their indexes." :
+                Flag(9) ? "Signed modules are read-only here: altering them removes their signatures." :
+                Flag(10) ? "Natively compiled modules are read-only here." : "";
+            return new ObjectDefinition(sql, sql.Length == 0 ? restriction : "")
+            {
+                CanEdit = restriction.Length == 0, EditRestriction = restriction,
+                QuotedIdentifier = Flag(3), AnsiNulls = Flag(4),
+                Version = reader.GetDateTime(5).Ticks + ":" + reader.GetDateTime(6).Ticks
+            };
+        }
+
+        public ObjectDefinition SaveDefinition(DefinitionObject item, ObjectDefinition original, string draft)
+        {
+            if (!original.CanEdit) throw new InvalidOperationException("This definition is read-only.");
+            string sql = DataPieCore.DefinitionSqlValidator.PrepareAlter(item, draft, original.QuotedIdentifier);
+            if (conn.State != ConnectionState.Open) conn.Open();
+            using var transaction = conn.BeginTransaction();
+            try
+            {
+                // Serializes saves from this editor. External tools do not participate in this lock.
+                using (var gate = conn.CreateCommand())
+                {
+                    gate.Transaction = transaction; gate.CommandTimeout = 30;
+                    gate.CommandText = "DECLARE @r int; EXEC @r=sys.sp_getapplock @Resource=@resource,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=10000; IF @r<0 THROW 50001,'Another definition save is in progress. Retry.',1;";
+                    var parameter = gate.CreateParameter(); parameter.ParameterName = "@resource"; parameter.Value = "DataPie.Definition." + item.Id; gate.Parameters.Add(parameter);
+                    gate.ExecuteNonQuery();
+                }
+                var current = ReadDefinition(item, transaction);
+                EnsureUnchanged(original, current);
+                if (!current.CanEdit) throw new InvalidOperationException(current.EditRestriction);
+                using (var options = conn.CreateCommand())
+                {
+                    options.Transaction = transaction;
+                    options.CommandText = "SET QUOTED_IDENTIFIER " + (current.QuotedIdentifier ? "ON" : "OFF") + "; SET ANSI_NULLS " + (current.AnsiNulls ? "ON" : "OFF") + ";";
+                    options.ExecuteNonQuery();
+                }
+                using (var command = conn.CreateCommand())
+                {
+                    command.Transaction = transaction; command.CommandTimeout = 30;
+                    command.CommandText = sql;
+                    command.ExecuteNonQuery(); // ALTER only; never EXEC the procedure body.
+                }
+                var saved = ReadDefinition(item, transaction);
+                if (string.IsNullOrEmpty(saved.Sql)) throw new InvalidOperationException("Saved definition could not be verified.");
+                transaction.Commit();
+                return saved;
+            }
+            catch
+            {
+                try { transaction.Rollback(); } catch { /* Preserve the original failure. */ }
+                throw;
+            }
+        }
+
+        internal static void EnsureUnchanged(ObjectDefinition original, ObjectDefinition current)
+        {
+            if (original.Sql != current.Sql || original.Version != current.Version ||
+                original.QuotedIdentifier != current.QuotedIdentifier || original.AnsiNulls != current.AnsiNulls)
+                throw new InvalidOperationException("The database definition changed after it was opened. Close and reopen to review the latest version; your draft has not been saved.");
         }
         public DbSchema ShowDbSchema()
         {

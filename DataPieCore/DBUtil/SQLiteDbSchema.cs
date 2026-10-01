@@ -16,8 +16,7 @@ namespace DBUtil
         {
             if (item.Kind == "Procedure")
             {
-                var script = DataPieCore.SQLiteProcedureScripts.Load(ConnectionString, item.Name);
-                return new(script.Sql, "Converted SQLite procedure script. " + string.Join(" | ", script.Metadata.Warnings));
+                return DataPieCore.SQLiteProcedureScripts.ReadDefinition(ConnectionString, item.Name);
             }
             if (item.Kind != "View" || item.Schema != "main") throw new ArgumentException("Unsupported definition object.");
             if (conn.State != ConnectionState.Open) conn.Open();
@@ -25,7 +24,66 @@ namespace DBUtil
             command.CommandTimeout = 30;
             command.CommandText = "SELECT sql FROM main.sqlite_schema WHERE type='view' AND name=@name";
             var parameter = command.CreateParameter(); parameter.ParameterName = "@name"; parameter.Value = item.Name; command.Parameters.Add(parameter);
-            return new(command.ExecuteScalar() as string ?? throw new InvalidOperationException("View no longer available. Reconnect to refresh the list."));
+            string sql = command.ExecuteScalar() as string ?? throw new InvalidOperationException("View no longer available. Reconnect to refresh the list.");
+            command.CommandText = "PRAGMA main.schema_version";
+            string version = Convert.ToString(command.ExecuteScalar());
+            return new(sql) { CanEdit = !new SQLiteConnectionStringBuilder(ConnectionString).ReadOnly, Version = version, EditRestriction = "The database connection is read-only." };
+        }
+
+        public ObjectDefinition SaveDefinition(DefinitionObject item, ObjectDefinition original, string draft)
+        {
+            DataPieCore.SQLiteDefinitionValidator.Prepare(item, draft);
+            if (item.Kind == "Procedure") return DataPieCore.SQLiteProcedureScripts.SaveDefinition(ConnectionString, item.Name, original, draft);
+            if (conn.State != ConnectionState.Open) conn.Open();
+            // Serializable takes the write reservation before the conflict check.
+            using var transaction = conn.BeginTransaction(IsolationLevel.Serializable);
+            var current = ReadDefinition(item);
+            if (!current.CanEdit || original.Sql != current.Sql || original.Version != current.Version)
+                throw new InvalidOperationException("The definition changed or is read-only. Reopen it before editing.");
+            using var command = conn.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandTimeout = 30;
+            command.CommandText = "SELECT sql FROM main.sqlite_schema WHERE type='trigger' AND tbl_name=@name ORDER BY name";
+            var parameter = command.CreateParameter(); parameter.ParameterName = "@name"; parameter.Value = item.Name; command.Parameters.Add(parameter);
+            var triggers = new List<string>();
+            using (var reader = command.ExecuteReader()) while (reader.Read()) triggers.Add(reader.GetString(0));
+            command.Parameters.Clear();
+            string quoted = "\"" + item.Name.Replace("\"", "\"\"") + "\"";
+            List<string> Columns()
+            {
+                command.CommandText = "PRAGMA main.table_info(" + quoted + ")";
+                var columns = new List<string>();
+                using var reader = command.ExecuteReader();
+                while (reader.Read()) columns.Add(reader.GetString(1));
+                return columns;
+            }
+            var originalColumns = Columns();
+            command.CommandText = "SELECT name FROM main.sqlite_schema WHERE type='view'";
+            var views = new List<string>();
+            using (var reader = command.ExecuteReader()) while (reader.Read()) views.Add(reader.GetString(0));
+            var validViews = new List<string>();
+            foreach (string view in views)
+            {
+                command.CommandText = "EXPLAIN SELECT * FROM main.\"" + view.Replace("\"", "\"\"") + "\"";
+                try { using var reader = command.ExecuteReader(); while (reader.Read()) { } validViews.Add(view); }
+                catch (SQLiteException) { /* Existing invalid views must not block unrelated repairs. */ }
+            }
+            command.CommandText = "DROP VIEW main." + quoted; command.ExecuteNonQuery();
+            command.CommandText = draft; command.ExecuteNonQuery();
+            if (triggers.Count > 0 && !originalColumns.SequenceEqual(Columns(), StringComparer.OrdinalIgnoreCase))
+                throw new InvalidOperationException("This view has triggers. Keep its column names and order unchanged when editing.");
+            foreach (string trigger in triggers) { command.CommandText = trigger; command.ExecuteNonQuery(); }
+            // Preparing checks missing columns/references without evaluating user SQL.
+            command.CommandText = "EXPLAIN SELECT * FROM main." + quoted;
+            using (var reader = command.ExecuteReader()) while (reader.Read()) { }
+            foreach (string view in validViews)
+            {
+                command.CommandText = "EXPLAIN SELECT * FROM main.\"" + view.Replace("\"", "\"\"") + "\"";
+                using var reader = command.ExecuteReader(); while (reader.Read()) { }
+            }
+            var saved = ReadDefinition(item);
+            transaction.Commit();
+            return saved;
         }
         public DbSchema ShowDbSchema()
         {

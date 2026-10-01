@@ -1,6 +1,6 @@
 namespace DataPieMaui.Services;
 
-public sealed record WorkspaceDialog(string Title, string Message, string Accept, bool CanCancel, string? Sql = null);
+public sealed record WorkspaceDialog(string Title, string Message, string Accept, bool CanCancel, string? Sql = null, Shared.DefinitionEditorSession? Editor = null);
 
 public sealed class WorkspaceDialogs
 {
@@ -11,7 +11,7 @@ public sealed class WorkspaceDialogs
     public Task<bool> ConfirmAsync(string title, string message, string accept) => ShowAsync(new(title, message, accept, true));
     public Task<bool> AlertAsync(string title, string message) => ShowAsync(new(title, message, "OK", false));
 
-    public Task<bool> ShowDefinitionAsync(string title, string sql, string notice) => ShowAsync(new(title, notice, "Close", false, sql));
+    public Task<bool> ShowDefinitionAsync(string title, string sql, string notice, Shared.DefinitionEditorSession? editor = null) => ShowAsync(new(title, notice, "Close", false, sql, editor));
 
     private Task<bool> ShowAsync(WorkspaceDialog dialog)
     {

@@ -3,7 +3,7 @@
     @foreach (var item in Items)
     {
         <div class="object-row" @key="item">
-            <label class="object-choice"><input type="checkbox" @bind="item.Selected" /><span class="type-badge">@item.Kind</span><span>@item.DisplayName</span></label>
+            <label class="object-choice"><input type="checkbox" @bind="item.Selected" @bind:after="NotifySelectionChanged" /><span class="type-badge">@item.Kind</span><span>@item.DisplayName</span></label>
             @if (OnDefinition.HasDelegate && item.DefinitionObject is not null)
             {
                 <button aria-label="@($"View definition: {item.DisplayName}")" @onclick="() => OnDefinition.InvokeAsync(item)">View definition</button>
@@ -18,6 +18,8 @@
 @code {
     [Parameter, EditorRequired] public List<SelectableObject> Items { get; set; } = [];
     [Parameter] public string Label { get; set; } = "Objects";
+    [Parameter] public EventCallback OnSelectionChanged { get; set; }
+    private Task NotifySelectionChanged() => OnSelectionChanged.InvokeAsync();
     [Parameter] public EventCallback<string> OnPreview { get; set; }
     [Parameter] public EventCallback<SelectableObject> OnDefinition { get; set; }
 }
