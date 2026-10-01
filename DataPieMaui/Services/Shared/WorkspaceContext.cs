@@ -18,7 +18,7 @@ public sealed class WorkspaceContext
     public QueryResultSession Results { get; } = new();
     public WorkspaceOperationRunner Operations { get; }
     public QueryPreviewService Preview { get; }
-    public SchemaBrowserService SchemaBrowser { get; }
+    public DefinitionService Definitions { get; }
     public string Section { get; internal set; } = "Connections";
     public string QuerySummary { get; internal set; } = "Run a preview to open the result table in a separate window.";
     public IReadOnlyList<Dbinfo> Connections { get; internal set; } = [];
@@ -34,7 +34,7 @@ public sealed class WorkspaceContext
         StorePath = storePath;
         Operations = new WorkspaceOperationRunner(State, Dialogs);
         Preview = new QueryPreviewService(this);
-        SchemaBrowser = new SchemaBrowserService(this);
+        Definitions = new DefinitionService(this);
         State.PropertyChanged += (_, _) => Notify();
         Dialogs.Changed += Notify;
     }

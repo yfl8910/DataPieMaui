@@ -67,7 +67,6 @@
     private async Task ConnectAsync(Dbinfo record, bool save)
     {
         await Database.ConnectAsync(Info(record));
-        Context.SchemaBrowser.Reset();
         State.DatabaseType = Database.Connection!.DatabaseType;
         Tables = Database.Schema!.Tables.Select(t => t.Name).ToArray();
         Form.QueryTable = Form.ImportTable = Tables.FirstOrDefault() ?? "";
@@ -76,9 +75,9 @@
         QuerySummary = "Run a preview to open the result table in a separate window.";
         Exports.Clear();
         Exports.AddRange(Tables.Select(n => new SelectableObject(n, "Table")));
-        Exports.AddRange(Database.Schema.ViewNames.Select(n => new SelectableObject(n, "View")));
+        Exports.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "View").Select(o => new SelectableObject(o.Name, o.Kind) { DefinitionObject = o }));
         Procedures.Clear();
-        Procedures.AddRange(Database.Schema.Procedures.Select(p => new SelectableObject(p.Name, "Procedure")));
+        Procedures.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "Procedure").Select(o => new SelectableObject(o.Name, o.Kind) { DefinitionObject = o }));
         State.Connection = record.Dbname + " · " + record.Dbtype;
         if (save) { await Task.Run(() => Store.Save(record, true)); await ReloadConnectionsAsync(); }
         Section = "Query";

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace DBUtil
 {
@@ -8,6 +8,7 @@ namespace DBUtil
     ///
     public class DbSchema
     {
+        public IReadOnlyList<DefinitionObject> DefinitionObjects { get; set; } = new List<DefinitionObject>();
         public string Name { set; get; }
 
         public List<TableStruct> Tables { get; set; } = new();

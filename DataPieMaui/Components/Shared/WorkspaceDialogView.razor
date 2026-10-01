@@ -3,9 +3,10 @@
 
 @if (Dialogs.Current is { } dialog)
 {
-    <dialog id="workspace-dialog" class="app-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-message">
+    <dialog id="workspace-dialog" class="app-dialog @(dialog.Sql is not null ? "definition-dialog" : "")" aria-labelledby="dialog-title" aria-describedby="dialog-message">
         <h2 id="dialog-title">@dialog.Title</h2>
         <p id="dialog-message">@dialog.Message</p>
+        @if (!string.IsNullOrEmpty(dialog.Sql)) { <SqlDefinitionView Sql="@dialog.Sql" /> }
         <div class="actions dialog-actions">
             @if (dialog.CanCancel) { <button data-dismiss @onclick="() => Dialogs.Complete(false)">Cancel</button> }
             <button class="primary" data-accept @onclick="() => Dialogs.Complete(true)">@dialog.Accept</button>

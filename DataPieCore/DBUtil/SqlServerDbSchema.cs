@@ -6,16 +6,42 @@ using System.Linq;
 
 namespace DBUtil
 {
-    public partial class SqlServerDbAccess : IDbAccess
+    public partial class SqlServerDbAccess : IDbAccess, IDefinitionReader
     {
+        public IReadOnlyList<DefinitionObject> ListDefinitionObjects()
+        {
+            using var reader = GetDataReader("SELECT CASE o.type WHEN 'V' THEN 'View' ELSE 'Procedure' END, s.name, o.name, o.object_id FROM sys.objects o JOIN sys.schemas s ON s.schema_id=o.schema_id WHERE o.type IN ('V','P','PC') AND o.is_ms_shipped=0 ORDER BY s.name,o.name");
+            var items = new List<DefinitionObject>();
+            while (reader.Read()) items.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
+            return items;
+        }
+
+        public ObjectDefinition ReadDefinition(DefinitionObject item)
+        {
+            if (item.Kind is not ("View" or "Procedure")) throw new ArgumentException("Only views and procedures have definitions.");
+            if (conn.State != ConnectionState.Open) conn.Open();
+            using var command = conn.CreateCommand();
+            command.CommandTimeout = 30;
+            command.CommandText = "SELECT m.definition, CONVERT(int,OBJECTPROPERTYEX(o.object_id,'IsEncrypted')), o.type FROM sys.objects o JOIN sys.schemas s ON s.schema_id=o.schema_id LEFT JOIN sys.sql_modules m ON m.object_id=o.object_id WHERE o.object_id=@id AND s.name=@schema AND o.name=@name AND ((@kind='View' AND o.type='V') OR (@kind='Procedure' AND o.type IN ('P','PC')))";
+            foreach (var entry in new (string Name, object Value)[] { ("@id", item.Id), ("@schema", item.Schema), ("@name", item.Name), ("@kind", item.Kind) })
+            {
+                var parameter = command.CreateParameter(); parameter.ParameterName = entry.Name; parameter.Value = entry.Value; command.Parameters.Add(parameter);
+            }
+            using var reader = command.ExecuteReader();
+            if (!reader.Read()) throw new InvalidOperationException("Object no longer available. Reconnect to refresh the list or check permissions.");
+            if (!reader.IsDBNull(0)) return new(reader.GetString(0));
+            return new("", !reader.IsDBNull(1) && Convert.ToInt32(reader[1]) == 1 ? "The definition is encrypted." : reader.GetString(2).Trim() == "PC" ? "CLR procedures do not have a T-SQL definition." : "Definition unavailable. Check VIEW DEFINITION permission; the object may be encrypted.");
+        }
         public DbSchema ShowDbSchema()
         {
+            var objects = ListDefinitionObjects();
             DbSchema dbs = new DbSchema
             {
                 Name = GetDbName(),
                 Tables = ShowTables(),
-                ViewNames = ShowViews(),
-                Procedures = GetProcs()
+                DefinitionObjects = objects,
+                ViewNames = objects.Where(o => o.Kind == "View").Select(o => o.Name).ToList(),
+                Procedures = objects.Where(o => o.Kind == "Procedure").Select(o => new Proc { Name = o.Name, SchemaName = o.Schema }).ToList()
             };
             return dbs;
         }

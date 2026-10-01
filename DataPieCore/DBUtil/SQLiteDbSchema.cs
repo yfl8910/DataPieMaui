@@ -6,8 +6,27 @@ using System.Data.SQLite;
 
 namespace DBUtil
 {
-    public partial class SQLiteDbAccess : IDbAccess
+    public partial class SQLiteDbAccess : IDbAccess, IDefinitionReader
     {
+        public IReadOnlyList<DefinitionObject> ListDefinitionObjects()
+            => ShowViews().Select(name => new DefinitionObject("View", "main", name))
+                .Concat(GetProcs().Select(p => new DefinitionObject("Procedure", "", p.Name))).ToArray();
+
+        public ObjectDefinition ReadDefinition(DefinitionObject item)
+        {
+            if (item.Kind == "Procedure")
+            {
+                var script = DataPieCore.SQLiteProcedureScripts.Load(ConnectionString, item.Name);
+                return new(script.Sql, "Converted SQLite procedure script. " + string.Join(" | ", script.Metadata.Warnings));
+            }
+            if (item.Kind != "View" || item.Schema != "main") throw new ArgumentException("Unsupported definition object.");
+            if (conn.State != ConnectionState.Open) conn.Open();
+            using var command = conn.CreateCommand();
+            command.CommandTimeout = 30;
+            command.CommandText = "SELECT sql FROM main.sqlite_schema WHERE type='view' AND name=@name";
+            var parameter = command.CreateParameter(); parameter.ParameterName = "@name"; parameter.Value = item.Name; command.Parameters.Add(parameter);
+            return new(command.ExecuteScalar() as string ?? throw new InvalidOperationException("View no longer available. Reconnect to refresh the list."));
+        }
         public DbSchema ShowDbSchema()
         {
             DbSchema dbs = new DbSchema
@@ -17,6 +36,7 @@ namespace DBUtil
                 ViewNames = ShowViews(),
                 Procedures = GetProcs()
             };
+            dbs.DefinitionObjects = dbs.ViewNames.Select(name => new DefinitionObject("View", "main", name)).Concat(dbs.Procedures.Select(p => new DefinitionObject("Procedure", "", p.Name))).ToArray();
             return dbs;
         }
 

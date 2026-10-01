@@ -25,5 +25,7 @@ public sealed class SelectableObject(string name, string kind)
 {
     public string Name { get; } = name;
     public string Kind { get; } = kind;
+    public DBUtil.DefinitionObject? DefinitionObject { get; init; }
+    public string DisplayName => DefinitionObject?.DisplayName ?? Name;
     public bool Selected { get; set; }
 }

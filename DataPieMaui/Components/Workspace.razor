@@ -25,7 +25,6 @@
                                 {
                                     case "Connections": <ConnectionsPage /> break;
                                     case "Query": <QueryPage /> break;
-                                    case "Schema": <SchemaPage /> break;
                                     case "Import": <ImportPage /> break;
                                     case "Export": <ExportPage /> break;
                                     case "Procedures": <ProceduresPage /> break;
@@ -60,7 +59,6 @@
         ("Export", "Batch export", "↑", "Export selected tables and views to Excel or CSV."),
         ("Procedures", "Stored procedures", "▷", "Run selected procedures in sequence."),
         ("Migration", "Convert to SQLite", "⇄", "Create a portable SQLite copy of your SQL Server database."),
-        ("Schema", "Database schema", "▤", "Browse tables, views, and procedure definitions."),
         ("About", "About", "ⓘ", "A local workspace for your database tasks.")
     ];
     private string Title => navigation.First(x => x.Id == Controller.Context.Section).Label;

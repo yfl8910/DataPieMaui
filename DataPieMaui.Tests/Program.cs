@@ -213,30 +213,26 @@ try
         Check(result.ProcedureErrors.Count == 0, "Procedure conversion warnings: " + string.Join(";", result.ProcedureErrors));
         using var access = DbAccessFactory.Create(Connection(converted), "SQLITE");
         var proc = access.GetProcs().Single();
-        var procedureObject = SchemaBrowser.List(access).Single(o => o.Kind == "Procedure");
-        var detail = SchemaBrowser.Read(access, procedureObject);
-        Check(detail.Definition.Contains("INSERT") && detail.Notice.Contains("Converted SQLite"), "Procedure script detail missing");
+        var procedureObject = ((IDefinitionReader)access).ListDefinitionObjects().Single(o => o.Kind == "Procedure");
+        var detail = ((IDefinitionReader)access).ReadDefinition(procedureObject);
+        Check(detail.Sql.Contains("INSERT") && detail.Notice.Contains("Converted SQLite"), "Procedure script detail missing");
         Check(Count(converted, "Items") == 0, "Browsing executed a procedure");
         access.RunProcedure(proc.Name);
         Check(Count(converted, "Items") == 1, "Procedure did not insert");
         return Task.CompletedTask;
     });
-    await Test("Schema catalogs preserve special names, generated fields and view definitions", () =>
+    await Test("Definitions are read on demand and preserve special names", () =>
     {
         var schemaPath = Path.Combine(root, "schema.db"); SQLiteConnection.CreateFile(schemaPath);
         Sql(schemaPath, "CREATE TABLE \"Odd'Name\" (Id INTEGER PRIMARY KEY, Amount DECIMAL(12,3) NOT NULL DEFAULT 0, Doubled AS (Amount*2) VIRTUAL); CREATE VIEW \"View'Name\" AS SELECT '<script>bad</script>' AS Text FROM \"Odd'Name\";");
         using var access = DbAccessFactory.Create(Connection(schemaPath), "SQLITE");
-        var objects = SchemaBrowser.List(access);
-        var table = objects.Single(o => o.Kind == "Table");
-        Check(table.Name == "Odd'Name" && table.Schema == "main", "Object identity lost");
-        var details = SchemaBrowser.Read(access, table);
-        Check(details.Fields.Count == 3 && details.Fields[0].PrimaryKey, "Fields or primary key lost");
-        Check(!details.Fields[1].Nullable && details.Fields[1].Type == "DECIMAL(12,3)" && details.Fields[1].Default == "0", "Field metadata incorrect");
-        Check(details.Fields[2].Extra.Contains("Generated"), "Generated field omitted");
+        var initialSchema = access.ShowDbSchema();
+        Check(initialSchema.ViewDefinitions.Count == 0 && initialSchema.Procedures.All(p => string.IsNullOrEmpty(p.CreateSql)), "Initialization loaded definitions");
+        var objects = initialSchema.DefinitionObjects;
         var view = objects.Single(o => o.Kind == "View");
-        Check(SchemaBrowser.Read(access, view).Definition.Contains("<script>bad</script>"), "View definition changed");
+        Check(((IDefinitionReader)access).ReadDefinition(view).Sql.Contains("<script>bad</script>"), "View definition changed");
         Sql(schemaPath, "DROP VIEW \"View'Name\"");
-        try { SchemaBrowser.Read(access, view); throw new Exception("Missing object accepted"); }
+        try { ((IDefinitionReader)access).ReadDefinition(view); throw new Exception("Missing object accepted"); }
         catch (InvalidOperationException) { }
         return Task.CompletedTask;
     });

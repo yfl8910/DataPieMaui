@@ -2,7 +2,7 @@
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
 <section class="card"><div class="section-heading"><h2>Tables and views</h2><div class="actions"><button @onclick="() => SelectAll(true)">Select all</button><button @onclick="() => SelectAll(false)">Clear selection</button></div></div>
-    <ObjectSelection Items="Model.Exports" Label="Tables and views" OnPreview="PreviewObjectAsync" />
+    <ObjectSelection Items="Model.Exports" Label="Tables and views" OnPreview="PreviewObjectAsync" OnDefinition="Context.Definitions.ShowAsync" />
     <div class="actions"><button class="primary" @onclick='() => ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => ExportBatchAsync("epplus")'>Excel (EPPlus)</button><button @onclick='() => ExportBatchAsync("csv")'>CSV folder</button></div>
 </section>
 

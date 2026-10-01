@@ -36,9 +36,9 @@ dotnet build DataPieMaui\DataPieMaui.csproj -t:Run -c Debug
 
 Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that supports .NET 10 and .NET MAUI, select `DataPieMaui` as the startup project, and run the Windows target.
 
-## Database schema browser
+## View object definitions
 
-Open **Database schema** after connecting. Browse tables, views, and procedures; search by schema or object name. Select an object to load its columns, SQL definition, or parameters. Use **Copy SQL** to copy a definition and **Refresh** to invalidate cached metadata. Switching databases clears browser state. SQL Server definitions depend on metadata permissions and may be encrypted; SQLite procedures are converted external scripts. The browser does not execute object definitions or count table rows.
+Use **View definition** beside a view on **Batch export**, or beside a procedure on **Stored procedures**. Only clicking this button reads the selected definition; initialization does not read SQL bodies. The read-only dialog supports **Copy SQL** and **Close**. Closing releases the text; reopening reads the latest definition. SQL Server permissions or encryption may prevent viewing a definition. SQLite shows converted procedure scripts. Database conversion still loads the definitions it needs.
 
 ## Using the app
 
