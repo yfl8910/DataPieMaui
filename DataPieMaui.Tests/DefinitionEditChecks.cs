@@ -21,7 +21,7 @@ internal static class DefinitionEditChecks
             string sql = "-- CREATE is only a comment\nCREATE /* comment */ PROC [dbo].[UpdateItem]" + body;
             string prepared = DefinitionSqlValidator.PrepareAlter(procedure, sql);
             Check(prepared == sql.Replace("\nCREATE /*", "\nALTER /*"), "Body, comments or literals modified");
-            Check(DefinitionSqlValidator.PrepareAlter(view, "CREATE OR ALTER VIEW [dbo].[Report] AS SELECT 1 AS Id").StartsWith("ALTER VIEW"), "CREATE OR ALTER not converted");
+            Check(System.Text.RegularExpressions.Regex.IsMatch(DefinitionSqlValidator.PrepareAlter(view, "CREATE OR ALTER VIEW [dbo].[Report] AS SELECT 1 AS Id"), @"^ALTER\s+VIEW"), "CREATE OR ALTER not converted");
             var escaped = new DefinitionObject("View", "a.b", "a]b");
             Check(DefinitionSqlValidator.PrepareAlter(escaped, "CREATE VIEW [a.b].[a]]b] AS SELECT 1 AS Id").StartsWith("ALTER"), "Escaped identifier rejected");
             foreach (string invalid in new[] {
@@ -36,6 +36,30 @@ internal static class DefinitionEditChecks
             Reject(procedure, "CREATE PROCEDURE dbo.UpdateItem WITH ENCRYPTION AS SELECT 1");
             Reject(procedure, "CREATE PROCEDURE dbo.UpdateItem AS EXTERNAL NAME A.B.C");
             Reject(procedure, "CREATE PROCEDURE dbo.UpdateItem AS SELECT 1\nGO\nEXEC dbo.UpdateItem");
+            return Task.CompletedTask;
+        });
+        await test("Lightweight declaration guard respects quoting, comments, CTEs and body boundaries", () =>
+        {
+            string sql = "/* outer /* GO */ comment */ CREATE /* keep */ OR /* keep too */ ALTER VIEW dbo.Report AS WITH c AS (SELECT 'it''s; GO DROP' AS Id) SELECT Id FROM c UNION ALL SELECT 2; -- trailing";
+            string prepared = DefinitionSqlValidator.PrepareAlter(view, sql);
+            Check(prepared.Contains("/* keep */") && prepared.Contains("/* keep too */") && prepared.EndsWith("AS WITH c AS (SELECT 'it''s; GO DROP' AS Id) SELECT Id FROM c UNION ALL SELECT 2; -- trailing"), "SQL content was rewritten");
+            Check(DefinitionSqlValidator.PrepareAlter(view, "ALTER VIEW \"dbo\".\"Report\" AS SELECT 1") == "ALTER VIEW \"dbo\".\"Report\" AS SELECT 1", "Quoted identifiers failed");
+            bool rejected = false;
+            try { DefinitionSqlValidator.PrepareAlter(view, "ALTER VIEW \"dbo\".\"Report\" AS SELECT 1", false); }
+            catch (ArgumentException) { rejected = true; }
+            Check(rejected, "QUOTED_IDENTIFIER OFF allowed string object names");
+            DefinitionSqlValidator.PrepareAlter(view, "CREATE VIEW dbo.Report AS SELECT [GO], [DROP], [;], [(], [)] FROM dbo.Items");
+            foreach (string invalid in new[] {
+                "CREATE VIEW dbo.Report AS SELECT 1 DELETE FROM Items",
+                "CREATE VIEW dbo.Report AS SELECT 1 SELECT 2",
+                "CREATE VIEW dbo.Report AS SELECT 1; EXEC dbo.Other",
+                "CREATE VIEW dbo.Report AS SELECT 1 INTO Other",
+                "CREATE VIEW dbo.Report AS SELECT 'unterminated",
+                "CREATE VIEW dbo.Report AS SELECT 1 /* nested /* comment */",
+                "CREATE VIEW dbo.Report.Other AS SELECT 1" }) Reject(view, invalid);
+            // Full syntax validation is deliberately deferred to SQL Server.
+            DefinitionSqlValidator.PrepareAlter(procedure, "CREATE PROC dbo.UpdateItem @id int AS BEGIN SELECT @id; UPDATE Items SET Name='x'; END");
+            Reject(procedure, "CREATE PROC dbo.UpdateItem WITH NATIVE_COMPILATION AS BEGIN SELECT 1; END");
             return Task.CompletedTask;
         });
         await test("Definition conflict check includes text, version and persisted SET options", () =>
