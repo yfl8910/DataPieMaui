@@ -127,24 +127,61 @@ namespace DBUtil
         /// <returns></returns>
         public List<TableStruct> ShowTables()
         {
-            using var allColumns = ReadColumns();
-            var columnsByTable = allColumns.AsEnumerable().ToLookup(r => Convert.ToInt32(r["TableId"]));
-            const string sql = "SELECT name, SCHEMA_NAME(schema_id), object_id FROM sys.tables";
+            // Read both result sets on one connection and construct models directly.
+            const string sql = @"SELECT name, SCHEMA_NAME(schema_id), object_id FROM sys.tables;
+WITH PrimaryKeyColumns AS (
+    SELECT ic.object_id, ic.column_id
+    FROM sys.indexes i
+    JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+    WHERE i.is_primary_key = 1 AND ic.key_ordinal > 0
+)
+SELECT c.object_id, c.name, ty.name, c.max_length,
+OBJECT_DEFINITION(c.default_object_id), c.is_nullable, c.is_identity,
+CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END
+FROM sys.tables t
+JOIN sys.columns c ON c.object_id = t.object_id
+JOIN sys.types ty ON ty.user_type_id = CASE WHEN c.system_type_id = 240 THEN c.user_type_id ELSE c.system_type_id END
+LEFT JOIN PrimaryKeyColumns pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id
+WHERE ty.name NOT IN ('geometry', 'geography')
+ORDER BY c.object_id, c.column_id";
             using var reader = GetDataReader(sql);
+            return ReadTableSchema(reader);
+        }
+
+        internal static List<TableStruct> ReadTableSchema(IDataReader reader)
+        {
             var tables = new List<TableStruct>();
+            var tablesById = new Dictionary<int, TableStruct>();
 
             while (reader.Read())
             {
                 int tableId = reader.GetInt32(2);
-                var columns = columnsByTable[tableId].Select(ReadColumn).ToList();
-                tables.Add(new TableStruct
+                var table = new TableStruct
                 {
                     Name = reader.GetString(0),
                     TableSchemaName = reader.GetValue(1).ToString(),
-                    Columns = columns
-                });
+                    Columns = new List<Column>()
+                };
+                tables.Add(table);
+                tablesById.Add(tableId, table);
             }
 
+            if (!reader.NextResult())
+                throw new InvalidOperationException("The column metadata result set is missing.");
+            while (reader.Read())
+            {
+                if (!tablesById.TryGetValue(reader.GetInt32(0), out var table)) continue;
+                table.Columns.Add(new Column
+                {
+                    Name = reader.GetString(1),
+                    Type = reader.GetString(2),
+                    MaxLength = Convert.ToInt32(reader.GetValue(3)),
+                    Default = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                    IsNullable = reader.GetBoolean(5),
+                    IsIdentity = reader.GetBoolean(6),
+                    IsPrimaryKey = reader.GetInt32(7) == 1
+                });
+            }
             return tables;
         }
 
@@ -187,37 +224,6 @@ ORDER BY fk.object_id, fc.constraint_column_id";
             var byTable = keys.ToLookup(item => (item.Schema, item.Table), item => item.Key);
             foreach (var table in tables)
                 table.ForeignKeys = byTable[(table.TableSchemaName, table.Name)].ToList();
-        }
-
-        private static Column ReadColumn(DataRow row) => new Column
-        {
-            Name = row["DbColumnName"].ToString(),
-            IsIdentity = Convert.ToInt32(row["IsIdentity"]) == 1,
-            IsNullable = Convert.ToInt32(row["IsNullable"]) == 1,
-            Type = row["DataType"].ToString(),
-            Default = row["DefaultValue"].ToString(),
-            MaxLength = Convert.ToInt32(row["Length"]),
-            IsPrimaryKey = Convert.ToInt32(row["IsPrimaryKey"]) == 1,
-        };
-
-        private DataTable ReadColumns()
-        {
-            const string sql = @"SELECT c.object_id AS TableId, c.name AS DbColumnName,
-ty.name AS DataType, c.max_length AS [Length],
-OBJECT_DEFINITION(c.default_object_id) AS DefaultValue,
-c.is_nullable AS IsNullable, c.is_identity AS IsIdentity,
-CASE WHEN EXISTS (
-    SELECT 1 FROM sys.indexes i
-    JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
-    WHERE i.object_id = c.object_id AND i.is_primary_key = 1
-      AND ic.column_id = c.column_id AND ic.key_ordinal > 0
-) THEN 1 ELSE 0 END AS IsPrimaryKey
-FROM sys.tables t
-JOIN sys.columns c ON c.object_id = t.object_id
-JOIN sys.types ty ON ty.user_type_id = CASE WHEN c.system_type_id = 240 THEN c.user_type_id ELSE c.system_type_id END
-WHERE ty.name NOT IN ('geometry', 'geography')
-ORDER BY c.object_id, c.column_id";
-            return GetDataTable(sql);
         }
 
         public List<string> ShowViews()

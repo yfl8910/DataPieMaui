@@ -18,6 +18,11 @@
     <PublishTrimmed>false</PublishTrimmed>
     <EnableDefaultCssItems>false</EnableDefaultCssItems>
   </PropertyGroup>
+  <!-- Expose folder publishing for the unpackaged Windows desktop application. -->
+  <ItemGroup Condition="'$(WindowsPackageType)' == 'None'">
+    <ProjectCapability Include="Publish" />
+    <ProjectCapability Include="FolderPublish" />
+  </ItemGroup>
   <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" Color="#176B64" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#176B64" BaseSize="128,128" />

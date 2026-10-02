@@ -142,3 +142,17 @@ These previews are render snapshots, not an interactive web version of the deskt
 | `DataPieMaui.Tests/` | Console regression checks |
 
 Generated directories such as `publish/`, `.vs/`, `bin/`, and `obj/` are excluded from Git. Source assets under `DataPieMaui/wwwroot/` remain tracked.
+
+### Publish from Visual Studio
+
+Open `DataPieMaui.sln` in Visual Studio with .NET 10 and the .NET MAUI workload installed. Stop debugging, set `DataPieMaui` as the startup project, and select **Release** and **Windows Machine**. Right-click the **DataPieMaui project** and select **Publish**, then use `FolderProfile`.
+
+The project explicitly declares `Publish` and `FolderPublish` capabilities for its unpackaged Windows configuration. After changing the project file, reload the project (or reopen the solution) so Visual Studio refreshes the commands. The profile publishes a self-contained Windows x64 application to `publish/win-x64`; distribute the entire directory. WebView2 Runtime is still required.
+
+If the MAUI tooling still disables the Publish command, the same profile can be run from Visual Studio's terminal:
+
+```powershell
+dotnet publish DataPieMaui/DataPieMaui.csproj -c Release -p:PublishProfile=FolderProfile
+```
+
+Microsoft's standard MAUI Windows Publish wizard creates MSIX packages. This project uses folder deployment, so do not enable MSIX packaging solely to activate that wizard.

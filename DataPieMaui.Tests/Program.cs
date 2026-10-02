@@ -29,6 +29,31 @@ long Count(string path, string table)
 }
 try
 {
+    await Test("Streaming SQL Server schema preserves table identity and column metadata", () =>
+    {
+        using var tables = new DataTable();
+        tables.Columns.Add("Name", typeof(string)); tables.Columns.Add("Schema", typeof(string)); tables.Columns.Add("Id", typeof(int));
+        tables.Rows.Add("Items", "dbo", 10); tables.Rows.Add("Items", "archive", 20); tables.Rows.Add("Empty", "dbo", 30);
+        using var columns = new DataTable();
+        columns.Columns.Add("TableId", typeof(int)); columns.Columns.Add("Name", typeof(string)); columns.Columns.Add("Type", typeof(string));
+        columns.Columns.Add("Length", typeof(short)); columns.Columns.Add("Default", typeof(string));
+        columns.Columns.Add("Nullable", typeof(bool)); columns.Columns.Add("Identity", typeof(bool)); columns.Columns.Add("PrimaryKey", typeof(int));
+        columns.Rows.Add(10, "Id", "int", (short)4, DBNull.Value, false, true, 1);
+        columns.Rows.Add(10, "Name", "nvarchar", (short)100, "(N'')", true, false, 0);
+        columns.Rows.Add(20, "Notes", "nvarchar", (short)-1, DBNull.Value, true, false, 0);
+        using var reader = new DataTableReader(new[] { tables, columns });
+        var result = SqlServerDbAccess.ReadTableSchema(reader);
+        Check(result.Count == 3 && result[0].Columns.Count == 2 && result[1].Columns.Count == 1
+            && result[2].Columns.Count == 0 && result[1].TableSchemaName == "archive", "Table/schema grouping changed");
+        var id = result[0].Columns[0]; var name = result[0].Columns[1];
+        Check(id.Name == "Id" && id.IsIdentity && id.IsPrimaryKey && !id.IsNullable && id.Default == "", "Key metadata changed");
+        Check(name.Name == "Name" && name.Type == "nvarchar" && name.MaxLength == 100 && name.Default == "(N'')"
+            && name.IsNullable && !name.IsIdentity && !name.IsPrimaryKey && result[1].Columns[0].MaxLength == -1, "Column order, length or default changed");
+        using var emptyTables = tables.Clone(); using var emptyColumns = columns.Clone();
+        using var emptyReader = new DataTableReader(new[] { emptyTables, emptyColumns });
+        Check(SqlServerDbAccess.ReadTableSchema(emptyReader).Count == 0, "Empty schema failed");
+        return Task.CompletedTask;
+    });
     await Test("Import length validation reports file, data row, column and lengths", () =>
     {
         using var data = new DataTable();
