@@ -36,6 +36,9 @@ dotnet build DataPieMaui\DataPieMaui.csproj -t:Run -c Debug
 
 Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that supports .NET 10 and .NET MAUI, select `DataPieMaui` as the startup project, and run the Windows target.
 
+<img width="2277" height="1606" alt="image" src="https://github.com/user-attachments/assets/bfabcc73-e812-47e5-b7b6-a5d1bee77a1a" />
+
+
 ## View object definitions
 
 Use **View definition** beside a view on **Batch export**, or beside a procedure on **Stored procedures**. Only clicking this button reads the selected definition; initialization does not read SQL bodies. The dialog supports **Copy SQL**, **Edit** for supported objects, and **Close**. Closing releases the text; reopening reads the latest definition. SQL Server permissions or encryption may prevent viewing a definition. SQLite shows converted procedure scripts. Database conversion still loads the definitions it needs.
