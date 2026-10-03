@@ -164,6 +164,48 @@ internal static class WorkspaceChecks
             Check(workspace.Context.Dialogs.Current?.Sql?.Contains("Name, Id") == true, "Reopen returned a cached definition");
             workspace.Context.Dialogs.Complete(true); await pending;
         });
+        await test("Procedure tabs separate parameterized execution from batch selection", async () =>
+        {
+            var previous = workspace.Context.Procedures.ToArray();
+            var plain = new DataPieMaui.ViewModels.SelectableObject("Plain", "Procedure") { DefinitionObject = new("Procedure", "dbo", "Plain") };
+            var parameterized = new DataPieMaui.ViewModels.SelectableObject("Parameterized", "Procedure") { DefinitionObject = new("Procedure", "dbo", "Parameterized") { HasParameters = true } };
+            workspace.Context.Procedures.Clear(); workspace.Context.Procedures.AddRange([plain, parameterized]);
+            workspace.Context.State.DatabaseType = "SQLSERVER";
+            workspace.Navigate("Procedures");
+            var services = new ServiceCollection().AddLogging();
+            services.AddSingleton<IJSRuntime, NoopJs>(); services.AddSingleton<IErrorBoundaryLogger, BoundaryLogger>();
+            await using var provider = services.BuildServiceProvider();
+            try
+            {
+                foreach (bool withParameters in new[] { false, true })
+                {
+                    proceduresPage.ChangeTab(withParameters ? "WithParameters" : "WithoutParameters");
+                    Check(proceduresPage.VisibleProcedures.SequenceEqual(new[] { withParameters ? parameterized : plain }), "Incorrect procedure classification");
+                    await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+                    string html = await renderer.Dispatcher.InvokeAsync(async () =>
+                    {
+                        var component = await renderer.RenderComponentAsync<Workspace>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Controller"] = workspace }));
+                        return component.ToHtmlString();
+                    });
+                    Check(html.Contains("Without parameters") && html.Contains("With parameters"), "Procedure tabs missing");
+                    Check(html.Contains("Run with parameters") == withParameters, "Parameter action on wrong tab");
+                    Check(html.Contains(">Run selected procedures</button>") != withParameters, "Batch action on wrong tab");
+                    Check(html.Contains("type=\"checkbox\"") != withParameters, "Selection checkbox on wrong tab");
+                    plain.Selected = true;
+                }
+                proceduresPage.ClearSelection(); Check(plain.Selected, "Other tab selection was cleared");
+                var recreated = new ProceduresPage { Workspace = workspace };
+                Check(recreated.VisibleProcedures.Single() == parameterized, "Tab was lost on page recreation");
+                await proceduresPage.RunProceduresAsync();
+                Check(workspace.Context.Dialogs.Current == null, "Parameter tab offered batch execution");
+                proceduresPage.ChangeTab("WithoutParameters"); proceduresPage.ClearSelection(); Check(!plain.Selected, "Visible selection was not cleared");
+            }
+            finally
+            {
+                workspace.Context.Procedures.Clear(); workspace.Context.Procedures.AddRange(previous);
+                workspace.Context.State.DatabaseType = "SQLITE"; workspace.Context.Form.ProcedureTab = "WithoutParameters";
+            }
+        });
         await test("Blazor pages render, encode input and show accessible confirmations", async () =>
         {
             var services = new ServiceCollection().AddLogging();
@@ -226,6 +268,26 @@ internal static class WorkspaceChecks
                 if (renderUi) SaveHtml("DefinitionEdit", editorHtml);
             }
             workspace.Context.Dialogs.Complete(false); await editDialog;
+            var procedureCompletion = new TaskCompletionSource<DBUtil.ProcedureExecutionResult>();
+            var procedureSession = new DataPieMaui.Services.Shared.ProcedureExecutionSession("server / db", new("Procedure", "dbo", "Run"),
+                [new("@Text", System.Data.SqlDbType.NVarChar, 100, 0, 0, System.Data.ParameterDirection.Input)], _ => procedureCompletion.Task);
+            procedureSession.Inputs[0].Text = "<script>bad</script>";
+            procedureSession.Review();
+            var procedureDialog = workspace.Context.Dialogs.ShowProcedureAsync(procedureSession);
+            await using (var procedureRenderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>()))
+            {
+                string html = await procedureRenderer.Dispatcher.InvokeAsync(async () =>
+                {
+                    var component = await procedureRenderer.RenderComponentAsync<DataPieMaui.Components.Shared.WorkspaceDialogView>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Dialogs"] = workspace.Context.Dialogs }));
+                    return component.ToHtmlString();
+                });
+                Check(html.Contains("Confirm run") && html.Contains("server / db") && !html.Contains("<script>bad</script>"), "Procedure confirmation target or encoding failed");
+            }
+            var runningProcedure = procedureSession.ConfirmAsync();
+            Check(!workspace.CanClose, "Native window allowed closing during procedure execution");
+            procedureCompletion.SetResult(new(-1, 0, new Dictionary<string, object>())); await runningProcedure;
+            Check(workspace.CanClose, "Native close remained blocked after execution");
+            workspace.Context.Dialogs.Complete(true); await procedureDialog;
             workspace.Context.State.DatabaseType = "SQLITE";
             workspace.Navigate("Query");
             // Initialization has already completed, so a static render can display a pending dialog.

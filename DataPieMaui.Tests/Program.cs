@@ -270,6 +270,7 @@ try
         return Task.CompletedTask;
     });
     await DefinitionEditChecks.Run(Test);
+    await ProcedureExecutionChecks.Run(Test);
     await SQLiteDefinitionEditChecks.Run(root, Test);
     await WorkspaceChecks.Run(root, Test, args.Contains("--render-ui"));
     Console.WriteLine($"{passed} regression checks passed.");

@@ -93,3 +93,7 @@ dt { color: #8493a0; } dd { margin: 0; }
 .definition-diff { max-height: 38vh; overflow: auto; border: 1px solid var(--border); padding: 12px; font: 12px/1.6 Consolas, monospace; }
 .definition-diff .removed { background: #ffe7e7; color: #842525; }
 .definition-diff .added { background: #dff4e5; color: #195630; }
+
+.procedure-parameter { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.procedure-summary { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 35vh; overflow: auto; }
+@media (max-width: 700px) { .procedure-parameter { grid-template-columns: 1fr; } }

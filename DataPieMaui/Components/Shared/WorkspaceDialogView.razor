@@ -10,6 +10,10 @@
         {
             <DefinitionEditorView Session="editor" OnClose="() => Dialogs.Complete(true)" />
         }
+        else if (dialog.Procedure is { } procedure)
+        {
+            <ProcedureExecutionView Session="procedure" OnClose="() => Dialogs.Complete(true)" />
+        }
         else
         {
             @if (!string.IsNullOrEmpty(dialog.Sql)) { <SqlDefinitionView Sql="@dialog.Sql" /> }

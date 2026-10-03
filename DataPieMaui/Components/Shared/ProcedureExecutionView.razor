@@ -1,0 +1,37 @@
+@using DataPieMaui.Services.Shared
+<p>Database: <strong>@Session.Database</strong><br />Procedure: <strong>@Session.Target.DisplayName</strong></p>
+@if (!string.IsNullOrEmpty(Session.Error)) { <p class="callout danger" role="alert">@Session.Error</p> }
+@if (Session.Result is { } result)
+{
+    <p role="status">Completed in @Session.ElapsedSeconds.ToString("F1") s. Return value: @result.ReturnValue. Rows affected: @(result.RowsAffected < 0 ? "Not reported" : result.RowsAffected.ToString()).</p>
+    @foreach (var output in result.Outputs) { <p><strong>@output.Key:</strong> @(output.Value is null or DBNull ? "NULL" : Convert.ToString(output.Value, System.Globalization.CultureInfo.InvariantCulture))</p> }
+    <p class="muted">Result sets are not displayed in this execution window.</p>
+}
+else if (Session.Reviewing)
+{
+    <p>This procedure may modify data. Confirm the database and parameter values before running.</p>
+    <pre class="procedure-summary">@Session.Summary</pre>
+    <div class="actions"><button class="primary" disabled="@Session.Running" @onclick="Session.ConfirmAsync">@(Session.Running ? "Running…" : "Confirm run")</button><button disabled="@Session.Running" @onclick="Session.Back">Back</button></div>
+}
+else
+{
+    <p class="muted">Choose Value, NULL, or Omit (server default if available). Empty text is an empty string. Use ISO dates and a decimal point. OUTPUT parameters can also accept an initial value.</p>
+    @if (!Session.Supported) { <p class="callout danger">This procedure has unsupported parameter types. Execution from this window is unavailable.</p> }
+    @foreach (var input in Session.Inputs)
+    {
+        <div class="procedure-parameter">
+            <label>@input.Parameter.Name · @input.Parameter.Description · @input.Parameter.Direction
+                <select @bind="input.Mode" disabled="@(!input.Parameter.Supported)"><option value="Value">Value</option><option value="NULL">NULL</option><option value="Omit">Omit (default if available)</option></select>
+            </label>
+            @if (input.Mode == "Value") { <label>Value for @input.Parameter.Name<input @bind="input.Text" @bind:event="oninput" disabled="@(!input.Parameter.Supported)" autocomplete="off" /></label> }
+        </div>
+    }
+    @if (Session.Inputs.Count == 0) { <p>This procedure has no parameters.</p> }
+    <div class="actions"><button class="primary" disabled="@(!Session.Supported)" @onclick="Session.Review">Review and run…</button></div>
+}
+<div class="actions dialog-actions"><button data-dismiss disabled="@Session.Running" @onclick="Close">Close</button></div>
+@code {
+    [Parameter, EditorRequired] public ProcedureExecutionSession Session { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    private async Task Close() { if (!Session.Running) await OnClose.InvokeAsync(); }
+}

@@ -10,9 +10,9 @@ namespace DBUtil
     {
         public IReadOnlyList<DefinitionObject> ListDefinitionObjects()
         {
-            using var reader = GetDataReader("SELECT CASE o.type WHEN 'V' THEN 'View' ELSE 'Procedure' END, s.name, o.name, o.object_id FROM sys.objects o JOIN sys.schemas s ON s.schema_id=o.schema_id WHERE o.type IN ('V','P','PC') AND o.is_ms_shipped=0 ORDER BY s.name,o.name");
+            using var reader = GetDataReader("SELECT CASE o.type WHEN 'V' THEN 'View' ELSE 'Procedure' END, s.name, o.name, o.object_id, CASE WHEN o.type IN ('P','PC') AND EXISTS (SELECT 1 FROM sys.parameters p WHERE p.object_id=o.object_id AND p.parameter_id>0) THEN 1 ELSE 0 END FROM sys.objects o JOIN sys.schemas s ON s.schema_id=o.schema_id WHERE o.type IN ('V','P','PC') AND o.is_ms_shipped=0 ORDER BY s.name,o.name");
             var items = new List<DefinitionObject>();
-            while (reader.Read()) items.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
+            while (reader.Read()) items.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)) { HasParameters = reader.GetInt32(4) == 1 });
             return items;
         }
 

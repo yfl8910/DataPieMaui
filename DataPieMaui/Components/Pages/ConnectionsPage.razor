@@ -74,6 +74,7 @@
         Results.Set(null);
         QuerySummary = "Run a preview to open the result table in a separate window.";
         Form.ExportTab = "Table";
+        Form.ProcedureTab = "WithoutParameters";
         Exports.Clear();
         Exports.AddRange(Tables.Select(n => new SelectableObject(n, "Table")));
         Exports.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "View").Select(o => new SelectableObject(o.Name, o.Kind) { DefinitionObject = o }));

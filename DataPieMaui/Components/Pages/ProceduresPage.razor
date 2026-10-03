@@ -1,19 +1,72 @@
 @using DBUtil
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
-<section class="card"><h2>Available procedures</h2><ObjectSelection Items="Model.Procedures" Label="Procedures" OnDefinition="Context.Definitions.ShowAsync" /><div class="actions"><button class="primary" @onclick="RunProceduresAsync">Run selected procedures</button><button @onclick="ClearSelection">Clear selection</button></div></section>
+<section class="card">
+    @if (IsSqlServer)
+    {
+        <div class="tabs" aria-label="Procedure types">
+            <button class="@(!ParameterizedTab ? "active" : "")" aria-pressed="@(!ParameterizedTab)" @onclick='() => ChangeTab("WithoutParameters")'>Without parameters</button>
+            <button class="@(ParameterizedTab ? "active" : "")" aria-pressed="@ParameterizedTab" @onclick='() => ChangeTab("WithParameters")'>With parameters</button>
+        </div>
+    }
+    else { <h2>Available procedures</h2> }
+    <ObjectSelection Items="VisibleProcedures" Label="Procedures" AllowSelection="@(!ParameterizedTab)" OnDefinition="Context.Definitions.ShowAsync" OnRunParameters="ParameterAction" />
+    @if (!ParameterizedTab)
+    {
+        <div class="actions"><button class="primary" @onclick="RunProceduresAsync">Run selected procedures</button><button @onclick="ClearSelection">Clear selection</button></div>
+    }
+</section>
 
 @code {
+    private bool IsSqlServer => Model.State.DatabaseType == "SQLSERVER";
+    private bool ParameterizedTab => IsSqlServer && Form.ProcedureTab == "WithParameters";
+    public List<SelectableObject> VisibleProcedures => Procedures.Where(p => !IsSqlServer || (p.DefinitionObject?.HasParameters == true) == ParameterizedTab).ToList();
+    public void ChangeTab(string tab)
+    {
+        if (IsOperationRunning || tab is not ("WithoutParameters" or "WithParameters")) return;
+        Form.ProcedureTab = tab;
+        Notify();
+    }
+    private EventCallback<SelectableObject> ParameterAction => ParameterizedTab
+        ? EventCallback.Factory.Create<SelectableObject>(this, RunWithParametersAsync) : default;
+
+    public Task RunWithParametersAsync(SelectableObject item) => RunAsync("Load procedure parameters", async watch =>
+    {
+        var connection = Database.Connection;
+        if (connection?.DatabaseType != "SQLSERVER" || !Procedures.Contains(item) || item.DefinitionObject is not { HasParameters: true } target) return;
+        var parameters = await Task.Run(() =>
+        {
+            using var access = (SqlServerDbAccess)DbAccessFactory.Create(connection.ConnectionString, "SQLSERVER");
+            return access.ReadProcedureParameters(target);
+        });
+        var builder = new System.Data.SqlClient.SqlConnectionStringBuilder(connection.ConnectionString);
+        var session = new ProcedureExecutionSession(builder.DataSource + " / " + builder.InitialCatalog, target, parameters, async values =>
+        {
+            if (!ReferenceEquals(connection, Database.Connection)) throw new InvalidOperationException("Connection changed. Reopen this window.");
+            State.Status = $"Running procedure {target.DisplayName}…";
+            return await Task.Run(() =>
+            {
+                using var access = (SqlServerDbAccess)DbAccessFactory.Create(connection.ConnectionString, "SQLSERVER");
+                return access.ExecuteProcedure(target, parameters, values);
+            });
+        });
+        await Dialogs.ShowProcedureAsync(session);
+        State.Status = session.Result != null ? $"Procedure {target.DisplayName} completed in {session.ElapsedSeconds:F1} s."
+            : session.Error.Length > 0 ? $"Procedure {target.DisplayName} was not completed. Check the database before retrying." : "Procedure execution canceled.";
+    });
+
     public void ClearSelection()
     {
         if (IsOperationRunning) return;
-        foreach (var item in Procedures) item.Selected = false;
+        foreach (var item in VisibleProcedures) item.Selected = false;
         Notify();
     }
 
     public Task RunProceduresAsync() => RunAsync("Run stored procedures", async watch =>
     {
-        var names = Procedures.Where(x => x.Selected).Select(x => x.Name).ToArray();
+        if (ParameterizedTab) return;
+        var selected = Procedures.Where(x => x.Selected && (!IsSqlServer || x.DefinitionObject?.HasParameters != true)).ToArray();
+        var names = selected.Select(x => Database.Connection?.DatabaseType == "SQLSERVER" ? SqlServerDbAccess.QualifiedProcedureName(x.DefinitionObject ?? throw new InvalidOperationException("Procedure metadata is missing. Reconnect.")) : x.Name).ToArray();
         if (names.Length == 0) throw new InvalidOperationException("Select stored procedures.");
         if (!await Dialogs.ConfirmAsync("Run stored procedures", $"Run {names.Length} procedures in sequence? They may modify data.", "Run")) return;
         watch.Start();

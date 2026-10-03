@@ -4,6 +4,7 @@ namespace DBUtil;
 
 public sealed record DefinitionObject(string Kind, string Schema, string Name, int Id = 0)
 {
+    public bool HasParameters { get; init; }
     public string DisplayName => string.IsNullOrEmpty(Schema) ? Name : Schema + "." + Name;
 }
 public sealed record ObjectDefinition(string Sql, string Notice = "")

@@ -8,7 +8,7 @@ public sealed class WorkspaceController
     public WorkspaceContext Context { get; }
     public DatabaseConversionService Conversion { get; }
     public bool IsOperationRunning => Context.Operations.IsRunning;
-    public bool CanClose => Context.Dialogs.Current?.Editor is { } editor
+    public bool CanClose => Context.Dialogs.Current?.Procedure is { } procedure ? !procedure.Running : Context.Dialogs.Current?.Editor is { } editor
         ? !editor.Saving && !editor.Dirty
         : !IsOperationRunning || Context.Dialogs.Current != null;
     public event Action? Changed
