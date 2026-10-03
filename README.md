@@ -2,6 +2,9 @@
 
 A Windows desktop workspace for querying, importing, exporting, and converting SQL Server and SQLite data. Built with .NET 10 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace and a separate query-results window.
 
+<img width="2277" height="1606" alt="image" src="https://github.com/user-attachments/assets/bfabcc73-e812-47e5-b7b6-a5d1bee77a1a" />
+
+
 ## Features
 
 - Connect to SQL Server using Windows or SQL Server authentication, or open a local SQLite database.
@@ -36,7 +39,6 @@ dotnet build DataPieMaui\DataPieMaui.csproj -t:Run -c Debug
 
 Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that supports .NET 10 and .NET MAUI, select `DataPieMaui` as the startup project, and run the Windows target.
 
-<img width="2277" height="1606" alt="image" src="https://github.com/user-attachments/assets/bfabcc73-e812-47e5-b7b6-a5d1bee77a1a" />
 
 
 ## View object definitions
