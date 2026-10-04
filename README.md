@@ -102,14 +102,14 @@ dotnet publish DataPieMaui\DataPieMaui.csproj `
   -c Release `
   -f net11.0-windows10.0.19041.0 `
   -r win-x64 `
-  --self-contained true `
-  -p:WindowsAppSDKSelfContained=true `
+  --self-contained false `
+  -p:WindowsAppSDKSelfContained=false `
   -o publish\win-x64
 ```
 
 Launch `publish\win-x64\DataPieMaui.exe`. Distribute the **entire folder**, including `wwwroot` and the dependency files, rather than the executable alone.
 
-This produces an unpackaged application with .NET and Windows App SDK dependencies. WebView2 Runtime remains a separate prerequisite on the destination computer.
+This produces a framework-dependent, unpackaged application. The destination computer must have the matching x64 .NET 11 runtime, Windows App Runtime, and WebView2 Runtime installed. Application libraries (including MAUI, database/Excel libraries, and Windows API projections) still ship with the application. Publish to a new empty folder when switching from self-contained deployment so old runtime files are not left behind.
 
 ## Regression checks
 
@@ -158,7 +158,7 @@ Generated directories such as `publish/`, `.vs/`, `bin/`, and `obj/` are exclude
 
 Open `DataPieMaui.sln` in Visual Studio with .NET 11 RC1 and the .NET MAUI workload installed. Stop debugging, set `DataPieMaui` as the startup project, and select **Release** and **Windows Machine**. Right-click the **DataPieMaui project** and select **Publish**, then use `FolderProfile`.
 
-The project explicitly declares `Publish` and `FolderPublish` capabilities for its unpackaged Windows configuration. After changing the project file, reload the project (or reopen the solution) so Visual Studio refreshes the commands. The profile publishes a self-contained Windows x64 application to `publish/win-x64`; distribute the entire directory. WebView2 Runtime is still required.
+The project explicitly declares `Publish` and `FolderPublish` capabilities for its unpackaged Windows configuration. After changing the project file, reload the project (or reopen the solution) so Visual Studio refreshes the commands. The profile publishes a framework-dependent Windows x64 application to the destination configured in `FolderProfile.pubxml`; distribute the entire directory. The matching x64 .NET 11 runtime, Windows App Runtime, and WebView2 Runtime must already be installed on the destination computer.
 
 If the MAUI tooling still disables the Publish command, the same profile can be run from Visual Studio's terminal:
 
