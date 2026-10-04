@@ -1,6 +1,6 @@
 # DataPieMaui
 
-A Windows desktop workspace for querying, importing, exporting, and converting SQL Server and SQLite data. Built with .NET 10 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace and a separate query-results window.
+A Windows desktop workspace for querying, importing, exporting, and converting SQL Server and SQLite data. Built with .NET 11 RC1 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace and a separate query-results window.
 
 <img width="2277" height="1606" alt="image" src="https://github.com/user-attachments/assets/bfabcc73-e812-47e5-b7b6-a5d1bee77a1a" />
 
@@ -20,24 +20,30 @@ A Windows desktop workspace for querying, importing, exporting, and converting S
 ## Requirements
 
 - Windows x64. The project declares Windows 10 version 1809 as its minimum OS version.
-- .NET 10 SDK and the `maui-windows` workload for development.
+- .NET SDK `11.0.100-rc.1.26425.128` and the `maui-windows` workload set `11.0.100-rc.1.26458.5` for development. `global.json` selects the SDK feature band and allows prerelease SDKs.
 - Microsoft Edge WebView2 Runtime for the entire application interface, including when running a published copy. If it is missing, the native host displays an installation message instead of opening the workspace.
 - Access to NuGet when restoring dependencies for the first time.
 
 The current project targets Windows only.
+
+As of October 4, 2026, .NET 11 RC1 is the latest .NET 11 release; it is a release candidate, not the final release. MAUI Controls and Blazor WebView use `11.0.0-rc.1.26451.6`. Install the matching SDK from https://dotnet.microsoft.com/en-us/download/dotnet/11.0 before using the commands below. Visual Studio must support this SDK and have preview SDK usage enabled where required.
+
+Visual Studio needs the SDK installed system-wide (normally under `C:\Program Files\dotnet`), plus the matching MAUI workload. An SDK installed only in `tmp/net11/sdk/` is sufficient for explicit command-line validation but is not automatically discovered by Visual Studio. `global.json` selects an installed SDK; it does not install one.
+
+If Visual Studio reports that the current SDK cannot target .NET 11, install the x64 SDK version above, run the workload installation command below, and restart Visual Studio. Check `dotnet --list-sdks` and `dotnet --version` from the repository root. This repository explicitly enables prerelease SDK selection through `global.json`.
 
 ## Build and run
 
 Run these PowerShell commands from the repository root:
 
 ```powershell
-dotnet workload install maui-windows
+dotnet workload install maui-windows --version 11.0.100-rc.1.26458.5
 dotnet restore DataPieMaui\DataPieMaui.csproj
 dotnet build DataPieMaui\DataPieMaui.csproj -c Debug
 dotnet build DataPieMaui\DataPieMaui.csproj -t:Run -c Debug
 ```
 
-Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that supports .NET 10 and .NET MAUI, select `DataPieMaui` as the startup project, and run the Windows target.
+Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that supports .NET 11 RC1 and .NET MAUI, select `DataPieMaui` as the startup project, and run the Windows target.
 
 
 
@@ -94,7 +100,7 @@ When distributing a converted SQLite database, keep its generated `StoredProcedu
 ```powershell
 dotnet publish DataPieMaui\DataPieMaui.csproj `
   -c Release `
-  -f net10.0-windows10.0.19041.0 `
+  -f net11.0-windows10.0.19041.0 `
   -r win-x64 `
   --self-contained true `
   -p:WindowsAppSDKSelfContained=true `
@@ -150,7 +156,7 @@ Generated directories such as `publish/`, `.vs/`, `bin/`, and `obj/` are exclude
 
 ### Publish from Visual Studio
 
-Open `DataPieMaui.sln` in Visual Studio with .NET 10 and the .NET MAUI workload installed. Stop debugging, set `DataPieMaui` as the startup project, and select **Release** and **Windows Machine**. Right-click the **DataPieMaui project** and select **Publish**, then use `FolderProfile`.
+Open `DataPieMaui.sln` in Visual Studio with .NET 11 RC1 and the .NET MAUI workload installed. Stop debugging, set `DataPieMaui` as the startup project, and select **Release** and **Windows Machine**. Right-click the **DataPieMaui project** and select **Publish**, then use `FolderProfile`.
 
 The project explicitly declares `Publish` and `FolderPublish` capabilities for its unpackaged Windows configuration. After changing the project file, reload the project (or reopen the solution) so Visual Studio refreshes the commands. The profile publishes a self-contained Windows x64 application to `publish/win-x64`; distribute the entire directory. WebView2 Runtime is still required.
 
