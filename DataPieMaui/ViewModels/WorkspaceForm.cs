@@ -13,8 +13,6 @@ public sealed class WorkspaceForm
     public string DatabaseName { get; set; } = "";
     public string SqlitePath { get; set; } = "";
     public int SelectedConnectionId { get; set; }
-    public string ConnectionName { get; set; } = "";
-    public string ConnectionType { get; set; } = "SQLSERVER";
     public string ConnectionString { get; set; } = "";
     public string QueryTable { get; set; } = "";
     public string Sql { get; set; } = "";
