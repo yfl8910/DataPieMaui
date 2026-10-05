@@ -5,6 +5,7 @@ public sealed record WorkspaceDialog(string Title, string Message, string Accept
 public sealed class WorkspaceDialogs
 {
     private TaskCompletionSource<bool>? completion;
+    private WorkspaceDialog? unavailable;
     public WorkspaceDialog? Current { get; private set; }
     public event Action? Changed;
 
@@ -20,6 +21,8 @@ public sealed class WorkspaceDialogs
         var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         completion = pending;
         Current = dialog;
+        if (dialog.Editor is { } editor) editor.BecameIdle += CompleteUnavailable;
+        if (dialog.Procedure is { } procedure) procedure.BecameIdle += CompleteUnavailable;
         Changed?.Invoke();
         return pending.Task;
     }
@@ -27,9 +30,30 @@ public sealed class WorkspaceDialogs
     public void Complete(bool accepted)
     {
         var pending = completion;
+        if (Current?.Editor is { } editor) editor.BecameIdle -= CompleteUnavailable;
+        if (Current?.Procedure is { } procedure) procedure.BecameIdle -= CompleteUnavailable;
+        unavailable = null;
         completion = null;
         Current = null;
         Changed?.Invoke();
         pending?.TrySetResult(accepted);
+    }
+
+    // A stale render or a disappearing WebView must not dismiss a newer dialog,
+    // or release the operation gate while a database command is still running.
+    public bool TryCancelUnavailable(WorkspaceDialog expected)
+    {
+        if (!ReferenceEquals(Current, expected)) return false;
+        if (expected.Editor?.Saving == true || expected.Procedure?.Running == true)
+        {
+            unavailable = expected;
+            return false;
+        }
+        Complete(false);
+        return true;
+    }
+    private void CompleteUnavailable()
+    {
+        if (unavailable is { } dialog) TryCancelUnavailable(dialog);
     }
 }

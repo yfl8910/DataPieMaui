@@ -5,7 +5,7 @@ using System.Text;
 using DBUtil;
 using System.Data.SQLite;
 using System.Text.RegularExpressions;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Data;
 
 namespace DataPieCore

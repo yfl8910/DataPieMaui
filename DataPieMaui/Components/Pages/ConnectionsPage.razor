@@ -50,7 +50,8 @@
     {
         if (IsOperationRunning) return;
         Form.SelectedConnectionId = id;
-        Form.ConnectionString = Connections.FirstOrDefault(x => x.Id == id)?.ConnectionStrings ?? "";
+        var selected = Connections.FirstOrDefault(x => x.Id == id);
+        Form.ConnectionString = selected == null ? "" : Info(selected).ConnectionString;
         Notify();
     }
     private Dbinfo SelectedConnection() => Connections.FirstOrDefault(x => x.Id == Form.SelectedConnectionId) ?? throw new InvalidOperationException("Select a connection.");
@@ -77,7 +78,19 @@
         Section = "Query";
     }
 
-    public Task ConnectSavedAsync() => RunAsync("Connect to database", async watch => { watch.Start(); await ConnectAsync(SelectedConnection(), false); });
+    public Task ConnectSavedAsync() => RunAsync("Connect to database", async watch =>
+    {
+        var original = SelectedConnection();
+        var record = new Dbinfo { Id = original.Id, Dbname = original.Dbname, Dbtype = original.Dbtype,
+            ConnectionStrings = Info(original).ConnectionString };
+        watch.Start();
+        await ConnectAsync(record, false);
+        if (record.ConnectionStrings != original.ConnectionStrings)
+        {
+            await Task.Run(() => Store.Save(record));
+            await ReloadConnectionsAsync();
+        }
+    });
     public Task DeleteConnectionAsync() => RunAsync("Delete connection", async watch =>
     {
         var item = SelectedConnection();

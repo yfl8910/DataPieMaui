@@ -206,6 +206,26 @@ internal static class WorkspaceChecks
                 workspace.Context.State.DatabaseType = "SQLITE"; workspace.Context.Form.ProcedureTab = "WithoutParameters";
             }
         });
+        await test("Saved connections default to encrypted certificate trust without changing identity", () =>
+        {
+            var previous = workspace.Context.Connections;
+            int previousId = workspace.Context.Form.SelectedConnectionId;
+            var first = new Dbinfo { Id = 9001, Dbname = "first", Dbtype = "SQLSERVER", ConnectionStrings = "Server=one;Database=db;Integrated Security=true;Encrypt=Strict" };
+            var second = new Dbinfo { Id = 9002, Dbname = "second", Dbtype = "SQLSERVER", ConnectionStrings = "Server=two;Database=db;Integrated Security=true" };
+            try
+            {
+                workspace.Context.Connections = [first, second];
+                connectionsPage.SelectConnection(first.Id);
+                var draft = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(workspace.Context.Form.ConnectionString);
+                Check(draft.TrustServerCertificate && draft.Encrypt == Microsoft.Data.SqlClient.SqlConnectionEncryptOption.Mandatory, "Strict encryption prevented explicit certificate trust");
+                Check(first.ConnectionStrings.Contains("Encrypt=Strict"), "Unsaved setting changed stored record");
+                connectionsPage.SelectConnection(second.Id);
+                var next = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(workspace.Context.Form.ConnectionString);
+                Check(next.TrustServerCertificate && next.DataSource == "two", "Saved connection defaults or identity incorrect");
+            }
+            finally { workspace.Context.Connections = previous; connectionsPage.SelectConnection(previousId); }
+            return Task.CompletedTask;
+        });
         await test("Blazor pages render, encode input and show accessible confirmations", async () =>
         {
             var services = new ServiceCollection().AddLogging();

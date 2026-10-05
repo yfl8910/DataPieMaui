@@ -20,6 +20,7 @@ public sealed class DefinitionEditorSession(
     }
     public bool Editing { get; private set; }
     public bool Saving { get; private set; }
+    public event Action? BecameIdle;
     public bool Dirty => Draft != Original.Sql;
     public string? ReviewSql { get; private set; }
     public string Error { get; private set; } = "";
@@ -70,7 +71,7 @@ public sealed class DefinitionEditorSession(
             Original = saved; ResetEdit(); Message = "Definition saved and reloaded.";
         }
         catch (Exception ex) { Error = ex.Message; ReviewSql = null; }
-        finally { Saving = false; }
+        finally { Saving = false; BecameIdle?.Invoke(); }
     }
 
     public IEnumerable<(string Kind, string Text)> Difference()

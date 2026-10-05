@@ -21,7 +21,7 @@ public sealed class DefinitionService(WorkspaceContext context)
         DefinitionEditorSession? editor = null;
         if (current.DatabaseType == "SQLSERVER" && !string.IsNullOrEmpty(result.Sql))
         {
-            var builder = new System.Data.SqlClient.SqlConnectionStringBuilder(current.ConnectionString);
+            var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(current.ConnectionString);
             editor = new DefinitionEditorSession(key, result, builder.DataSource + " / " + builder.InitialCatalog, async (original, draft) =>
             {
                 if (!ReferenceEquals(current, context.Database.Connection)) throw new InvalidOperationException("Connection changed. Reopen the definition.");

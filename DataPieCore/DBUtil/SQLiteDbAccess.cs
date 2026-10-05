@@ -33,10 +33,6 @@ namespace DBUtil
                 int r = cmd.ExecuteNonQuery();
                 return r;
             }
-            catch (Exception e)
-            {
-                throw e;
-            }
             finally
             {
                 conn.Close();

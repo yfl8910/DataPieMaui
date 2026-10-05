@@ -1,11 +1,13 @@
 @inject IJSRuntime JS
+@inject Microsoft.Extensions.Logging.ILogger<WorkspaceDialogView> Logger
 @implements IDisposable
 
 @if (Dialogs.Current is { } dialog)
 {
-    <dialog id="workspace-dialog" class="app-dialog @(dialog.Sql is not null ? "definition-dialog" : "")" aria-labelledby="dialog-title" aria-describedby="dialog-message">
+    <dialog id="workspace-dialog" open="@fallback" class="app-dialog @(dialog.Sql is not null ? "definition-dialog" : "")" aria-labelledby="dialog-title" aria-describedby="dialog-message">
         <h2 id="dialog-title">@dialog.Title</h2>
         <p id="dialog-message">@dialog.Message</p>
+        @if (fallback) { <p role="alert">The modal window could not open. You can use the controls below to continue or close it.</p> }
         @if (dialog.Editor is { } editor)
         {
             <DefinitionEditorView Session="editor" OnClose="() => Dialogs.Complete(true)" />
@@ -28,11 +30,37 @@
 @code {
     [Parameter, EditorRequired] public WorkspaceDialogs Dialogs { get; set; } = default!;
     private bool disposed;
+    private bool fallback;
+    private WorkspaceDialog? displayed;
+    private readonly CancellationTokenSource lifetime = new();
     protected override void OnInitialized() => Dialogs.Changed += Refresh;
     private void Refresh() => _ = InvokeAsync(() => { if (!disposed) StateHasChanged(); });
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Dialogs.Current != null) await JS.InvokeVoidAsync("dataPie.showDialog", "workspace-dialog");
+        if (disposed || Dialogs.Current is not { } dialog) return;
+        if (!ReferenceEquals(displayed, dialog)) { displayed = dialog; fallback = false; }
+        if (fallback) return;
+        try { await JS.InvokeVoidAsync("dataPie.showDialog", lifetime.Token, "workspace-dialog"); }
+        catch (Exception ex) when (ex is JSDisconnectedException or ObjectDisposedException || ex is OperationCanceledException && disposed)
+        {
+            Dialogs.TryCancelUnavailable(dialog);
+        }
+        catch (Exception ex) when (ex is JSException or OperationCanceledException)
+        {
+            Microsoft.Extensions.Logging.LoggerExtensions.LogError(Logger, ex, "Unable to open workspace dialog.");
+            if (!disposed && ReferenceEquals(Dialogs.Current, dialog))
+            {
+                // Keep drafts and active executions alive. A plain open dialog is
+                // usable without showModal; background controls remain inert.
+                fallback = true;
+                StateHasChanged();
+            }
+        }
     }
-    public void Dispose() { disposed = true; Dialogs.Changed -= Refresh; }
+    public void Dispose()
+    {
+        disposed = true; Dialogs.Changed -= Refresh;
+        lifetime.Cancel(); lifetime.Dispose();
+        if (displayed is { } dialog) Dialogs.TryCancelUnavailable(dialog);
+    }
 }

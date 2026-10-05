@@ -1,5 +1,5 @@
 using System;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Data.SQLite;
 
 namespace DataPieMaui.Services
@@ -26,7 +26,9 @@ namespace DataPieMaui.Services
             var builder = new SqlConnectionStringBuilder
             {
                 DataSource = ServerName, InitialCatalog = database,
-                IntegratedSecurity = ValidataType == "Windows"
+                IntegratedSecurity = ValidataType == "Windows",
+                Encrypt = SqlConnectionEncryptOption.Mandatory,
+                TrustServerCertificate = true
             };
             if (builder.IntegratedSecurity)
             {

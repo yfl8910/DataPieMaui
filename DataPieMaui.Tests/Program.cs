@@ -210,10 +210,19 @@ try
     await Test("SQL Server authentication string construction", () =>
     {
         var config = new DBConfig { ProviderName = "SQLSERVER", ServerName = "localhost", DataBase = "sample", ValidataType = "Windows" };
-        var integrated = new System.Data.SqlClient.SqlConnectionStringBuilder(config.GetConstring());
+        var integrated = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(config.GetConstring());
         Check(integrated.IntegratedSecurity && integrated.InitialCatalog == "sample", "Windows auth failed");
+        Check(integrated.Encrypt == Microsoft.Data.SqlClient.SqlConnectionEncryptOption.Mandatory && integrated.TrustServerCertificate, "Secure connection defaults changed");
+        foreach (var value in new[] { config.GetConstring(), config.GetSQLmasterConstring() })
+        {
+            var trusted = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(value);
+            Check(trusted.TrustServerCertificate && trusted.Encrypt == Microsoft.Data.SqlClient.SqlConnectionEncryptOption.Mandatory, "Certificate option not applied to database and master connections");
+        }
+        const string explicitSettings = "Server=localhost;Database=sample;Integrated Security=true;Encrypt=Optional;TrustServerCertificate=false";
+        var savedConnection = new DatabaseConnectionInfo("SQLSERVER", explicitSettings, "saved");
+        Check(new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(savedConnection.ConnectionString).TrustServerCertificate, "Saved connection did not trust certificate by default");
         config.ValidataType = "SQL Server"; config.UserName = "test"; config.UserPwd = "a;b=\"c";
-        var sqlAuth = new System.Data.SqlClient.SqlConnectionStringBuilder(config.GetConstring());
+        var sqlAuth = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(config.GetConstring());
         Check(!sqlAuth.IntegratedSecurity && sqlAuth.Password == config.UserPwd, "Password escaping failed");
         return Task.CompletedTask;
     });
@@ -270,6 +279,7 @@ try
         return Task.CompletedTask;
     });
     await DefinitionEditChecks.Run(Test);
+    await DialogLifecycleChecks.Run(Test);
     await ProcedureExecutionChecks.Run(Test);
     await SQLiteDefinitionEditChecks.Run(root, Test);
     await WorkspaceChecks.Run(root, Test, args.Contains("--render-ui"));

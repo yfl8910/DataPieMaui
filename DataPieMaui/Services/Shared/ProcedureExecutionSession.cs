@@ -1,4 +1,4 @@
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Diagnostics;
 using DBUtil;
 
@@ -20,6 +20,7 @@ public sealed class ProcedureExecutionSession(string database, DefinitionObject 
     public bool Supported => Inputs.All(p => p.Parameter.Supported);
     public bool Reviewing { get; private set; }
     public bool Running { get; private set; }
+    public event Action? BecameIdle;
     public string Error { get; private set; } = "";
     public string Summary { get; private set; } = "";
     public ProcedureExecutionResult? Result { get; private set; }
@@ -53,6 +54,6 @@ public sealed class ProcedureExecutionSession(string database, DefinitionObject 
         var watch = Stopwatch.StartNew();
         try { Result = await execute(approved); }
         catch (Exception ex) { Error = ex.Message + " Execution may have partially modified data. Check the database before retrying."; }
-        finally { ElapsedSeconds = watch.Elapsed.TotalSeconds; Running = false; Reviewing = false; approved = []; }
+        finally { ElapsedSeconds = watch.Elapsed.TotalSeconds; Running = false; Reviewing = false; approved = []; BecameIdle?.Invoke(); }
     }
 }

@@ -17,7 +17,13 @@ namespace DataPieMaui.Services
             if (string.IsNullOrWhiteSpace(displayName))
                 throw new ArgumentException("Please provide a connection name.", nameof(displayName));
             DatabaseType = databaseType;
-            ConnectionString = connectionString;
+            ConnectionString = databaseType == "SQLSERVER"
+                ? new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString)
+                {
+                    Encrypt = Microsoft.Data.SqlClient.SqlConnectionEncryptOption.Mandatory,
+                    TrustServerCertificate = true
+                }.ToString()
+                : connectionString;
             DisplayName = displayName;
         }
     }

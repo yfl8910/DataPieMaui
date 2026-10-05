@@ -39,7 +39,7 @@
             using var access = (SqlServerDbAccess)DbAccessFactory.Create(connection.ConnectionString, "SQLSERVER");
             return access.ReadProcedureParameters(target);
         });
-        var builder = new System.Data.SqlClient.SqlConnectionStringBuilder(connection.ConnectionString);
+        var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connection.ConnectionString);
         var session = new ProcedureExecutionSession(builder.DataSource + " / " + builder.InitialCatalog, target, parameters, async values =>
         {
             if (!ReferenceEquals(connection, Database.Connection)) throw new InvalidOperationException("Connection changed. Reopen this window.");
