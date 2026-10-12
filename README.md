@@ -1,5 +1,7 @@
 # DataPieMaui
 
+English | [简体中文](README.zh-CN.md)
+
 A Windows desktop workspace for querying, importing, exporting, designing tables, and converting SQL Server and SQLite data. Built with .NET 11 RC1 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace and a separate query-results window.
 
 <img width="2277" height="1606" alt="image" src="https://github.com/user-attachments/assets/bfabcc73-e812-47e5-b7b6-a5d1bee77a1a" />
@@ -7,7 +9,7 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 
 ## Features
 
-- Connect to SQL Server using Windows or SQL Server authentication, open a local SQLite database, or create a blank SQLite database and connect automatically.
+- Connect to SQL Server using Windows or SQL Server authentication, open a local SQLite database, or create a blank SQLite database and connect automatically without saving its connection configuration.
 - Navigate between Blazor pages without losing SQL or form inputs; review operations in shared confirmation dialogs and a persistent status bar.
 - Save and manage database connections.
 - Generate SELECT, UPDATE, and DELETE statements and execute SQL.
@@ -22,7 +24,7 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 ## Requirements
 
 - Windows x64. The project declares Windows 10 version 1809 as its minimum OS version.
-- The .NET 11 RC1 SDK selected in `global.json` and the matching `maui-windows` workload for development. The project currently targets `net11.0-windows10.0.19041.0`.
+- The .NET SDK `11.0.100-rc.1.26425.128` selected in `global.json` and the matching `maui-windows` workload for development. The project currently targets `net11.0-windows10.0.19041.0`.
 - Microsoft Edge WebView2 Runtime for the entire application interface, including when running a published copy. If it is missing, the native host displays an installation message instead of opening the workspace.
 - Access to NuGet when restoring dependencies for the first time.
 
@@ -81,13 +83,19 @@ Each successful script save atomically replaces the file and retains the origina
 
 On **Import data**, select a **Target table** and click **Query data** to inspect it. On **Batch export**, each table/view has its own **Query data** button, independent of the export checkboxes. These actions reuse the results window, show the object name, and preserve your SQL editor and selections. Object previews have the same 1,000-row limit, sorting, paging, and copying as SQL previews.
 
+### Import data layout and validation
+
+The top card contains **Target table**, **Query data**, **Export template**, and **Clear data**. Below it, **Import a file** and **Batch import** switch the content inside one shared white card. The target table and file/folder paths remain available when switching tabs or navigating away.
+
+**Import a file** supports XLSX, XLS, CSV, and a SQLite database containing the matching source table. **Validate lengths and import** additionally checks SQL Server destination field lengths. **Batch import** appends supported CSV/XLSX files sequentially and enables length validation. A failed batch retains data already imported; the status identifies the failing file. **Export template** writes the selected table's columns to an empty Excel workbook. **Clear data** requires confirmation and retains the table structure.
+
 ### Running SQL Server procedures with parameters
 
 On **Stored procedures**, SQL Server procedures are grouped into **Without parameters** and **With parameters** tabs. Only the first tab offers selection and batch execution; the second offers **Run with parameters** per procedure. Classification reads only parameter existence alongside object names, excluding RETURN values. Defaulted and OUTPUT parameters count as parameters. Detailed parameter metadata loads only when the execution window is opened; definitions and parameter lists are not fetched at connection time. Reconnect after external signature changes to refresh classification. Enter values, select **NULL**, or choose **Omit** to let SQL Server use a default if one exists. An omitted required parameter produces a server error. Empty text remains an empty string. OUTPUT parameters support initial values; omitting one also means its output is not collected.
 
 **Review and run…** displays the server/database, schema-qualified procedure and submitted values. Only **Confirm run** executes the command. The application passes typed SqlParameters, rechecks parameter metadata before execution, blocks duplicate submissions and window closure while running, and displays elapsed time, OUTPUT values and the procedure RETURN code separately from affected rows. Affected rows may be unavailable with NOCOUNT. Execution errors retain input; a failed or timed-out procedure may already have modified data, so inspect the database before retrying. Timeout is 120 seconds; execution is not automatically wrapped in an application transaction.
 
-Supported inputs include common numeric, string, date/time, GUID and XML types. Decimal input currently uses .NET decimal's range/precision. Table-valued, binary, CLR/UDT and other unsupported parameter types disable this execution window. Complete value constraints and EXECUTE/metadata permissions are enforced by SQL Server. Result sets are not displayed in this first phase. The existing batch button remains available without parameter configuration and now uses schema-qualified SQL Server names. SQLite execution is unchanged. No new package dependency is required.
+Supported inputs include common numeric, string, date/time, GUID and XML types. Decimal input currently uses .NET decimal's range/precision. Table-valued, binary, CLR/UDT and other unsupported parameter types disable this execution window. Complete value constraints and EXECUTE/metadata permissions are enforced by SQL Server. Result sets are not displayed in the parameter execution dialog. The existing batch button remains available without parameter configuration and now uses schema-qualified SQL Server names. SQLite converted scripts use their existing execution flow.
 
 ### SQL Server driver and dialog reliability
 
@@ -100,6 +108,8 @@ If opening a modal via JavaScript fails or times out, its controls remain availa
 Connect to SQL Server or SQLite, open **Table design → Create table**, and select an XLSX or XLS file and worksheet. **Generate SQL** scans all data rows and uses the worksheet name as the table name and the first row as column names. Review the editable SQL, including the table name, then select **Create table** and confirm execution. The shared table lists refresh after successful execution. This creates structure only; use **Import data** to load rows afterward.
 
 Text cells retain text types, including leading-zero identifiers. Whole numeric values use BIGINT/INTEGER, fractional numeric values use FLOAT/REAL, and mixed or empty columns use NVARCHAR(MAX)/TEXT. SQL Server dates use DATETIME2 and booleans use BIT; SQLite dates use TEXT and booleans use INTEGER. A column named Id (case-insensitive) defaults to BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY on SQL Server, or INTEGER PRIMARY KEY AUTOINCREMENT on SQLite, regardless of its Excel values. Other columns initially allow NULL. Review the SQL to change this default. Empty or duplicate headers are rejected. Generated SQL never drops or overwrites an existing table. Changing the database connection clears the SQL draft so it can be regenerated for the new provider.
+
+SQLite automatically creates the internal `sqlite_sequence` table when an AUTOINCREMENT table is created; it tracks the largest assigned IDs. This is expected. `INTEGER PRIMARY KEY` also assigns IDs automatically but may reuse deleted IDs; remove AUTOINCREMENT in the SQL editor only if that behavior is acceptable.
 
 ### Table design: Drop table
 
@@ -120,6 +130,8 @@ For operations with a save picker or confirmation dialog, elapsed-time measureme
 Only one operation can run at a time. Navigation and operation buttons are disabled while it runs; conversion cancellation remains available in the status bar. Confirmation dialogs support keyboard focus and Escape to cancel. Native Windows file pickers remain in use for opening files and choosing export destinations.
 
 ### Local data and conversion
+
+Opening an existing SQLite database with **Connect and save** saves its configuration. Creating a blank database only creates and connects; it does not add a saved connection. Its destination selector returns a path without creating a placeholder file, and creation refuses to overwrite an existing file.
 
 Saved connections are stored in `%LOCALAPPDATA%\DataPie\connections.db`. Connection strings are stored without application-level encryption and can contain database passwords; treat this file as private configuration.
 
