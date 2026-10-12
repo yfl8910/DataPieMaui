@@ -1,6 +1,16 @@
 @using DataPieCore
 @inherits WorkspacePageBase
 <section class="card">
+    <div class="tabs" aria-label="Table design actions">
+        @foreach (var tab in new[] { ("Create", "Create table"), ("Drop", "Drop table") })
+        {
+            <button class="@(Form.TableDesignTab == tab.Item1 ? "active" : "")" aria-pressed="@(Form.TableDesignTab == tab.Item1)" @onclick="() => ChangeTab(tab.Item1)">@tab.Item2</button>
+        }
+    </div>
+</section>
+@if (Form.TableDesignTab == "Create")
+{
+<section class="card">
     <h2>Excel worksheet</h2>
     <p class="muted">The first row supplies column names. The worksheet name becomes the table name; edit it directly in the SQL below.</p>
     <div class="actions align-end">
@@ -15,7 +25,48 @@
     <p class="muted">Review inferred types before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.</p>
     <div class="actions"><button class="primary" @onclick="CreateAsync" disabled="@(string.IsNullOrWhiteSpace(Form.CreateTableSql))">Create table</button></div>
 </section>
+
+}
+else
+{
+    <section class="card"><h2>Drop table</h2>
+        <p class="callout danger">Permanently delete the table structure and all its data from @State.Connection. This cannot be undone.</p>
+        <label>Table to delete<select @bind="Form.DropTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label>
+        <div class="actions"><button class="danger" @onclick="DropTableAsync" disabled="@(string.IsNullOrEmpty(Form.DropTable))">Drop table</button></div>
+    </section>
+}
 @code {
+    public void ChangeTab(string tab)
+    {
+        if (IsOperationRunning || tab is not ("Create" or "Drop")) return;
+        Form.TableDesignTab = tab;
+        Notify();
+    }
+    public Task DropTableAsync() => RunAsync("Drop table", async watch =>
+    {
+        var table = Required(Form.DropTable, "Select a table to delete.");
+        if (!Tables.Contains(table)) throw new InvalidOperationException("The table is not in the current database. Reconnect to refresh the list.");
+        if (!await Dialogs.ConfirmAsync("Drop table", $"Permanently delete table {table} and ALL its data from {State.Connection}? This cannot be undone.", "Drop table")) return;
+        watch.Start();
+        await Database.DropTableAsync(table);
+        watch.Stop();
+        Form.DropTable = "";
+        if (Form.ImportTable == table) Form.ImportTable = "";
+        if (Form.QueryTable == table) Form.QueryTable = "";
+        Results.Set(null);
+        QuerySummary = "Run a new preview after deleting the table.";
+        Tables = Tables.Where(n => n != table).ToArray();
+        Exports.RemoveAll(x => x.Kind == "Table" && x.Name == table);
+        State.Status = $"Table {table} deleted in {watch.Elapsed.TotalSeconds:F1} s.";
+        Notify();
+        try { await Context.RefreshSchemaAsync(); }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Table deleted", "The table was deleted, but refreshing the schema failed. Reconnect to reload the table list. " + ex.Message);
+        }
+    });
+
+
     public Task BrowseAsync() => RunAsync("Read Excel worksheets", async watch =>
     {
         var path = await Desktop.OpenAsync(".xlsx", ".xls");

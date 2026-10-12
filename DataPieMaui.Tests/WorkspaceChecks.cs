@@ -27,6 +27,7 @@ internal static class WorkspaceChecks
         var queryPage = new QueryPage { Workspace = workspace };
         var importPage = new ImportPage { Workspace = workspace };
         var exportPage = new ExportPage { Workspace = workspace };
+        var tableDesignPage = new TableDesignPage { Workspace = workspace };
         var proceduresPage = new ProceduresPage { Workspace = workspace };
         await test("Blazor workspace connects, previews and keeps inputs across pages", async () =>
         {
@@ -54,7 +55,7 @@ internal static class WorkspaceChecks
             Check(sqlServer.Contains("CREATE TABLE [Orders]") && sqlServer.Contains("[Code] NVARCHAR(MAX)") && sqlServer.Contains("[Quantity] BIGINT") && sqlServer.Contains("[Rate] FLOAT") && sqlServer.Contains("[Odd]]Name]"), "Incorrect types or quoting");
             workspace.Context.Form.CreateTablePath = excel;
             workspace.Context.Form.CreateTableSheet = "Orders";
-            var page = new CreateTablePage { Workspace = workspace };
+            var page = new TableDesignPage { Workspace = workspace };
             await page.GenerateAsync();
             Check(workspace.Context.Form.CreateTableSql.Contains("CREATE TABLE \"Orders\""), "Sheet name not used as table name");
             workspace.Context.Form.CreateTableSql = workspace.Context.Form.CreateTableSql.Replace("\"Orders\"", "\"ReviewedOrders\"");
@@ -278,7 +279,7 @@ internal static class WorkspaceChecks
             workspace.Context.Form.Sql = "SELECT '<script>alert(1)</script>'";
             var pages = new[]
             {
-                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("CreateTable", "Excel worksheet"), ("Import", "Source folder"),
+                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("TableDesign", "Excel worksheet"), ("TableDesign", "Table to delete"), ("Import", "Source folder"),
                 ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("About", "Blazor Hybrid")
             };
             // Render the conversion page without connecting to an external SQL Server.
@@ -288,6 +289,7 @@ internal static class WorkspaceChecks
                 workspace.Navigate(section);
                 if (section == "Export") exportPage.ChangeTab("View");
                 if (section == "Import") importPage.ChangeTab("Batch");
+                if (section == "TableDesign") tableDesignPage.ChangeTab(expected == "Table to delete" ? "Drop" : "Create");
                 await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
                 string html = await renderer.Dispatcher.InvokeAsync(async () =>
                 {
@@ -295,6 +297,8 @@ internal static class WorkspaceChecks
                     return component.ToHtmlString();
                 });
                 Check(html.Contains(expected), "Missing content for " + section);
+                if (section == "Import") Check(!html.Contains("Drop table"), "Deletion remains on import page" );
+                if (section == "TableDesign") Check(html.Contains("Generate SQL") == (expected == "Excel worksheet"), "Table design tabs show the wrong form" );
                 if (section is "Import" or "Export") Check(html.Contains("Query data"), "Object query button missing in " + section);
                 if (section == "Procedures") Check(!html.Contains("object-preview"), "Procedures incorrectly offer table preview");
                 if (section == "Export") Check(html.Contains("View definition") && !html.Contains("SQL definition"), "Definition action missing or SQL eagerly shown");
@@ -373,7 +377,7 @@ internal static class WorkspaceChecks
         {
             var file = workspace.Context.Form.ImportPath;
             var folder = workspace.Context.Form.ImportFolder;
-            importPage.ChangeTab("File"); importPage.ChangeTab("Batch"); importPage.ChangeTab("Drop");
+            importPage.ChangeTab("File"); importPage.ChangeTab("Batch"); tableDesignPage.ChangeTab("Drop");
             Check(workspace.Context.Form.ImportPath == file && workspace.Context.Form.ImportFolder == folder, "Tabs discarded import inputs");
             const string target = "Drop ` odd.name";
             using (var db = new SQLiteConnection(connection))
@@ -385,11 +389,11 @@ internal static class WorkspaceChecks
             var originalQuery = workspace.Context.Form.QueryTable;
             workspace.Context.Form.ImportTable = workspace.Context.Form.QueryTable = target;
             workspace.Context.Form.DropTable = target;
-            var pending = importPage.DropTableAsync();
+            var pending = tableDesignPage.DropTableAsync();
             Check(workspace.Context.Dialogs.Current?.Title == "Drop table" && workspace.Context.Tables.Contains(target), "Table deleted before confirmation");
             workspace.Context.Dialogs.Complete(false); await pending;
             Check(workspace.Context.Tables.Contains(target), "Cancel deleted table");
-            pending = importPage.DropTableAsync(); workspace.Context.Dialogs.Complete(true); await pending.WaitAsync(TimeSpan.FromSeconds(10));
+            pending = tableDesignPage.DropTableAsync(); workspace.Context.Dialogs.Complete(true); await pending.WaitAsync(TimeSpan.FromSeconds(10));
             Check(!workspace.Context.Tables.Contains(target) && !workspace.Context.Exports.Any(x => x.Name == target), "Deleted table remained in lists");
             Check(workspace.Context.Form.ImportTable == "" && workspace.Context.Form.QueryTable == "" && workspace.Context.Form.DropTable == "" && workspace.Context.Results.Current == null, "Stale selection or result remained");
             using (var db = new SQLiteConnection(connection))
@@ -409,7 +413,7 @@ internal static class WorkspaceChecks
             }
             await workspace.Context.RefreshSchemaAsync();
             workspace.Context.Form.DropTable = "DropParent";
-            var pending = importPage.DropTableAsync(); workspace.Context.Dialogs.Complete(true);
+            var pending = tableDesignPage.DropTableAsync(); workspace.Context.Dialogs.Complete(true);
             for (int i = 0; i < 100 && workspace.Context.Dialogs.Current == null; i++) await Task.Delay(10);
             Check(workspace.Context.Dialogs.Current?.Title == "Drop table failed", "Incoming foreign key did not block deletion");
             workspace.Context.Dialogs.Complete(true); await pending;

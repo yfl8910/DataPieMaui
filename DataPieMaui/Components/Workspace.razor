@@ -3,12 +3,21 @@
 <div class="workspace-shell">
     <div class="workspace-body" inert="@(Controller.Context.Dialogs.Current is not null)">
         <aside class="sidebar">
-            <div class="brand"><span class="brand-icon">D</span><div>DataPie202609<span>DATABASE WORKSPACE</span></div></div>
+            <div class="brand"><span class="brand-icon">D</span><div>DataPie V3.0.0<span>DATABASE WORKSPACE</span></div></div>
             <nav aria-label="Workspace sections">
                 @foreach (var item in navigation)
                 {
                     bool enabled = item.Id is "Connections" or "About" || Controller.Context.State.IsConnected && (item.Id != "Migration" || Controller.Context.State.CanConvertToSqlite);
-                    <button class="nav-item @(Controller.Context.Section == item.Id ? "active" : "")" disabled="@(!enabled || Controller.Context.State.Busy)" aria-current="@(Controller.Context.Section == item.Id ? "page" : null)" @onclick="() => Controller.Navigate(item.Id)"><span class="nav-symbol">@item.Icon</span>@item.Label</button>
+                    <button class="nav-item @(Controller.Context.Section == item.Id ? "active" : "")" disabled="@(!enabled || Controller.Context.State.Busy)" aria-current="@(Controller.Context.Section == item.Id ? "page" : null)" @onclick="() => Controller.Navigate(item.Id)"><span class="nav-symbol" aria-hidden="true">
+                        @if (item.Id == "TableDesign")
+                        {
+                            <svg class="nav-table-design-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">
+                                <path d="M11 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5M2 8h18M2 14h9M8 8v12" />
+                                <path d="m13 17 6.5-6.5a1.4 1.4 0 0 1 2 2L15 19l-3 1 1-3Zm5-5 2 2" />
+                            </svg>
+                        }
+                        else { @item.Icon }
+                    </span>@item.Label</button>
                 }
             </nav>
             <div class="sidebar-note">Local desktop workspace<br />SQL Server &amp; SQLite</div>
@@ -25,7 +34,7 @@
                                 {
                                     case "Connections": <ConnectionsPage /> break;
                                     case "Query": <QueryPage /> break;
-                                    case "CreateTable": <CreateTablePage /> break;
+                                    case "TableDesign": <TableDesignPage /> break;
                                     case "Import": <ImportPage /> break;
                                     case "Export": <ExportPage /> break;
                                     case "Procedures": <ProceduresPage /> break;
@@ -60,7 +69,7 @@
         ("Export", "Batch export", "↑", "Export selected tables and views to Excel or CSV."),
         ("Procedures", "Stored procedures", "▷", "Run selected procedures in sequence."),
         ("Migration", "Convert to SQLite", "⇄", "Create a portable SQLite copy of your SQL Server database."),
-        ("CreateTable", "Create table", "+", "Generate and review table structure from an Excel worksheet."),
+        ("TableDesign", "Table design", "", "Create table structure from Excel or permanently delete a database table."),
         ("About", "About", "ⓘ", "A local workspace for your database tasks.")
     ];
     private string Title => navigation.First(x => x.Id == Controller.Context.Section).Label;

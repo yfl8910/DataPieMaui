@@ -17,7 +17,8 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 nav { display: grid; gap: 7px; }
 .nav-item { display: flex; align-items: center; gap: 11px; padding: 12px; width: 100%; text-align: left; border: 0; background: transparent; color: #536677; }
 .nav-item.active { background: #e7f2ed; color: #176b64; font-weight: 600; }
-.nav-symbol { font-size: 19px; width: 21px; text-align: center; }
+.nav-symbol { font-size: 19px; width: 21px; flex: 0 0 21px; text-align: center; }
+.nav-table-design-icon { display: block; width: 21px; height: 21px; }
 .sidebar-note { margin-top: auto; padding: 28px 12px 0; color: #8a98a5; font-size: 12px; line-height: 1.8; }
 .workspace-main { display: flex; min-height: 0; flex-direction: column; }
 .topbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 12px 32px; background: #fff; border-bottom: 1px solid var(--border); color: #82909c; }

@@ -1,6 +1,6 @@
 # DataPieMaui
 
-A Windows desktop workspace for querying, importing, exporting, and converting SQL Server and SQLite data. Built with .NET 11 RC1 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace and a separate query-results window.
+A Windows desktop workspace for querying, importing, exporting, designing tables, and converting SQL Server and SQLite data. Built with .NET 11 RC1 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace and a separate query-results window.
 
 <img width="2277" height="1606" alt="image" src="https://github.com/user-attachments/assets/bfabcc73-e812-47e5-b7b6-a5d1bee77a1a" />
 
@@ -13,20 +13,22 @@ A Windows desktop workspace for querying, importing, exporting, and converting S
 - Generate SELECT, UPDATE, and DELETE statements and execute SQL.
 - Preview query results in a separate, resizable Blazor window with dynamic columns, typed sorting, pagination, and copying.
 - Export queries and tables to Excel or CSV; export multiple tables or views to worksheets or separate CSV files.
-- Import Excel, CSV, or a matching table from a SQLite database; batch-import CSV and XLSX files from a folder.
-- Run selected procedures without required parameters.
+- Import Excel, CSV, or a matching table from a SQLite database through Import a file; use Batch import for CSV/XLSX folders. Optional single-file and automatic batch length validation report SQL Server field-length problems.
+- Design tables from Excel worksheets, review CREATE TABLE SQL, and permanently delete tables through separate Table design tabs.
+- Run selected procedures without parameters, or run SQL Server procedures individually with typed parameter inputs, review, OUTPUT values, and RETURN codes.
+- View and edit supported SQL Server and SQLite view/procedure definitions with diff review and explicit save confirmation.
 - Convert SQL Server databases to SQLite, with warnings for unsupported view or procedure SQL.
 
 ## Requirements
 
 - Windows x64. The project declares Windows 10 version 1809 as its minimum OS version.
-- .NET SDK `11.0.100-rc.1.26425.128` and the `maui-windows` workload set `11.0.100-rc.1.26458.5` for development. `global.json` selects the SDK feature band and allows prerelease SDKs.
+- The .NET 11 RC1 SDK selected in `global.json` and the matching `maui-windows` workload for development. The project currently targets `net11.0-windows10.0.19041.0`.
 - Microsoft Edge WebView2 Runtime for the entire application interface, including when running a published copy. If it is missing, the native host displays an installation message instead of opening the workspace.
 - Access to NuGet when restoring dependencies for the first time.
 
 The current project targets Windows only.
 
-As of October 4, 2026, .NET 11 RC1 is the latest .NET 11 release; it is a release candidate, not the final release. MAUI Controls and Blazor WebView use `11.0.0-rc.1.26451.6`. Install the matching SDK from https://dotnet.microsoft.com/en-us/download/dotnet/11.0 before using the commands below. Visual Studio must support this SDK and have preview SDK usage enabled where required.
+The repository currently uses .NET 11 RC1 packages: MAUI Controls and Blazor WebView `11.0.0-rc.1.26451.6`. Install the SDK selected by `global.json` and a compatible MAUI workload. Visual Studio must support that SDK and allow preview SDK usage where required.
 
 Visual Studio needs the SDK installed system-wide (normally under `C:\Program Files\dotnet`), plus the matching MAUI workload. An SDK installed only in `tmp/net11/sdk/` is sufficient for explicit command-line validation but is not automatically discovered by Visual Studio. `global.json` selects an installed SDK; it does not install one.
 
@@ -37,7 +39,7 @@ If Visual Studio reports that the current SDK cannot target .NET 11, install the
 Run these PowerShell commands from the repository root:
 
 ```powershell
-dotnet workload install maui-windows --version 11.0.100-rc.1.26458.5
+dotnet workload install maui-windows
 dotnet restore DataPieMaui\DataPieMaui.csproj
 dotnet build DataPieMaui\DataPieMaui.csproj -c Debug
 dotnet build DataPieMaui\DataPieMaui.csproj -t:Run -c Debug
@@ -73,9 +75,37 @@ Each successful script save atomically replaces the file and retains the origina
 2. Open **SQL query**, select a table to generate SQL or enter your own statement, and click **Preview query**.
 3. View results in the separate window. Click column headers to sort, select a row to copy it, or copy all preview rows. Subsequent queries update the same window. Use **Open results** to reopen a closed result window without rerunning the query.
 4. Use the export buttons for the full query result, or **Batch export** for selected tables and views.
-5. Use **Import data**, **Stored procedures**, or **Convert to SQLite** for the corresponding operations.
+5. Use **Import data** for its **Import a file** and **Batch import** tabs; **Clear data** empties the target table while keeping its structure.
+6. Use **Stored procedures** to run procedures or inspect definitions, and **Convert to SQLite** to export a SQL Server database.
+7. Open **Table design**, immediately after **Convert to SQLite**, and choose **Create table** or **Drop table**. Creation defaults to the Excel sheet name; deletion removes the structure and data after confirmation.
 
 On **Import data**, select a **Target table** and click **Query data** to inspect it. On **Batch export**, each table/view has its own **Query data** button, independent of the export checkboxes. These actions reuse the results window, show the object name, and preserve your SQL editor and selections. Object previews have the same 1,000-row limit, sorting, paging, and copying as SQL previews.
+
+### Running SQL Server procedures with parameters
+
+On **Stored procedures**, SQL Server procedures are grouped into **Without parameters** and **With parameters** tabs. Only the first tab offers selection and batch execution; the second offers **Run with parameters** per procedure. Classification reads only parameter existence alongside object names, excluding RETURN values. Defaulted and OUTPUT parameters count as parameters. Detailed parameter metadata loads only when the execution window is opened; definitions and parameter lists are not fetched at connection time. Reconnect after external signature changes to refresh classification. Enter values, select **NULL**, or choose **Omit** to let SQL Server use a default if one exists. An omitted required parameter produces a server error. Empty text remains an empty string. OUTPUT parameters support initial values; omitting one also means its output is not collected.
+
+**Review and run…** displays the server/database, schema-qualified procedure and submitted values. Only **Confirm run** executes the command. The application passes typed SqlParameters, rechecks parameter metadata before execution, blocks duplicate submissions and window closure while running, and displays elapsed time, OUTPUT values and the procedure RETURN code separately from affected rows. Affected rows may be unavailable with NOCOUNT. Execution errors retain input; a failed or timed-out procedure may already have modified data, so inspect the database before retrying. Timeout is 120 seconds; execution is not automatically wrapped in an application transaction.
+
+Supported inputs include common numeric, string, date/time, GUID and XML types. Decimal input currently uses .NET decimal's range/precision. Table-valued, binary, CLR/UDT and other unsupported parameter types disable this execution window. Complete value constraints and EXECUTE/metadata permissions are enforced by SQL Server. Result sets are not displayed in this first phase. The existing batch button remains available without parameter configuration and now uses schema-qualified SQL Server names. SQLite execution is unchanged. No new package dependency is required.
+
+### SQL Server driver and dialog reliability
+
+SQL Server uses Microsoft.Data.SqlClient 7.0.3. All application SQL Server connections use Encrypt=Mandatory and TrustServerCertificate=True by default, including saved connections with older settings. Traffic stays encrypted while server certificate validation is skipped. There is no certificate selection control. Updated saved settings are persisted after a successful connection. The Azure authentication extension is not included; the application supports SQL login and Windows authentication.
+
+If opening a modal via JavaScript fails or times out, its controls remain available in a plain open dialog, preserving drafts. When the WebView disappears, pending confirmations are canceled. An executing procedure or definition save retains its operation lock until completion before the unavailable dialog is dismissed. SQLite errors retain their original stack trace.
+
+### Table design: Create table
+
+Connect to SQL Server or SQLite, open **Table design → Create table**, and select an XLSX or XLS file and worksheet. **Generate SQL** scans all data rows and uses the worksheet name as the table name and the first row as column names. Review the editable SQL, including the table name, then select **Create table** and confirm execution. The shared table lists refresh after successful execution. This creates structure only; use **Import data** to load rows afterward.
+
+Text cells retain text types, including leading-zero identifiers. Whole numeric values use BIGINT/INTEGER, fractional numeric values use FLOAT/REAL, and mixed or empty columns use NVARCHAR(MAX)/TEXT. SQL Server dates use DATETIME2 and booleans use BIT; SQLite dates use TEXT and booleans use INTEGER. A column named Id (case-insensitive) defaults to BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY on SQL Server, or INTEGER PRIMARY KEY AUTOINCREMENT on SQLite, regardless of its Excel values. Other columns initially allow NULL. Review the SQL to change this default. Empty or duplicate headers are rejected. Generated SQL never drops or overwrites an existing table. Changing the database connection clears the SQL draft so it can be regenerated for the new provider.
+
+### Table design: Drop table
+
+**Table design** has separate **Create table** and **Drop table** tabs. Switching tabs preserves the Excel selection and SQL draft. Import file/folder inputs remain on **Import data**.
+
+**Table design → Drop table** uses a separate table selection. Select the table, click **Drop table**, and confirm the database and table in the final dialog. Execution timing starts after that confirmation. The operation permanently removes the table and all its data; cancellation leaves it intact. SQL Server enforces its dependency restrictions. SQLite incoming foreign keys are checked before deletion to prevent cascading data loss. After deletion the shared table lists refresh, invalid selections are cleared, and the query preview is discarded. Close any old result windows containing previously loaded snapshots if necessary.
 
 ### Query preview behavior
 
@@ -111,6 +141,30 @@ Launch `publish\win-x64\DataPieMaui.exe`. Distribute the **entire folder**, incl
 
 This produces a framework-dependent, unpackaged application. The destination computer must have the matching x64 .NET 11 runtime, Windows App Runtime, and WebView2 Runtime installed. Application libraries (including MAUI, database/Excel libraries, and Windows API projections) still ship with the application. Publish to a new empty folder when switching from self-contained deployment so old runtime files are not left behind.
 
+### Publish from Visual Studio
+
+Open `DataPieMaui.sln` in Visual Studio with .NET 11 RC1 and the .NET MAUI workload installed. Stop debugging, set `DataPieMaui` as the startup project, and select **Release** and **Windows Machine**. Right-click the **DataPieMaui project** and select **Publish**, then use `FolderProfile`.
+
+The project explicitly declares `Publish` and `FolderPublish` capabilities for its unpackaged Windows configuration. After changing the project file, reload the project (or reopen the solution) so Visual Studio refreshes the commands. The profile publishes a framework-dependent Windows x64 application to the destination configured in `FolderProfile.pubxml`; distribute the entire directory. The matching x64 .NET 11 runtime, Windows App Runtime, and WebView2 Runtime must already be installed on the destination computer.
+
+If the MAUI tooling still disables the Publish command, the same profile can be run from Visual Studio's terminal:
+
+```powershell
+dotnet publish DataPieMaui/DataPieMaui.csproj -c Release -p:PublishProfile=FolderProfile
+```
+
+Microsoft's standard MAUI Windows Publish wizard creates MSIX packages. This project uses folder deployment, so do not enable MSIX packaging solely to activate that wizard.
+
+### Self-contained publishing
+
+To include the .NET and Windows App SDK runtimes, publish to a separate directory:
+
+```powershell
+dotnet publish DataPieMaui/DataPieMaui.csproj -c Release -r win-x64 --self-contained true -p:WindowsAppSDKSelfContained=true -o publish/win-x64-self-contained
+```
+
+WebView2 Runtime is still required. Close running copies of the app before overwriting their files. `FolderProfile` currently uses framework-dependent deployment and contains an absolute destination path; override it with `-o publish/win-x64` when publishing from a different checkout.
+
 ## Regression checks
 
 The test project is a console-based regression runner. Run it with:
@@ -119,7 +173,7 @@ The test project is a console-based regression runner. Run it with:
 dotnet run --project DataPieMaui.Tests\DataPieMaui.Tests.csproj -c Release
 ```
 
-Checks cover SQLite access, connection management, query previews, import/export, procedure conversion, cancellation, result snapshots, typed sorting, and copy formatting. Workspace checks also exercise confirmation and cancellation, concurrent-operation protection, state retention, and rendering of the actual Razor pages. These checks use a test desktop adapter; they do not automate native window/file-picker interactions or require a live SQL Server instance.
+Checks cover SQLite access, connection management, query previews, import/export and length validation, Excel-based table creation and Id identity defaults, table deletion and foreign-key protection, procedure parameters, definition editing, conversion, cancellation, result snapshots, typed sorting, and copy formatting. Workspace checks also exercise confirmation and cancellation, concurrent-operation protection, state retention, and rendering of the actual Razor pages. These checks use a test desktop adapter; they do not automate native window/file-picker interactions or require a live SQL Server instance.
 
 To also write static page previews to the ignored `tmp/ui-review/` directory, run:
 
@@ -136,7 +190,7 @@ These previews are render snapshots, not an interactive web version of the deskt
 - All business pages, including login and connection management, keep their markup and page-specific workflows together in a single `.razor` file using an `@code` block. The static About page needs no code block.
 - `WorkspaceController` composes shared services and coordinates navigation and native-window lifecycle. Pages use `WorkspacePageBase` to access shared state and the operation runner. The connection page initializes saved connections once per workspace; revisiting the page preserves loaded configuration and operation status.
 - `Services/Shared/WorkspaceContext` owns session state and the shared capabilities for one workspace. Shared services survive navigation; `WorkspaceForm` retains input values when page components are recreated. `DatabaseConversionService` owns conversion execution, progress, and cancellation so the status bar and native close handler do not depend on a page instance.
-- `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by every page. `QueryPreviewService` shares table/view and SQL result loading, and `FileNames` shares export filename normalization.
+- `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by every page. `QueryPreviewService` shares table/view and SQL result loading, `WorkspaceContext.RefreshSchemaAsync` refreshes table lists after creation/deletion, and `FileNames` shares export filename normalization. `ExcelTableSql` reads worksheets and generates provider-specific table definitions.
 - `IDesktopServices` separates the workspace from Windows-specific operations. `WindowsDesktopServices` dispatches native work to the UI thread, binds file pickers to their owner, and manages the result window.
 - `DataPieCore` remains the database/import/export engine. Razor components run locally; no web server is required.
 
@@ -153,43 +207,3 @@ These previews are render snapshots, not an interactive web version of the deskt
 | `DataPieMaui.Tests/` | Console regression checks |
 
 Generated directories such as `publish/`, `.vs/`, `bin/`, and `obj/` are excluded from Git. Source assets under `DataPieMaui/wwwroot/` remain tracked.
-
-### Publish from Visual Studio
-
-Open `DataPieMaui.sln` in Visual Studio with .NET 11 RC1 and the .NET MAUI workload installed. Stop debugging, set `DataPieMaui` as the startup project, and select **Release** and **Windows Machine**. Right-click the **DataPieMaui project** and select **Publish**, then use `FolderProfile`.
-
-The project explicitly declares `Publish` and `FolderPublish` capabilities for its unpackaged Windows configuration. After changing the project file, reload the project (or reopen the solution) so Visual Studio refreshes the commands. The profile publishes a framework-dependent Windows x64 application to the destination configured in `FolderProfile.pubxml`; distribute the entire directory. The matching x64 .NET 11 runtime, Windows App Runtime, and WebView2 Runtime must already be installed on the destination computer.
-
-If the MAUI tooling still disables the Publish command, the same profile can be run from Visual Studio's terminal:
-
-```powershell
-dotnet publish DataPieMaui/DataPieMaui.csproj -c Release -p:PublishProfile=FolderProfile
-```
-
-Microsoft's standard MAUI Windows Publish wizard creates MSIX packages. This project uses folder deployment, so do not enable MSIX packaging solely to activate that wizard.
-
-### Running SQL Server procedures with parameters
-
-On **Stored procedures**, SQL Server procedures are grouped into **Without parameters** and **With parameters** tabs. Only the first tab offers selection and batch execution; the second offers **Run with parameters** per procedure. Classification reads only parameter existence alongside object names, excluding RETURN values. Defaulted and OUTPUT parameters count as parameters. Detailed parameter metadata loads only when the execution window is opened; definitions and parameter lists are not fetched at connection time. Reconnect after external signature changes to refresh classification. Enter values, select **NULL**, or choose **Omit** to let SQL Server use a default if one exists. An omitted required parameter produces a server error. Empty text remains an empty string. OUTPUT parameters support initial values; omitting one also means its output is not collected.
-
-**Review and run…** displays the server/database, schema-qualified procedure and submitted values. Only **Confirm run** executes the command. The application passes typed SqlParameters, rechecks parameter metadata before execution, blocks duplicate submissions and window closure while running, and displays elapsed time, OUTPUT values and the procedure RETURN code separately from affected rows. Affected rows may be unavailable with NOCOUNT. Execution errors retain input; a failed or timed-out procedure may already have modified data, so inspect the database before retrying. Timeout is 120 seconds; execution is not automatically wrapped in an application transaction.
-
-Supported inputs include common numeric, string, date/time, GUID and XML types. Decimal input currently uses .NET decimal's range/precision. Table-valued, binary, CLR/UDT and other unsupported parameter types disable this execution window. Complete value constraints and EXECUTE/metadata permissions are enforced by SQL Server. Result sets are not displayed in this first phase. The existing batch button remains available without parameter configuration and now uses schema-qualified SQL Server names. SQLite execution is unchanged. No new package dependency is required.
-
-### SQL Server driver and dialog reliability
-
-SQL Server uses Microsoft.Data.SqlClient 7.0.3. All application SQL Server connections use Encrypt=Mandatory and TrustServerCertificate=True by default, including saved connections with older settings. Traffic stays encrypted while server certificate validation is skipped. There is no certificate selection control. Updated saved settings are persisted after a successful connection. The Azure authentication extension is not included; the application supports SQL login and Windows authentication.
-
-If opening a modal via JavaScript fails or times out, its controls remain available in a plain open dialog, preserving drafts. When the WebView disappears, pending confirmations are canceled. An executing procedure or definition save retains its operation lock until completion before the unavailable dialog is dismissed. SQLite errors retain their original stack trace.
-
-### Create a table from Excel
-
-Connect to SQL Server or SQLite, open **Create table**, and select an XLSX or XLS file and worksheet. **Generate SQL** scans all data rows and uses the worksheet name as the table name and the first row as column names. Review the editable SQL, including the table name, then select **Create table** and confirm execution. The shared table lists refresh after successful execution. This creates structure only; use **Import data** to load rows afterward.
-
-Text cells retain text types, including leading-zero identifiers. Whole numeric values use BIGINT/INTEGER, fractional numeric values use FLOAT/REAL, and mixed or empty columns use NVARCHAR(MAX)/TEXT. SQL Server dates use DATETIME2 and booleans use BIT; SQLite dates use TEXT and booleans use INTEGER. A column named Id (case-insensitive) defaults to BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY on SQL Server, or INTEGER PRIMARY KEY AUTOINCREMENT on SQLite, regardless of its Excel values. Other columns initially allow NULL. Review the SQL to change this default. Empty or duplicate headers are rejected. Generated SQL never drops or overwrites an existing table. Changing the database connection clears the SQL draft so it can be regenerated for the new provider.
-
-### Import tabs and permanent table deletion
-
-**Import data** has three tabs: **Import a file**, **Batch import**, and **Drop table**. Switching tabs preserves import paths and the import target. **Clear data** empties the import target while retaining its structure.
-
-**Drop table** uses a separate table selection. Select the table, click **Drop table**, and confirm the database and table in the final dialog. Execution timing starts after that confirmation. The operation permanently removes the table and all its data; cancellation leaves it intact. SQL Server enforces its dependency restrictions. SQLite incoming foreign keys are checked before deletion to prevent cascading data loss. After deletion the shared table lists refresh, invalid selections are cleared, and the query preview is discarded. Close any old result windows containing previously loaded snapshots if necessary.
