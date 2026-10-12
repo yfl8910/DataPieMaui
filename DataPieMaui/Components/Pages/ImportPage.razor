@@ -2,18 +2,18 @@
 @using DataPieMaui.Services
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
-<section class="card">
-    <div class="tabs" aria-label="Import methods">
-        @foreach (var tab in new[] { ("File", "Import a file"), ("Batch", "Batch import") })
-        {
-            <button class="@(Form.ImportTab == tab.Item1 ? "active" : "")" aria-pressed="@(Form.ImportTab == tab.Item1)" @onclick="() => ChangeTab(tab.Item1)">@tab.Item2</button>
-        }
-    </div>
-</section>
+
 
     <section class="card">
         <div class="actions align-end"><label class="grow">Target table<select @bind="Form.ImportTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label><button @onclick="PreviewImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">Query data</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Clear data</button></div>
     </section>
+<div class="tabs" aria-label="Import methods">
+    @foreach (var tab in new[] { ("File", "Import a file"), ("Batch", "Batch import") })
+    {
+        <button class="@(Form.ImportTab == tab.Item1 ? "active" : "")" aria-pressed="@(Form.ImportTab == tab.Item1)" @onclick="() => ChangeTab(tab.Item1)">@tab.Item2</button>
+    }
+</div>
+
     @if (Form.ImportTab == "File")
     {
         <section class="card"><h2>Import a file</h2><p class="muted">Excel, CSV, or a SQLite database containing a table with the same name.</p>
