@@ -38,12 +38,16 @@ public static class ExcelTableSql
             if (names.Any(string.IsNullOrWhiteSpace)) throw new InvalidOperationException("The first row contains empty column names. Update the Excel header row first.");
             if (names.Distinct(StringComparer.OrdinalIgnoreCase).Count() != names.Length) throw new InvalidOperationException("The first row contains duplicate column names. Update the Excel header row first.");
             var kinds = new string[names.Length];
+            var maxLengths = new int[names.Length];
+            var needsBigInt = new bool[names.Length];
             while (reader.Read())
             {
                 for (int i = 0; i < names.Length; i++)
                 {
                     var value = reader.GetValue(i);
                     if (value == null || value == DBNull.Value) continue;
+                    // string.Length counts UTF-16 code units, including surrogate pairs.
+                    maxLengths[i] = Math.Max(maxLengths[i], (Convert.ToString(value, CultureInfo.InvariantCulture) ?? "").Length);
                     string kind = value switch
                     {
                         bool => "bool", DateTime => "date",
@@ -51,6 +55,11 @@ public static class ExcelTableSql
                         byte or short or int or long => "integer",
                         double or float or decimal => "number", _ => "text"
                     };
+                    if (kind == "integer")
+                    {
+                        var integer = Convert.ToDecimal(value, CultureInfo.InvariantCulture);
+                        needsBigInt[i] |= integer < int.MinValue || integer > int.MaxValue;
+                    }
                     if (kinds[i] == null) kinds[i] = kind;
                     else if (kinds[i] != kind)
                         kinds[i] = (kinds[i] is "integer" or "number") && (kind is "integer" or "number") ? "number" : "text";
@@ -58,10 +67,10 @@ public static class ExcelTableSql
             }
             bool sqlite = databaseType == "SQLITE";
             string Quote(string name) => sqlite ? "\"" + name.Replace("\"", "\"\"") + "\"" : "[" + name.Replace("]", "]]") + "]";
-            string Type(string kind) => sqlite ? kind switch { "integer" or "bool" => "INTEGER", "number" => "REAL", _ => "TEXT" }
-                : kind switch { "integer" => "BIGINT", "number" => "FLOAT", "bool" => "BIT", "date" => "DATETIME2", _ => "NVARCHAR(MAX)" };
+            string Type(int column) => sqlite ? kinds[column] switch { "integer" or "bool" => "INTEGER", "number" => "REAL", _ => "TEXT" }
+                : kinds[column] switch { "integer" => needsBigInt[column] ? "BIGINT" : "INT", "number" => "FLOAT", "bool" => "BIT", "date" => "DATETIME2", _ => maxLengths[column] <= 255 ? "NVARCHAR(255)" : "NVARCHAR(MAX)" };
             return "CREATE TABLE " + Quote(sheet) + " (" + Environment.NewLine
-                + string.Join("," + Environment.NewLine, names.Select((name, i) => "    " + Quote(name) + " " + (string.Equals(name, "Id", StringComparison.OrdinalIgnoreCase) ? (sqlite ? "INTEGER PRIMARY KEY AUTOINCREMENT" : "BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY") : Type(kinds[i]) + " NULL"))) + Environment.NewLine + ");";
+                + string.Join("," + Environment.NewLine, names.Select((name, i) => "    " + Quote(name) + " " + (string.Equals(name, "Id", StringComparison.OrdinalIgnoreCase) ? (sqlite ? "INTEGER PRIMARY KEY AUTOINCREMENT" : "BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY") : Type(i) + " NULL"))) + Environment.NewLine + ");";
         }
     }
 }

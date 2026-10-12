@@ -81,7 +81,7 @@ internal static class WorkspaceChecks
             MiniExcelLibs.MiniExcel.SaveAs(excel, rows, sheetName: "Orders");
             Check(DataPieCore.ExcelTableSql.Sheets(excel).SequenceEqual(new[] { "Orders" }), "Worksheet names missing");
             var sqlServer = DataPieCore.ExcelTableSql.Generate(excel, "Orders", "SQLSERVER");
-            Check(sqlServer.Contains("CREATE TABLE [Orders]") && sqlServer.Contains("[Code] NVARCHAR(MAX)") && sqlServer.Contains("[Quantity] BIGINT") && sqlServer.Contains("[Rate] FLOAT") && sqlServer.Contains("[Odd]]Name]"), "Incorrect types or quoting");
+            Check(sqlServer.Contains("CREATE TABLE [Orders]") && sqlServer.Contains("[Code] NVARCHAR(255)") && sqlServer.Contains("[Quantity] INT") && sqlServer.Contains("[Rate] FLOAT") && sqlServer.Contains("[Odd]]Name]"), "Incorrect types or quoting");
             workspace.Context.Form.CreateTablePath = excel;
             workspace.Context.Form.CreateTableSheet = "Orders";
             var page = new TableDesignPage { Workspace = workspace };
@@ -99,6 +99,24 @@ internal static class WorkspaceChecks
             await workspace.Context.Database.ConnectAsync(workspace.Context.Database.Connection!);
             workspace.Context.Tables = workspace.Context.Database.Schema!.Tables.Select(t => t.Name).ToArray();
             workspace.Context.Exports.RemoveAll(x => x.Name == "ReviewedOrders");
+        });
+        await test("Excel SQL types respect INT ranges and UTF-16 length boundaries across all rows", () =>
+        {
+            var excel = Path.Combine(root, "type-boundaries.xlsx");
+            var rows = new[]
+            {
+                new Dictionary<string, object?> { ["IntMax"] = int.MaxValue, ["IntMin"] = int.MinValue, ["Above"] = 1, ["Below"] = 1, ["Len255"] = new string('x',255), ["Len256"] = "short", ["Emoji255"] = string.Concat(Enumerable.Repeat("😀",127)) + "x", ["Emoji256"] = string.Concat(Enumerable.Repeat("😀",128)), ["Mixed"] = 42, ["Empty"] = null },
+                new Dictionary<string, object?> { ["IntMax"] = 0, ["IntMin"] = 0, ["Above"] = (long)int.MaxValue + 1, ["Below"] = (long)int.MinValue - 1, ["Len255"] = "short", ["Len256"] = new string('x',256), ["Emoji255"] = "short", ["Emoji256"] = "short", ["Mixed"] = new string('x',256), ["Empty"] = null }
+            };
+            MiniExcelLibs.MiniExcel.SaveAs(excel, rows, sheetName: "Types");
+            var sql = DataPieCore.ExcelTableSql.Generate(excel, "Types", "SQLSERVER");
+            foreach (var name in new[] { "IntMax", "IntMin" }) Check(sql.Contains("["+name+"] INT NULL"), "INT boundary failed: "+name);
+            foreach (var name in new[] { "Above", "Below" }) Check(sql.Contains("["+name+"] BIGINT NULL"), "BIGINT overflow detection failed: "+name);
+            foreach (var name in new[] { "Len255", "Emoji255", "Empty" }) Check(sql.Contains("["+name+"] NVARCHAR(255) NULL"), "255-unit boundary failed: "+name);
+            foreach (var name in new[] { "Len256", "Emoji256", "Mixed" }) Check(sql.Contains("["+name+"] NVARCHAR(MAX) NULL"), "Long or mixed text failed: "+name);
+            var sqlite = DataPieCore.ExcelTableSql.Generate(excel, "Types", "SQLITE");
+            Check(sqlite.Contains("\"Above\" INTEGER NULL") && sqlite.Contains("\"Len255\" TEXT NULL"), "SQLite types changed");
+            return Task.CompletedTask;
         });
         await test("Excel Id columns generate identity primary keys and SQLite assigns IDs", async () =>
         {
