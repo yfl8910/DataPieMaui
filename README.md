@@ -4,6 +4,8 @@ English | [简体中文](README.zh-CN.md)
 
 A Windows desktop workspace for querying, importing, exporting, designing tables, and converting SQL Server and SQLite data. Built with .NET 11 RC1 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace and a separate query-results window.
 
+<img width="1262" height="937" alt="image" src="https://github.com/user-attachments/assets/b3ca694d-e905-4772-8ec2-1fb8b9aeb46b" />
+
 <img width="1260" height="938" alt="image" src="https://github.com/user-attachments/assets/9efb7965-92d6-4c95-9f90-fb3be5076f4e" />
 
 
