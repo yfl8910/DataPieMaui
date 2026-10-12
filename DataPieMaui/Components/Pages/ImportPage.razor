@@ -7,6 +7,7 @@
     <section class="card">
         <div class="actions align-end"><label class="grow">Target table<select @bind="Form.ImportTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label><button @onclick="PreviewImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">Query data</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Clear data</button></div>
     </section>
+<section class="card">
 <div class="tabs" aria-label="Import methods">
     @foreach (var tab in new[] { ("File", "Import a file"), ("Batch", "Batch import") })
     {
@@ -16,16 +17,15 @@
 
     @if (Form.ImportTab == "File")
     {
-        <section class="card"><h2>Import a file</h2><p class="muted">Excel, CSV, or a SQLite database containing a table with the same name.</p>
+        <h2>Import a file</h2><p class="muted">Excel, CSV, or a SQLite database containing a table with the same name.</p>
             <div class="actions align-end"><label class="grow">Source file<input @bind="Form.ImportPath" @bind:event="oninput" placeholder="Select a file to import" /></label><button @onclick="() => BrowseImportAsync(false)">Browse file</button><button class="primary" @onclick="ImportFileAsync">Import file</button><button @onclick="ImportFileWithLengthValidationAsync">Validate lengths and import</button></div>
-        </section>
     }
     else
     {
-        <section class="card"><h2>Batch import</h2><p class="muted">Append each CSV and XLSX file in the folder to the target table.</p>
+        <h2>Batch import</h2><p class="muted">Append each CSV and XLSX file in the folder to the target table.</p>
             <div class="actions align-end"><label class="grow">Source folder<input @bind="Form.ImportFolder" @bind:event="oninput" placeholder="Select an import folder" /></label><button @onclick="() => BrowseImportAsync(true)">Browse folder</button><button class="primary" @onclick="ImportDirectoryAsync">Import folder</button></div>
-        </section>
     }
+</section>
 
 @code {
     public void ChangeTab(string tab)
