@@ -126,6 +126,18 @@ namespace DBUtil
             using var connection = new SQLiteConnection(ConnectionString);
             connection.Open();
             using var transaction = connection.BeginTransaction();
+            var blankAsNull = new bool[names.Length];
+            using (var schema = connection.CreateCommand())
+            {
+                schema.Transaction = transaction;
+                schema.CommandText = "PRAGMA table_info(" + QuoteIdentifier(tableName) + ")";
+                using var columns = schema.ExecuteReader();
+                while (columns.Read())
+                {
+                    int index = Array.FindIndex(names, n => string.Equals(n, Convert.ToString(columns[1]), StringComparison.OrdinalIgnoreCase));
+                    if (index >= 0) blankAsNull[index] = NumericOrDateColumn(Convert.ToString(columns[2]) ?? "");
+                }
+            }
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = "INSERT INTO " + QuoteIdentifier(tableName) + " (" +
@@ -138,14 +150,41 @@ namespace DBUtil
                 command.Parameters.Add(parameters[i]);
             }
             command.Prepare();
+            int rowNumber = 0;
             while (reader.Read())
             {
-                for (int i = 0; i < parameters.Length; i++)
-                    parameters[i].Value = reader.GetValue(i) ?? DBNull.Value;
-                command.ExecuteNonQuery();
+                rowNumber++;
+                int column = -1;
+                try
+                {
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        column = i;
+                        var value = reader.GetValue(i) ?? DBNull.Value;
+                        if (blankAsNull[i] && value is string text && string.IsNullOrWhiteSpace(text)) value = DBNull.Value;
+                        // SQLiteParameter retains inferred types; each row may contain a different CLR type.
+                        parameters[i].ResetDbType();
+                        parameters[i].Value = value;
+                    }
+                    column = -1;
+                    command.ExecuteNonQuery();
+                }
+                catch (Exception ex)
+                {
+                    var location = column >= 0 ? ", column " + names[column] : "";
+                    throw new InvalidOperationException($"Import into {tableName} failed at data row {rowNumber}{location}: {ex.Message}", ex);
+                }
             }
             transaction.Commit();
             return true;
+        }
+        private static bool NumericOrDateColumn(string declaredType)
+        {
+            var type = declaredType.ToUpperInvariant();
+            // Honor SQLite affinity precedence: INT before text, text before numeric.
+            if (type.Contains("INT")) return true;
+            if (type.Contains("CHAR") || type.Contains("CLOB") || type.Contains("TEXT") || type.Contains("BLOB") || type.Length == 0) return false;
+            return true; // REAL, FLOAT, DOUBLE and NUMERIC affinity (including DATE/DATETIME).
         }
         public int RunProcedure(string storedProcName)
         {

@@ -72,7 +72,7 @@ Saved connections 可重新连接或删除配置。删除连接配置不会删�
 
 顶部卡片放置 **Target table、Query data、Export template、Clear data**。下方白色卡片包含 **Import a file / Batch import** 两个 TAB，切换时只改变导入内容，并保留目标表、文件及文件夹路径。
 
-**Import a file** 支持 XLSX、XLS、CSV，以及包含对应源表的 SQLite 数据库。**Import file** 执行导入，**Validate lengths and import** 额外检查 SQL Server 目标字段长度。
+**Import a file** 支持 XLSX、XLS、CSV，以及包含对应源表的 SQLite 数据库。SQL Server 普通导入和长度校验导入均将数字、日期时间、bit 目标列中的空字符串及纯空格转为 NULL，文本列保留原内容。没有适用默认值的 NOT NULL 列仍可能拒绝缺失值。SQLite 导入逐行重置参数类型，数字/日期目标列中的空字符串及纯空格转为 NULL；文本列保留空字符串和空格。NOT NULL 约束仍生效，文件导入失败会回滚，错误包含目标表名及数据行号。**Import file** 执行导入，**Validate lengths and import** 额外检查 SQL Server 目标字段长度。
 
 **Batch import** 顺序导入文件夹中的 CSV 和 XLSX，并启用字段长度校验。如果某个文件失败，已导入的数据会保留，状态信息指出失败文件。
 

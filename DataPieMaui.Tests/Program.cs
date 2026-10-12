@@ -54,6 +54,29 @@ try
         Check(SqlServerDbAccess.ReadTableSchema(emptyReader).Count == 0, "Empty schema failed");
         return Task.CompletedTask;
     });
+    await Test("SQL Server import normalizes numeric/date blanks without changing text", () =>
+    {
+        using var data = new DataTable();
+        foreach (var name in new[] { "Additional Expense", "Created", "Label", "Mixed", "Optional" }) data.Columns.Add(name, typeof(object));
+        data.Rows.Add(12.5, new DateTime(2026,10,12), "", 1, DBNull.Value);
+        data.Rows.Add("", "  ", "  ", "text", DBNull.Value);
+        data.Rows.Add(" \t", "", "", "", DBNull.Value);
+        data.Rows.Add(2, new DateTime(2026,10,13), "end", 3, DBNull.Value);
+        foreach (bool validate in new[] { false, true })
+        {
+            using var source = data.CreateDataReader();
+            using var reader = new ImportLengthDataReader(source, validate ? new Dictionary<string,int> { ["Label"] = 255 } : new Dictionary<string,int>(), "test.xlsx", new[] { "Additional Expense", "Created" });
+            Check(reader.Read() && Convert.ToDouble(reader.GetValue(0)) == 12.5 && reader.GetValue(1) is DateTime, "Nonblank typed values changed");
+            Check(reader.Read() && reader.IsDBNull(0) && reader.IsDBNull(1) && reader[0] == DBNull.Value && reader["Created"] == DBNull.Value, "Blank numeric/date values were not NULL");
+            var values = new object[5]; Check(reader.GetValues(values) == 5 && values[0] == DBNull.Value && values[1] == DBNull.Value, "GetValues bypassed normalization");
+            Check((string)values[2] == "  " && (string)values[3] == "text" && reader.IsDBNull(4), "Text or null content changed");
+            Check(reader.Read() && reader.IsDBNull(0) && reader.IsDBNull(1) && (string)reader.GetValue(2) == "", "Whitespace handling failed");
+            Check(reader.Read() && Convert.ToInt32(reader[0]) == 2 && reader[1] is DateTime && !reader.IsDBNull(0), "Null leaked into next row");
+        }
+        foreach (var type in new[] { "int", "decimal", "float", "date", "datetime2", "bit", "time" }) Check(SqlServerDbAccess.BlankImportValuesBecomeNull(type), "Missing target type " + type);
+        foreach (var type in new[] { "nvarchar", "varchar", "text", "xml", "varbinary", "sql_variant" }) Check(!SqlServerDbAccess.BlankImportValuesBecomeNull(type), "Unexpected blank conversion for " + type);
+        return Task.CompletedTask;
+    });
     await Test("Import length validation reports file, data row, column and lengths", () =>
     {
         using var data = new DataTable();
@@ -282,6 +305,7 @@ try
     await DialogLifecycleChecks.Run(Test);
     await ProcedureExecutionChecks.Run(Test);
     await SQLiteDefinitionEditChecks.Run(root, Test);
+    await SQLiteImportChecks.Run(root, Test);
     await QueryResultsChecks.Run(Test);
     await WorkspaceChecks.Run(root, Test, args.Contains("--render-ui"));
     Console.WriteLine($"{passed} regression checks passed.");

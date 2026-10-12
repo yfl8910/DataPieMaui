@@ -143,6 +143,7 @@ namespace DBUtil
             // Discover columns using the SAME connection used for bulk copy
             var destinationColumns = new HashSet<string>(StringComparer.Ordinal);
             var lengthLimits = new Dictionary<string, int>(StringComparer.Ordinal);
+            var blankAsNullColumns = new HashSet<string>(StringComparer.Ordinal);
             using (var schemaCmd = new SqlCommand($"SELECT TOP (0) * FROM {destination}", connection))
             using (var schemaReader = schemaCmd.ExecuteReader())
             {
@@ -151,6 +152,7 @@ namespace DBUtil
                 {
                     destinationColumns.Add(schemaReader.GetName(i));
                     string type = schemaReader.GetDataTypeName(i);
+                    if (BlankImportValuesBecomeNull(type)) blankAsNullColumns.Add(schemaReader.GetName(i));
                     if (validateFieldLengths && (type == "nvarchar" || type == "nchar"))
                     {
                         int size = Convert.ToInt32(schema.Rows[i]["ColumnSize"]);
@@ -162,11 +164,13 @@ namespace DBUtil
 
             AddColumnMappings(bulkCopy, reader, destinationColumns);
 
-            bulkCopy.WriteToServer(validateFieldLengths
-                ? new ImportLengthDataReader(reader, lengthLimits, sourceFile)
-                : reader);
+            bulkCopy.WriteToServer(new ImportLengthDataReader(reader, lengthLimits, sourceFile, blankAsNullColumns));
             return true;
         }
+
+        internal static bool BlankImportValuesBecomeNull(string type) => type.ToLowerInvariant() is
+            "tinyint" or "smallint" or "int" or "bigint" or "decimal" or "numeric" or "money" or "smallmoney"
+            or "float" or "real" or "bit" or "date" or "datetime" or "datetime2" or "smalldatetime" or "datetimeoffset" or "time";
 
         internal static void AddColumnMappings(SqlBulkCopy bulkCopy, IDataReader reader, HashSet<string> destinationColumns)
         {

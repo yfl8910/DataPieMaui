@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 
 namespace DBUtil
 {
-    // Validate each row before SqlBulkCopy consumes it, without buffering the file.
+    // Normalize target-specific blanks and optionally validate lengths before SqlBulkCopy consumes a row.
     // The caller retains ownership of the underlying reader.
     internal sealed class ImportLengthDataReader : IDataReader
     {
@@ -12,15 +13,19 @@ namespace DBUtil
         private readonly string sourceFile;
         private readonly List<(int Ordinal, int Length)> limits = new();
         private long rowNumber;
+        private readonly HashSet<int> blankAsNull = new();
 
-        public ImportLengthDataReader(IDataReader reader, IReadOnlyDictionary<string, int> lengthLimits, string sourceFile)
+        public ImportLengthDataReader(IDataReader reader, IReadOnlyDictionary<string, int> lengthLimits, string sourceFile, IReadOnlyCollection<string> blankAsNullColumns = null)
         {
             this.reader = reader;
             this.sourceFile = sourceFile;
             var mappedNames = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < reader.FieldCount; i++)
+            {
+                if (blankAsNullColumns != null && blankAsNullColumns.Contains(reader.GetName(i))) blankAsNull.Add(i);
                 if (mappedNames.Add(reader.GetName(i)) && lengthLimits.TryGetValue(reader.GetName(i), out int length) && length >= 0)
                     limits.Add((i, length));
+            }
         }
 
         public void Dispose() { }
@@ -29,8 +34,8 @@ namespace DBUtil
         public int FieldCount => reader.FieldCount;
         public int Depth => reader.Depth;
         public int RecordsAffected => reader.RecordsAffected;
-        public object this[int i] => reader[i];
-        public object this[string name] => reader[name];
+        public object this[int i] => GetValue(i);
+        public object this[string name] => GetValue(GetOrdinal(name));
         public bool Read()
         {
             if (!reader.Read()) return false;
@@ -63,9 +68,19 @@ namespace DBUtil
         public long GetInt64(int i) => reader.GetInt64(i);
         public DataTable GetSchemaTable() => reader.GetSchemaTable();
         public string GetString(int i) => reader.GetString(i);
-        public object GetValue(int i) => reader.GetValue(i);
-        public int GetValues(object[] values) => reader.GetValues(values);
-        public bool IsDBNull(int i) => reader.IsDBNull(i);
+        public object GetValue(int i)
+        {
+            var value = reader.GetValue(i);
+            return value == null || value == DBNull.Value || blankAsNull.Contains(i) && value is string text && string.IsNullOrWhiteSpace(text)
+                ? DBNull.Value : value;
+        }
+        public int GetValues(object[] values)
+        {
+            int count = Math.Min(values.Length, FieldCount);
+            for (int i = 0; i < count; i++) values[i] = GetValue(i);
+            return count;
+        }
+        public bool IsDBNull(int i) => GetValue(i) == DBNull.Value;
     }
 }
 
