@@ -6,6 +6,7 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
     private Window Owner => owner() ?? throw new InvalidOperationException("The application window is not ready.");
     public Task<string?> OpenAsync(params string[] extensions) => MainThread.InvokeOnMainThreadAsync(() => WindowsFiles.OpenAsync(Owner, extensions));
     public Task<string?> SaveAsync(string name, string extension) => MainThread.InvokeOnMainThreadAsync(() => WindowsFiles.SaveAsync(Owner, name, extension));
+    public Task<string?> SelectNewFilePathAsync(string name, string extension) => MainThread.InvokeOnMainThreadAsync(() => NewFileDialog.Select(WinRT.Interop.WindowNative.GetWindowHandle(Owner.Handler?.PlatformView ?? throw new InvalidOperationException("The application window is not ready.")), name, extension));
     public Task<string?> FolderAsync() => MainThread.InvokeOnMainThreadAsync(() => WindowsFiles.FolderAsync(Owner));
     public Task CopyTextAsync(string text) => MainThread.InvokeOnMainThreadAsync(() => Clipboard.Default.SetTextAsync(text));
     public Task ShowResultsAsync(QueryResultSession session) => MainThread.InvokeOnMainThreadAsync(() =>

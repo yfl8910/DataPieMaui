@@ -20,9 +20,9 @@
     }
     else if (Model.Form.ConnectionTab == "Sqlite")
     {
-        <h2>Connect to SQLite</h2><p class="muted">Choose an existing local database. The connection is saved automatically.</p>
+        <h2>Connect to SQLite</h2><p class="muted">Connect and save opens an existing database and saves its connection. Creating a blank database connects without saving the connection.</p>
         <div class="actions align-end"><label class="grow">Database file<input @bind="Model.Form.SqlitePath" @bind:event="oninput" placeholder="Path to a SQLite database" /></label><button @onclick="BrowseSqliteAsync">Browse file</button></div>
-        <div class="actions"><button class="primary" @onclick="ConnectSqliteAsync">Connect and save</button></div>
+        <div class="actions"><button class="primary" @onclick="ConnectSqliteAsync">Connect and save</button><button @onclick="CreateSqliteAsync">Create blank database and connect</button></div>
     }
     else
     {
@@ -131,6 +131,51 @@
         var path = Path.GetFullPath(Form.SqlitePath); watch.Start();
         await ConnectAsync(new Dbinfo { Dbname = Path.GetFileNameWithoutExtension(path), Dbtype = "SQLITE", ConnectionStrings = new DBConfig { ProviderName = "SQLITE", DataBase = path }.GetConstring() }, true);
     });
+
+    public Task CreateSqliteAsync() => RunAsync("Create SQLite database", async watch =>
+    {
+        var selectedPath = await Desktop.SelectNewFilePathAsync("NewDatabase", ".db");
+        if (selectedPath == null) return;
+        var path = Path.GetFullPath(selectedPath);
+        if (File.Exists(path))
+        {
+            await ShowExistingDatabaseAsync(path);
+            return;
+        }
+        watch.Start();
+        var created = await Task.Run(() =>
+        {
+            // Reserve a new file atomically; never truncate an existing database.
+            try
+            {
+                using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            }
+            catch (IOException) when (File.Exists(path)) { return false; }
+            var builder = new System.Data.SQLite.SQLiteConnectionStringBuilder { DataSource = path, Pooling = false };
+            using var connection = new System.Data.SQLite.SQLiteConnection(builder.ToString());
+            connection.Open();
+            // Materialize a valid SQLite header and empty schema without adding a user table.
+            using var command = new System.Data.SQLite.SQLiteCommand("VACUUM", connection);
+            command.ExecuteNonQuery();
+            return true;
+        });
+        if (!created)
+        {
+            watch.Stop();
+            await ShowExistingDatabaseAsync(path);
+            return;
+        }
+        Form.SqlitePath = path;
+        await ConnectAsync(new Dbinfo { Dbname = Path.GetFileNameWithoutExtension(path), Dbtype = "SQLITE", ConnectionStrings = new DBConfig { ProviderName = "SQLITE", DataBase = path }.GetConstring() }, false);
+        watch.Stop();
+        State.Status = $"Blank SQLite database created and connected in {watch.Elapsed.TotalSeconds:F1} s · File: {path}";
+    });
+
+    private async Task ShowExistingDatabaseAsync(string path)
+    {
+        State.Status = "Database creation canceled: the selected file already exists.";
+        await Dialogs.AlertAsync("File already exists", $"{path} already exists. Choose a new filename to create a blank database. To open this database, use Browse file and Connect and save.");
+    }
 
     private void Select(ChangeEventArgs e)
     {

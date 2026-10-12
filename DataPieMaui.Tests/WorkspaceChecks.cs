@@ -29,6 +29,35 @@ internal static class WorkspaceChecks
         var exportPage = new ExportPage { Workspace = workspace };
         var tableDesignPage = new TableDesignPage { Workspace = workspace };
         var proceduresPage = new ProceduresPage { Workspace = workspace };
+        await test("Blank SQLite creation connects without saving configuration and never overwrites files", async () =>
+        {
+            var blankPath = Path.Combine(root, "new-blank.db");
+            var picker = new FakeDesktop();
+            var blankWorkspace = new WorkspaceController(picker, Path.Combine(root, "blank-connections.db"));
+            var page = new ConnectionsPage { Workspace = blankWorkspace };
+            await page.InitializeAsync();
+            await page.CreateSqliteAsync();
+            Check(!File.Exists(blankPath) && !blankWorkspace.Context.State.IsConnected, "Canceled picker created or connected a database");
+            picker.NewSave = () => Task.FromResult<string?>(blankPath);
+            picker.Save = () => throw new Exception("Creation must not use the file-creating save picker" );
+            await page.CreateSqliteAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(File.Exists(blankPath) && new FileInfo(blankPath).Length > 0, "SQLite file was not initialized");
+            Check(blankWorkspace.Context.State.IsConnected && blankWorkspace.Context.Section == "Query" && blankWorkspace.Context.Form.SqlitePath == blankPath, "New database was not connected");
+            Check(blankWorkspace.Context.Tables.Count == 0 && blankWorkspace.Context.Exports.Count == 0 && blankWorkspace.Context.Connections.Count == 0, "Database not empty or connection unexpectedly saved");
+            Check(new ConnectionStore(Path.Combine(root, "blank-connections.db")).Load().Count == 0, "Connection configuration was persisted");
+            using (var db = new SQLiteConnection(new SQLiteConnectionStringBuilder { DataSource = blankPath, Pooling = false }.ToString()))
+            {
+                db.Open(); using var integrity = new SQLiteCommand("PRAGMA integrity_check", db); Check(Convert.ToString(integrity.ExecuteScalar()) == "ok", "Created database is invalid");
+                using var create = new SQLiteCommand("CREATE TABLE KeepMe(Id INTEGER); INSERT INTO KeepMe VALUES(1)", db); create.ExecuteNonQuery();
+            }
+            var bytes = File.ReadAllBytes(blankPath);
+            var previous = blankWorkspace.Context.State.Connection;
+            var pending = page.CreateSqliteAsync();
+            for (int i = 0; i < 100 && blankWorkspace.Context.Dialogs.Current == null; i++) await Task.Delay(10);
+            Check(blankWorkspace.Context.Dialogs.Current?.Title == "File already exists", "Existing destination did not produce a friendly notice");
+            blankWorkspace.Context.Dialogs.Complete(true); await pending;
+            Check(File.ReadAllBytes(blankPath).SequenceEqual(bytes) && blankWorkspace.Context.State.Connection == previous, "Existing database or current connection was changed");
+        });
         await test("Blazor workspace connects, previews and keeps inputs across pages", async () =>
         {
             await connectionsPage.InitializeAsync().WaitAsync(TimeSpan.FromSeconds(10));
@@ -484,6 +513,8 @@ internal static class WorkspaceChecks
     {
         public int ResultWindows { get; private set; }
         public Func<Task<string?>> Save { get; set; } = () => Task.FromResult<string?>(null);
+        public Func<Task<string?>> NewSave { get; set; } = () => Task.FromResult<string?>(null);
+        public Task<string?> SelectNewFilePathAsync(string name, string extension) => NewSave();
         public string? Folder { get; set; }
         public Task CopyTextAsync(string text) => Task.CompletedTask;
         public Task<string?> OpenAsync(params string[] extensions) => Task.FromResult<string?>(null);

@@ -5,6 +5,8 @@ public interface IDesktopServices
 {
     Task<string?> OpenAsync(params string[] extensions);
     Task<string?> SaveAsync(string name, string extension);
+    // Selects a destination without creating or modifying any file.
+    Task<string?> SelectNewFilePathAsync(string name, string extension);
     Task<string?> FolderAsync();
     Task CopyTextAsync(string text);
     Task ShowResultsAsync(QueryResultSession session);

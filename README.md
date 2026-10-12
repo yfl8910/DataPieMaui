@@ -7,7 +7,7 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 
 ## Features
 
-- Connect to SQL Server using Windows or SQL Server authentication, or open a local SQLite database.
+- Connect to SQL Server using Windows or SQL Server authentication, open a local SQLite database, or create a blank SQLite database and connect automatically.
 - Navigate between Blazor pages without losing SQL or form inputs; review operations in shared confirmation dialogs and a persistent status bar.
 - Save and manage database connections.
 - Generate SELECT, UPDATE, and DELETE statements and execute SQL.
@@ -71,7 +71,7 @@ Each successful script save atomically replaces the file and retains the origina
 
 ## Using the app
 
-1. Open **Database connection** and connect to SQL Server or SQLite.
+1. Open **Database connection** and connect to SQL Server or SQLite. In the **SQLite** tab, **Create blank database and connect** opens a save picker, creates a valid empty `.db` file and connects without saving its connection configuration. Existing files are never overwritten; choose a new filename. Canceling the picker preserves the current connection. Use **Table design** afterward to create tables.
 2. Open **SQL query**, select a table to generate SQL or enter your own statement, and click **Preview query**.
 3. View results in the separate window. Click column headers to sort, select a row to copy it, or copy all preview rows. Subsequent queries update the same window. Use **Open results** to reopen a closed result window without rerunning the query.
 4. Use the export buttons for the full query result, or **Batch export** for selected tables and views.
