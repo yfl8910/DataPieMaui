@@ -287,6 +287,7 @@ internal static class WorkspaceChecks
             {
                 workspace.Navigate(section);
                 if (section == "Export") exportPage.ChangeTab("View");
+                if (section == "Import") importPage.ChangeTab("Batch");
                 await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
                 string html = await renderer.Dispatcher.InvokeAsync(async () =>
                 {
@@ -367,6 +368,57 @@ internal static class WorkspaceChecks
                 if (renderUi) SaveHtml("Dialog", html);
             }
             workspace.Context.Dialogs.Complete(false); Check(!await dialogTask, "Dialog cancellation failed");
+        });
+        await test("Import tabs retain inputs and Drop table requires confirmation and refreshes schema", async () =>
+        {
+            var file = workspace.Context.Form.ImportPath;
+            var folder = workspace.Context.Form.ImportFolder;
+            importPage.ChangeTab("File"); importPage.ChangeTab("Batch"); importPage.ChangeTab("Drop");
+            Check(workspace.Context.Form.ImportPath == file && workspace.Context.Form.ImportFolder == folder, "Tabs discarded import inputs");
+            const string target = "Drop ` odd.name";
+            using (var db = new SQLiteConnection(connection))
+            {
+                db.Open(); using var create = new SQLiteCommand("CREATE TABLE `Drop `` odd.name`(Id INTEGER); INSERT INTO `Drop `` odd.name` VALUES(1)", db); create.ExecuteNonQuery();
+            }
+            await workspace.Context.RefreshSchemaAsync();
+            var originalImport = workspace.Context.Form.ImportTable;
+            var originalQuery = workspace.Context.Form.QueryTable;
+            workspace.Context.Form.ImportTable = workspace.Context.Form.QueryTable = target;
+            workspace.Context.Form.DropTable = target;
+            var pending = importPage.DropTableAsync();
+            Check(workspace.Context.Dialogs.Current?.Title == "Drop table" && workspace.Context.Tables.Contains(target), "Table deleted before confirmation");
+            workspace.Context.Dialogs.Complete(false); await pending;
+            Check(workspace.Context.Tables.Contains(target), "Cancel deleted table");
+            pending = importPage.DropTableAsync(); workspace.Context.Dialogs.Complete(true); await pending.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(!workspace.Context.Tables.Contains(target) && !workspace.Context.Exports.Any(x => x.Name == target), "Deleted table remained in lists");
+            Check(workspace.Context.Form.ImportTable == "" && workspace.Context.Form.QueryTable == "" && workspace.Context.Form.DropTable == "" && workspace.Context.Results.Current == null, "Stale selection or result remained");
+            using (var db = new SQLiteConnection(connection))
+            {
+                db.Open(); using var query = new SQLiteCommand("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='Drop ` odd.name'", db);
+                Check(Convert.ToInt64(query.ExecuteScalar()) == 0, "DROP TABLE did not remove structure");
+            }
+            Check(DataPieCore.SqlQueryBuilder.BuildDropTable("[dbo].[Odd]]Name]", "SQLSERVER") == "DROP TABLE [dbo].[Odd]]Name]", "SQL Server table name quoting failed");
+            workspace.Context.Form.ImportTable = originalImport; workspace.Context.Form.QueryTable = originalQuery;
+            importPage.ChangeTab("File");
+        });
+        await test("SQLite Drop table rejects foreign-key references without deleting data", async () =>
+        {
+            using (var db = new SQLiteConnection(connection))
+            {
+                db.Open(); using var create = new SQLiteCommand("CREATE TABLE DropParent(Id INTEGER PRIMARY KEY); CREATE TABLE DropChild(ParentId INTEGER REFERENCES DropParent(Id) ON DELETE CASCADE); INSERT INTO DropParent VALUES(1); INSERT INTO DropChild VALUES(1)", db); create.ExecuteNonQuery();
+            }
+            await workspace.Context.RefreshSchemaAsync();
+            workspace.Context.Form.DropTable = "DropParent";
+            var pending = importPage.DropTableAsync(); workspace.Context.Dialogs.Complete(true);
+            for (int i = 0; i < 100 && workspace.Context.Dialogs.Current == null; i++) await Task.Delay(10);
+            Check(workspace.Context.Dialogs.Current?.Title == "Drop table failed", "Incoming foreign key did not block deletion");
+            workspace.Context.Dialogs.Complete(true); await pending;
+            using (var db = new SQLiteConnection(connection))
+            {
+                db.Open(); using var count = new SQLiteCommand("SELECT COUNT(*) FROM DropChild", db); Check(Convert.ToInt64(count.ExecuteScalar()) == 1, "Referenced data was deleted");
+                using var clean = new SQLiteCommand("DROP TABLE DropChild; DROP TABLE DropParent", db); clean.ExecuteNonQuery();
+            }
+            await workspace.Context.RefreshSchemaAsync();
         });
         await test("Clear table confirmation resets the result snapshot", async () =>
         {

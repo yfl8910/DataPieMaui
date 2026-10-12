@@ -42,6 +42,24 @@ internal sealed class DatabaseOperations
         }
     }
 
+    public Task DropTableAsync(string table) => Task.Run(() =>
+    {
+        if (Schema == null || !Schema.Tables.Any(t => t.Name == table)) throw new InvalidOperationException("Select a table in the current database.");
+        using var access = OpenAccess();
+        if (Connection!.DatabaseType == "SQLITE")
+        {
+            // SQLite may cascade deletes when DROP TABLE is used. Reject incoming foreign keys instead.
+            foreach (var other in Schema.Tables.Where(t => t.Name != table))
+            {
+                using var reader = access.GetDataReader("PRAGMA foreign_key_list(" + SqlQueryBuilder.QuoteIdentifier(other.Name, "SQLITE") + ")");
+                while (reader.Read())
+                    if (string.Equals(Convert.ToString(reader.GetValue(2)), table, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("Cannot delete this table because " + other.Name + " references it with a foreign key.");
+            }
+        }
+        access.ExecuteSql(SqlQueryBuilder.BuildDropTable(table, Connection!.DatabaseType));
+    });
+
     public string ConvertToSqlite(string path)
     {
         if (Connection?.DatabaseType != "SQLSERVER" || Schema == null)

@@ -14,6 +14,9 @@ namespace DataPieCore
             return BuildSelect(columnList, tableName, databaseType, rowLimit);
         }
 
+        public static string BuildDropTable(string tableName, string databaseType)
+            => "DROP TABLE " + (IsSqlServer(databaseType) ? QuoteSqlServerTableName(tableName) : QuoteIdentifier(tableName, databaseType));
+
         public static string BuildSelectAll(string tableName, string databaseType)
             => BuildSelect("*", tableName, databaseType, null);
 

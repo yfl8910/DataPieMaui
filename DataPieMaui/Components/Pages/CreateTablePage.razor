@@ -46,13 +46,7 @@
         State.Status = $"Table creation completed in {watch.Elapsed.TotalSeconds:F1} s.";
         try
         {
-            await Database.ConnectAsync(Database.Connection!);
-            Tables = Database.Schema!.Tables.Select(t => t.Name).ToArray();
-            var selected = Exports.Where(x => x.Selected).Select(x => (x.Name, x.Kind)).ToHashSet();
-            Exports.Clear();
-            Exports.AddRange(Tables.Select(n => new DataPieMaui.ViewModels.SelectableObject(n, "Table") { Selected = selected.Contains((n, "Table")) }));
-            Exports.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "View").Select(o => new DataPieMaui.ViewModels.SelectableObject(o.Name, o.Kind) { DefinitionObject = o, Selected = selected.Contains((o.Name, o.Kind)) }));
-            Notify();
+            await Context.RefreshSchemaAsync();
         }
         catch (Exception ex)
         {
@@ -60,4 +54,3 @@
         }
     });
 }
-

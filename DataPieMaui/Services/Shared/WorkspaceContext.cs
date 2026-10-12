@@ -39,5 +39,19 @@ public sealed class WorkspaceContext
         Dialogs.Changed += Notify;
     }
 
+    internal async Task RefreshSchemaAsync()
+    {
+        await Database.ConnectAsync(Database.Connection!);
+        Tables = Database.Schema!.Tables.Select(t => t.Name).ToArray();
+        var selected = Exports.Where(x => x.Selected).Select(x => (x.Name, x.Kind)).ToHashSet();
+        Exports.Clear();
+        Exports.AddRange(Tables.Select(n => new SelectableObject(n, "Table") { Selected = selected.Contains((n, "Table")) }));
+        Exports.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "View").Select(o => new SelectableObject(o.Name, o.Kind) { DefinitionObject = o, Selected = selected.Contains((o.Name, o.Kind)) }));
+        if (!Tables.Contains(Form.ImportTable)) Form.ImportTable = "";
+        if (!Tables.Contains(Form.QueryTable)) Form.QueryTable = "";
+        if (!Tables.Contains(Form.DropTable)) Form.DropTable = "";
+        Notify();
+    }
+
     internal void Notify() => Changed?.Invoke();
 }

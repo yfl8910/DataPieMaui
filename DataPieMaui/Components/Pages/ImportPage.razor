@@ -3,16 +3,70 @@
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
 <section class="card">
-    <div class="actions align-end"><label class="grow">Target table<select @bind="Model.Form.ImportTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label><button @onclick="PreviewImportTableAsync" disabled="@(string.IsNullOrEmpty(Model.Form.ImportTable))">Query data</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Delete</button></div>
+    <div class="tabs" aria-label="Import and table management">
+        @foreach (var tab in new[] { ("File", "Import a file"), ("Batch", "Batch import"), ("Drop", "Drop table") })
+        {
+            <button class="@(Form.ImportTab == tab.Item1 ? "active" : "")" aria-pressed="@(Form.ImportTab == tab.Item1)" @onclick="() => ChangeTab(tab.Item1)">@tab.Item2</button>
+        }
+    </div>
 </section>
-<section class="card"><h2>Import a file</h2><p class="muted">Excel, CSV, or a SQLite database containing a table with the same name.</p>
-    <div class="actions align-end"><label class="grow">Source file<input @bind="Model.Form.ImportPath" @bind:event="oninput" placeholder="Select a file to import" /></label><button @onclick="() => BrowseImportAsync(false)">Browse file</button><button class="primary" @onclick="ImportFileAsync">Import file</button><button @onclick="ImportFileWithLengthValidationAsync">Validate lengths and import</button></div>
-</section>
-<section class="card"><h2>Batch import</h2><p class="muted">Append each CSV and XLSX file in the folder to the target table.</p>
-    <div class="actions align-end"><label class="grow">Source folder<input @bind="Model.Form.ImportFolder" @bind:event="oninput" placeholder="Select an import folder" /></label><button @onclick="() => BrowseImportAsync(true)">Browse folder</button><button class="primary" @onclick="ImportDirectoryAsync">Import folder</button></div>
-</section>
-
+@if (Form.ImportTab != "Drop")
+{
+    <section class="card">
+        <div class="actions align-end"><label class="grow">Target table<select @bind="Form.ImportTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label><button @onclick="PreviewImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">Query data</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Clear data</button></div>
+    </section>
+    @if (Form.ImportTab == "File")
+    {
+        <section class="card"><h2>Import a file</h2><p class="muted">Excel, CSV, or a SQLite database containing a table with the same name.</p>
+            <div class="actions align-end"><label class="grow">Source file<input @bind="Form.ImportPath" @bind:event="oninput" placeholder="Select a file to import" /></label><button @onclick="() => BrowseImportAsync(false)">Browse file</button><button class="primary" @onclick="ImportFileAsync">Import file</button><button @onclick="ImportFileWithLengthValidationAsync">Validate lengths and import</button></div>
+        </section>
+    }
+    else
+    {
+        <section class="card"><h2>Batch import</h2><p class="muted">Append each CSV and XLSX file in the folder to the target table.</p>
+            <div class="actions align-end"><label class="grow">Source folder<input @bind="Form.ImportFolder" @bind:event="oninput" placeholder="Select an import folder" /></label><button @onclick="() => BrowseImportAsync(true)">Browse folder</button><button class="primary" @onclick="ImportDirectoryAsync">Import folder</button></div>
+        </section>
+    }
+}
+else
+{
+    <section class="card"><h2>Drop table</h2>
+        <p class="callout danger">Permanently delete the table structure and all its data from @State.Connection. This cannot be undone.</p>
+        <label>Table to delete<select @bind="Form.DropTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label>
+        <div class="actions"><button class="danger" @onclick="DropTableAsync" disabled="@(string.IsNullOrEmpty(Form.DropTable))">Drop table</button></div>
+    </section>
+}
 @code {
+    public void ChangeTab(string tab)
+    {
+        if (IsOperationRunning || tab is not ("File" or "Batch" or "Drop")) return;
+        Form.ImportTab = tab;
+        Notify();
+    }
+    public Task DropTableAsync() => RunAsync("Drop table", async watch =>
+    {
+        var table = Required(Form.DropTable, "Select a table to delete.");
+        if (!Tables.Contains(table)) throw new InvalidOperationException("The table is not in the current database. Reconnect to refresh the list.");
+        if (!await Dialogs.ConfirmAsync("Drop table", $"Permanently delete table {table} and ALL its data from {State.Connection}? This cannot be undone.", "Drop table")) return;
+        watch.Start();
+        await Database.DropTableAsync(table);
+        watch.Stop();
+        Form.DropTable = "";
+        if (Form.ImportTable == table) Form.ImportTable = "";
+        if (Form.QueryTable == table) Form.QueryTable = "";
+        Results.Set(null);
+        QuerySummary = "Run a new preview after deleting the table.";
+        Tables = Tables.Where(n => n != table).ToArray();
+        Exports.RemoveAll(x => x.Kind == "Table" && x.Name == table);
+        State.Status = $"Table {table} deleted in {watch.Elapsed.TotalSeconds:F1} s.";
+        Notify();
+        try { await Context.RefreshSchemaAsync(); }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Table deleted", "The table was deleted, but refreshing the schema failed. Reconnect to reload the table list. " + ex.Message);
+        }
+    });
+
     public Task PreviewImportTableAsync() => Context.Preview.PreviewObjectAsync(Form.ImportTable);
 
     public Task BrowseImportAsync(bool folder) => RunAsync(folder ? "Select folder" : "Select import file", async watch =>
@@ -91,4 +145,3 @@
         DatabaseOperations.Import(path, table, access, validateFieldLengths);
     });
 }
-
