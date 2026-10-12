@@ -3,11 +3,11 @@ using Microsoft.AspNetCore.Components.WebView.Maui;
 
 namespace DataPieMaui.Controls;
 
-public sealed class QueryResultsPage : ContentPage
+public sealed class QueryResultsHostPage : ContentPage
 {
     private readonly BlazorWebView webView;
 
-    public QueryResultsPage(QueryResultSession session)
+    public QueryResultsHostPage(QueryResultSession session, IDesktopServices desktop)
     {
         Title = "Query results";
         webView = new BlazorWebView { HostPage = "wwwroot/index.html" };
@@ -15,7 +15,7 @@ public sealed class QueryResultsPage : ContentPage
         {
             Selector = "#app",
             ComponentType = typeof(Components.QueryResults),
-            Parameters = new Dictionary<string, object?> { ["Session"] = session }
+            Parameters = new Dictionary<string, object?> { ["Session"] = session, ["Desktop"] = desktop }
         });
         Content = webView;
     }

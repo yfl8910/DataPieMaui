@@ -282,6 +282,7 @@ try
     await DialogLifecycleChecks.Run(Test);
     await ProcedureExecutionChecks.Run(Test);
     await SQLiteDefinitionEditChecks.Run(root, Test);
+    await QueryResultsChecks.Run(Test);
     await WorkspaceChecks.Run(root, Test, args.Contains("--render-ui"));
     Console.WriteLine($"{passed} regression checks passed.");
     return 0;

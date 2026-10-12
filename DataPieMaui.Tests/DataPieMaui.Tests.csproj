@@ -23,6 +23,6 @@
     <Compile Include="..\DataPieMaui\ViewModels\WorkspaceState.cs" Link="ViewModels\WorkspaceState.cs" />
     <Compile Include="..\DataPieMaui\ViewModels\WorkspaceForm.cs" Link="ViewModels\WorkspaceForm.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <Content Include="..\DataPieMaui\Components\**\*.razor" Exclude="..\DataPieMaui\Components\QueryResults.razor" Link="Components\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Content Include="..\DataPieMaui\Components\**\*.razor" Link="Components\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

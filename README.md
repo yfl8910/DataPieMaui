@@ -173,7 +173,7 @@ The test project is a console-based regression runner. Run it with:
 dotnet run --project DataPieMaui.Tests\DataPieMaui.Tests.csproj -c Release
 ```
 
-Checks cover SQLite access, connection management, query previews, import/export and length validation, Excel-based table creation and Id identity defaults, table deletion and foreign-key protection, procedure parameters, definition editing, conversion, cancellation, result snapshots, typed sorting, and copy formatting. Workspace checks also exercise confirmation and cancellation, concurrent-operation protection, state retention, and rendering of the actual Razor pages. These checks use a test desktop adapter; they do not automate native window/file-picker interactions or require a live SQL Server instance.
+Checks cover SQLite access, connection management, query previews, import/export and length validation, Excel-based table creation and Id identity defaults, table deletion and foreign-key protection, procedure parameters, definition editing, conversion, cancellation, result snapshots, typed sorting, copy formatting, result-component updates, and desktop clipboard delegation. Workspace checks also exercise confirmation and cancellation, concurrent-operation protection, state retention, and rendering of the actual Razor pages. These checks use a test desktop adapter; they do not automate native window/file-picker interactions or require a live SQL Server instance.
 
 To also write static page previews to the ignored `tmp/ui-review/` directory, run:
 
@@ -185,6 +185,7 @@ These previews are render snapshots, not an interactive web version of the deskt
 
 ## UI architecture
 
+- `Controls/QueryResultsHostPage.cs` hosts the independent result window; `Components/QueryResults.razor` owns result rendering and interactions. Clipboard access is provided by `IDesktopServices.CopyTextAsync`, so the result component can be rendered and tested without MAUI.
 - `MainPage.cs` hosts the main `BlazorWebView` and provides a native fallback when WebView2 is missing.
 - `Components/Workspace.razor` provides navigation and the status bar; `Components/Pages/` contains the business pages, and `Components/Shared/` contains shared controls and dialogs.
 - All business pages, including login and connection management, keep their markup and page-specific workflows together in a single `.razor` file using an `@code` block. The static About page needs no code block.

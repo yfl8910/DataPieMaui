@@ -485,6 +485,7 @@ internal static class WorkspaceChecks
         public int ResultWindows { get; private set; }
         public Func<Task<string?>> Save { get; set; } = () => Task.FromResult<string?>(null);
         public string? Folder { get; set; }
+        public Task CopyTextAsync(string text) => Task.CompletedTask;
         public Task<string?> OpenAsync(params string[] extensions) => Task.FromResult<string?>(null);
         public Task<string?> SaveAsync(string name, string extension) => Save();
         public Task<string?> FolderAsync() => Task.FromResult(Folder);

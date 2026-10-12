@@ -7,6 +7,7 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
     public Task<string?> OpenAsync(params string[] extensions) => MainThread.InvokeOnMainThreadAsync(() => WindowsFiles.OpenAsync(Owner, extensions));
     public Task<string?> SaveAsync(string name, string extension) => MainThread.InvokeOnMainThreadAsync(() => WindowsFiles.SaveAsync(Owner, name, extension));
     public Task<string?> FolderAsync() => MainThread.InvokeOnMainThreadAsync(() => WindowsFiles.FolderAsync(Owner));
+    public Task CopyTextAsync(string text) => MainThread.InvokeOnMainThreadAsync(() => Clipboard.Default.SetTextAsync(text));
     public Task ShowResultsAsync(QueryResultSession session) => MainThread.InvokeOnMainThreadAsync(() =>
     {
         if (resultWindow is { } existing)
@@ -18,7 +19,7 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
             }
             return;
         }
-        var page = new Controls.QueryResultsPage(session);
+        var page = new Controls.QueryResultsHostPage(session, this);
         var window = new Window(page) { Title = "DataPieMaui · Query results", Width = 1100, Height = 750, MinimumWidth = 640, MinimumHeight = 420 };
         window.Destroying += (_, _) =>
         {

@@ -13,8 +13,8 @@
     {
         <div class="toolbar">
             <strong>@snapshot.RowCount.ToString("N0") rows · @snapshot.ColumnCount columns</strong>
-            <button @onclick="() => Copy(false)" disabled="@(selected is null)">Copy selected row</button>
-            <button @onclick="() => Copy(true)" disabled="@(order.Length == 0)">Copy all preview rows</button>
+            <button @onclick="() => CopyAsync(false)" disabled="@(selected is null)">Copy selected row</button>
+            <button @onclick="() => CopyAsync(true)" disabled="@(order.Length == 0)">Copy all preview rows</button>
         </div>
         @if (snapshot.Truncated)
         {
@@ -57,6 +57,7 @@
 
 @code {
     [Parameter, EditorRequired] public QueryResultSession Session { get; set; } = default!;
+    [Parameter, EditorRequired] public IDesktopServices Desktop { get; set; } = default!;
     private QueryResultSnapshot? snapshot;
     private int[] order = [];
     private const int PageSize = 100;
@@ -86,13 +87,13 @@
     private void SelectWithKey(KeyboardEventArgs e, int index) { if (e.Key is "Enter" or " ") Select(index); }
     private void Previous() { if (page > 0) page--; }
     private void Next() { if (page + 1 < PageCount) page++; }
-    private async Task Copy(bool all)
+    public async Task CopyAsync(bool all)
     {
         if (snapshot is null || (!all && selected is null)) return;
         try
         {
             var text = snapshot.CopyText(all ? order : new[] { selected!.Value });
-            await MainThread.InvokeOnMainThreadAsync(() => Clipboard.Default.SetTextAsync(text));
+            await Desktop.CopyTextAsync(text);
             message = all ? $"Copied {order.Length:N0} preview rows." : "Copied selected row.";
         }
         catch (Exception ex) { message = "Copy failed: " + ex.Message; }
