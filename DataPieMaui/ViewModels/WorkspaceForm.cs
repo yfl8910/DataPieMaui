@@ -3,6 +3,11 @@ namespace DataPieMaui.ViewModels;
 // Page inputs outlive individual Razor components when navigating between sections.
 public sealed class WorkspaceForm
 {
+    public string CreateTablePath { get; set; } = "";
+    public string CreateTableSheet { get; set; } = "";
+    public string CreateTableSql { get; set; } = "";
+    public string[] CreateTableSheets { get; set; } = [];
+
     public string ProcedureTab { get; set; } = "WithoutParameters";
     public string ExportTab { get; set; } = "Table";
     public string ConnectionTab { get; set; } = "SqlServer";

@@ -1,0 +1,63 @@
+@using DataPieCore
+@inherits WorkspacePageBase
+<section class="card">
+    <h2>Excel worksheet</h2>
+    <p class="muted">The first row supplies column names. The worksheet name becomes the table name; edit it directly in the SQL below.</p>
+    <div class="actions align-end">
+        <label class="grow">Excel file<input value="@Form.CreateTablePath" readonly placeholder="Select an Excel file" /></label>
+        <button @onclick="BrowseAsync">Browse file</button>
+        <label class="grow">Worksheet<select @bind="Form.CreateTableSheet"><option value="">Select a worksheet</option>@foreach (var sheet in Form.CreateTableSheets) { <option value="@sheet">@sheet</option> }</select></label>
+        <button @onclick="GenerateAsync" disabled="@(string.IsNullOrEmpty(Form.CreateTableSheet))">Generate SQL</button>
+    </div>
+</section>
+<section class="card">
+    <label>SQL editor<textarea class="sql-editor" @bind="Form.CreateTableSql" @bind:event="oninput" spellcheck="false" placeholder="Generate CREATE TABLE SQL from an Excel worksheet"></textarea></label>
+    <p class="muted">Review inferred types before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.</p>
+    <div class="actions"><button class="primary" @onclick="CreateAsync" disabled="@(string.IsNullOrWhiteSpace(Form.CreateTableSql))">Create table</button></div>
+</section>
+@code {
+    public Task BrowseAsync() => RunAsync("Read Excel worksheets", async watch =>
+    {
+        var path = await Desktop.OpenAsync(".xlsx", ".xls");
+        if (path == null) return;
+        watch.Start();
+        var sheets = await Task.Run(() => ExcelTableSql.Sheets(path));
+        Form.CreateTablePath = path;
+        Form.CreateTableSheets = sheets;
+        Form.CreateTableSheet = sheets.FirstOrDefault() ?? "";
+        Form.CreateTableSql = "";
+    });
+    public Task GenerateAsync() => RunAsync("Generate table SQL", async watch =>
+    {
+        var path = Required(Form.CreateTablePath, "Select an Excel file.");
+        var sheet = Required(Form.CreateTableSheet, "Select a worksheet.");
+        var type = Type;
+        watch.Start();
+        var sql = await Task.Run(() => ExcelTableSql.Generate(path, sheet, type));
+        Form.CreateTableSql = sql;
+    });
+    public Task CreateAsync() => RunAsync("Create table", async watch =>
+    {
+        var sql = Required(Form.CreateTableSql, "Generate and review the SQL first.");
+        if (!await Dialogs.ConfirmAsync("Create table", "Execute the SQL currently shown in the editor against " + State.Connection + "? Review all changes before continuing.", "Create")) return;
+        watch.Start();
+        await Task.Run(() => { using var access = Database.OpenAccess(); access.ExecuteSql(sql); });
+        watch.Stop();
+        State.Status = $"Table creation completed in {watch.Elapsed.TotalSeconds:F1} s.";
+        try
+        {
+            await Database.ConnectAsync(Database.Connection!);
+            Tables = Database.Schema!.Tables.Select(t => t.Name).ToArray();
+            var selected = Exports.Where(x => x.Selected).Select(x => (x.Name, x.Kind)).ToHashSet();
+            Exports.Clear();
+            Exports.AddRange(Tables.Select(n => new DataPieMaui.ViewModels.SelectableObject(n, "Table") { Selected = selected.Contains((n, "Table")) }));
+            Exports.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "View").Select(o => new DataPieMaui.ViewModels.SelectableObject(o.Name, o.Kind) { DefinitionObject = o, Selected = selected.Contains((o.Name, o.Kind)) }));
+            Notify();
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Table created", "The SQL completed, but refreshing the table list failed. Reconnect to reload the schema. " + ex.Message);
+        }
+    });
+}
+

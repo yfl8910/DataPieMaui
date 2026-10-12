@@ -44,6 +44,49 @@ internal static class WorkspaceChecks
             await queryPage.OpenResultsAsync();
             Check(desktop.ResultWindows == 2, "Reopen results not dispatched");
         });
+        await test("Excel worksheet SQL supports sheet names, types and reviewed table creation", async () =>
+        {
+            var excel = Path.Combine(root, "structure.xlsx");
+            var rows = new[] { new Dictionary<string, object> { ["Code"] = "00123", ["Quantity"] = 4, ["Rate"] = 1.5, ["Odd]Name"] = "value" } };
+            MiniExcelLibs.MiniExcel.SaveAs(excel, rows, sheetName: "Orders");
+            Check(DataPieCore.ExcelTableSql.Sheets(excel).SequenceEqual(new[] { "Orders" }), "Worksheet names missing");
+            var sqlServer = DataPieCore.ExcelTableSql.Generate(excel, "Orders", "SQLSERVER");
+            Check(sqlServer.Contains("CREATE TABLE [Orders]") && sqlServer.Contains("[Code] NVARCHAR(MAX)") && sqlServer.Contains("[Quantity] BIGINT") && sqlServer.Contains("[Rate] FLOAT") && sqlServer.Contains("[Odd]]Name]"), "Incorrect types or quoting");
+            workspace.Context.Form.CreateTablePath = excel;
+            workspace.Context.Form.CreateTableSheet = "Orders";
+            var page = new CreateTablePage { Workspace = workspace };
+            await page.GenerateAsync();
+            Check(workspace.Context.Form.CreateTableSql.Contains("CREATE TABLE \"Orders\""), "Sheet name not used as table name");
+            workspace.Context.Form.CreateTableSql = workspace.Context.Form.CreateTableSql.Replace("\"Orders\"", "\"ReviewedOrders\"");
+            var pending = page.CreateAsync();
+            Check(workspace.Context.Dialogs.Current?.Title == "Create table" && !workspace.Context.Tables.Contains("ReviewedOrders"), "Creation did not await confirmation");
+            workspace.Context.Dialogs.Complete(false); await pending;
+            Check(!workspace.Context.Tables.Contains("ReviewedOrders"), "Cancellation created table");
+            pending = page.CreateAsync(); workspace.Context.Dialogs.Complete(true); await pending.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Context.Tables.Contains("ReviewedOrders") && workspace.Context.Exports.Any(x => x.Name == "ReviewedOrders"), "Reviewed SQL was not executed or schema not refreshed");
+            using var db = new SQLiteConnection(connection); db.Open();
+            using var drop = new SQLiteCommand("DROP TABLE ReviewedOrders", db); drop.ExecuteNonQuery();
+            await workspace.Context.Database.ConnectAsync(workspace.Context.Database.Connection!);
+            workspace.Context.Tables = workspace.Context.Database.Schema!.Tables.Select(t => t.Name).ToArray();
+            workspace.Context.Exports.RemoveAll(x => x.Name == "ReviewedOrders");
+        });
+        await test("Excel Id columns generate identity primary keys and SQLite assigns IDs", async () =>
+        {
+            foreach (var header in new[] { "Id", "ID", "id" })
+            {
+                var excel = Path.Combine(root, "identity-" + Guid.NewGuid().ToString("N") + ".xlsx");
+                MiniExcelLibs.MiniExcel.SaveAs(excel, new[] { new Dictionary<string, object> { [header] = "source-id", ["Name"] = "example" } }, sheetName: "IdentityRows");
+                var sqlServer = DataPieCore.ExcelTableSql.Generate(excel, "IdentityRows", "SQLSERVER");
+                Check(sqlServer.Contains("[" + header + "] BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY"), "SQL Server Id was inferred from Excel values instead of using identity");
+                var sqlite = DataPieCore.ExcelTableSql.Generate(excel, "IdentityRows", "SQLITE");
+                Check(sqlite.Contains("\"" + header + "\" INTEGER PRIMARY KEY AUTOINCREMENT"), "SQLite identity missing");
+                using var db = new SQLiteConnection("Data Source=:memory:"); db.Open();
+                using var create = new SQLiteCommand(sqlite, db); create.ExecuteNonQuery();
+                using var insert = new SQLiteCommand("INSERT INTO IdentityRows(Name) VALUES('first'),('second'); DELETE FROM IdentityRows WHERE " + header + "=2; INSERT INTO IdentityRows(Name) VALUES('third');", db); insert.ExecuteNonQuery();
+                using var checkId = new SQLiteCommand("SELECT MAX(" + header + ") FROM IdentityRows", db);
+                Check(Convert.ToInt64(checkId.ExecuteScalar()) == 3, "SQLite did not generate monotonically increasing IDs");
+            }
+        });
         await test("Connection page recreation preserves loaded configuration and status", async () =>
         {
             var connections = workspace.Context.Connections;
@@ -235,7 +278,7 @@ internal static class WorkspaceChecks
             workspace.Context.Form.Sql = "SELECT '<script>alert(1)</script>'";
             var pages = new[]
             {
-                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("Import", "Source folder"),
+                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("CreateTable", "Excel worksheet"), ("Import", "Source folder"),
                 ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("About", "Blazor Hybrid")
             };
             // Render the conversion page without connecting to an external SQL Server.

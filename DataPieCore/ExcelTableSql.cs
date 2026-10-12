@@ -1,0 +1,67 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using ExcelDataReader;
+namespace DataPieCore;
+public static class ExcelTableSql
+{
+    private static IExcelDataReader Open(string path, out Stream stream)
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        try { return ExcelReaderFactory.CreateReader(stream); }
+        catch { stream.Dispose(); throw; }
+    }
+    public static string[] Sheets(string path)
+    {
+        using var reader = Open(path, out var stream);
+        using (stream)
+        {
+            var names = new List<string>();
+            do { names.Add(reader.Name); } while (reader.NextResult());
+            return names.ToArray();
+        }
+    }
+    public static string Generate(string path, string sheet, string databaseType)
+    {
+        if (databaseType != "SQLSERVER" && databaseType != "SQLITE") throw new NotSupportedException("Unsupported database type.");
+        using var reader = Open(path, out var stream);
+        using (stream)
+        {
+            while (reader.Name != sheet)
+                if (!reader.NextResult()) throw new InvalidOperationException("The selected worksheet no longer exists.");
+            if (!reader.Read() || reader.FieldCount == 0) throw new InvalidOperationException("The worksheet has no header row.");
+            var names = Enumerable.Range(0, reader.FieldCount).Select(i => Convert.ToString(reader.GetValue(i), CultureInfo.InvariantCulture)?.Trim() ?? "").ToArray();
+            if (names.Any(string.IsNullOrWhiteSpace)) throw new InvalidOperationException("The first row contains empty column names. Update the Excel header row first.");
+            if (names.Distinct(StringComparer.OrdinalIgnoreCase).Count() != names.Length) throw new InvalidOperationException("The first row contains duplicate column names. Update the Excel header row first.");
+            var kinds = new string[names.Length];
+            while (reader.Read())
+            {
+                for (int i = 0; i < names.Length; i++)
+                {
+                    var value = reader.GetValue(i);
+                    if (value == null || value == DBNull.Value) continue;
+                    string kind = value switch
+                    {
+                        bool => "bool", DateTime => "date",
+                        double d when double.IsFinite(d) && d == Math.Truncate(d) && d >= -9007199254740991d && d <= 9007199254740991d => "integer",
+                        byte or short or int or long => "integer",
+                        double or float or decimal => "number", _ => "text"
+                    };
+                    if (kinds[i] == null) kinds[i] = kind;
+                    else if (kinds[i] != kind)
+                        kinds[i] = (kinds[i] is "integer" or "number") && (kind is "integer" or "number") ? "number" : "text";
+                }
+            }
+            bool sqlite = databaseType == "SQLITE";
+            string Quote(string name) => sqlite ? "\"" + name.Replace("\"", "\"\"") + "\"" : "[" + name.Replace("]", "]]") + "]";
+            string Type(string kind) => sqlite ? kind switch { "integer" or "bool" => "INTEGER", "number" => "REAL", _ => "TEXT" }
+                : kind switch { "integer" => "BIGINT", "number" => "FLOAT", "bool" => "BIT", "date" => "DATETIME2", _ => "NVARCHAR(MAX)" };
+            return "CREATE TABLE " + Quote(sheet) + " (" + Environment.NewLine
+                + string.Join("," + Environment.NewLine, names.Select((name, i) => "    " + Quote(name) + " " + (string.Equals(name, "Id", StringComparison.OrdinalIgnoreCase) ? (sqlite ? "INTEGER PRIMARY KEY AUTOINCREMENT" : "BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY") : Type(kinds[i]) + " NULL"))) + Environment.NewLine + ");";
+        }
+    }
+}

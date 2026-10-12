@@ -25,6 +25,7 @@
                                 {
                                     case "Connections": <ConnectionsPage /> break;
                                     case "Query": <QueryPage /> break;
+                                    case "CreateTable": <CreateTablePage /> break;
                                     case "Import": <ImportPage /> break;
                                     case "Export": <ExportPage /> break;
                                     case "Procedures": <ProceduresPage /> break;
@@ -59,6 +60,7 @@
         ("Export", "Batch export", "↑", "Export selected tables and views to Excel or CSV."),
         ("Procedures", "Stored procedures", "▷", "Run selected procedures in sequence."),
         ("Migration", "Convert to SQLite", "⇄", "Create a portable SQLite copy of your SQL Server database."),
+        ("CreateTable", "Create table", "+", "Generate and review table structure from an Excel worksheet."),
         ("About", "About", "ⓘ", "A local workspace for your database tasks.")
     ];
     private string Title => navigation.First(x => x.Id == Controller.Context.Section).Label;
