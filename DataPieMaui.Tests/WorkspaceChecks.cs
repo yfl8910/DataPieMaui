@@ -118,6 +118,45 @@ internal static class WorkspaceChecks
             Check(sqlite.Contains("\"Above\" INTEGER NULL") && sqlite.Contains("\"Len255\" TEXT NULL"), "SQLite types changed");
             return Task.CompletedTask;
         });
+        await test("Excel inference ignores blank strings and stops after 1000 data rows", () =>
+        {
+            var excel = Path.Combine(root, "inference-sample.xlsx");
+            var rows = Enumerable.Range(1, 1001).Select(i => new Dictionary<string, object?>
+            {
+                ["Numeric"] = i == 1001 ? "not numeric" : i <= 3 ? new[] { "", "   ", "\t\r\n" }[i-1] : i,
+                ["Range"] = i == 1001 ? (long)int.MaxValue + 1 : 1,
+                ["Text"] = i == 1001 ? new string('x',256) : "short",
+                ["LastSample"] = i == 1000 ? "text at boundary" : i
+            }).ToArray();
+            MiniExcelLibs.MiniExcel.SaveAs(excel, rows, sheetName: "Sample");
+            var sql = DataPieCore.ExcelTableSql.Generate(excel, "Sample", "SQLSERVER");
+            Check(sql.Contains("[Numeric] INT NULL"), "Blank strings changed numeric inference");
+            Check(sql.Contains("[Range] INT NULL") && sql.Contains("[Text] NVARCHAR(255) NULL"), "Inference read row 1001");
+            Check(sql.Contains("[LastSample] NVARCHAR(255) NULL"), "Inference excluded data row 1000");
+            var shorter = Path.Combine(root, "inference-short.xlsx");
+            MiniExcelLibs.MiniExcel.SaveAs(shorter, rows.Take(4).ToArray(), sheetName: "Sample");
+            Check(DataPieCore.ExcelTableSql.Generate(shorter, "Sample", "SQLSERVER").Contains("[Numeric] INT NULL"), "Short worksheet ignored numeric values after blanks");
+            return Task.CompletedTask;
+        });
+        await test("Excel inference recognizes native dates and unambiguous date text", () =>
+        {
+            var excel = Path.Combine(root, "date-types.xlsx");
+            MiniExcelLibs.MiniExcel.SaveAs(excel, new[]
+            {
+                new Dictionary<string, object?> { ["NativeDate"] = new DateTime(2026,10,12), ["TextDate"] = "2026-10-12", ["Combined"] = new DateTime(2026,10,12), ["ChineseDate"] = "2026年10月12日", ["Timestamp"] = "2026-10-12T09:30:15.1234567", ["Midnight"] = "2026-10-12 00:00:00", ["NativeTime"] = new DateTime(2026,10,12), ["Invalid"] = "2026-02-30", ["NumberCode"] = "20261012", ["Mixed"] = "2026-10-12", ["Ambiguous"] = "10/12/2026" },
+                new Dictionary<string, object?> { ["NativeDate"] = null, ["TextDate"] = "  ", ["Combined"] = "2026/10/13", ["ChineseDate"] = "2026年1月2日", ["Timestamp"] = "2026-10-13 08:15:00", ["Midnight"] = "2026-10-13", ["NativeTime"] = new DateTime(2026,10,13,9,30,0), ["Invalid"] = "bad", ["NumberCode"] = "00123", ["Mixed"] = "not a date", ["Ambiguous"] = "11/12/2026" }
+            }, sheetName: "Dates");
+            var sql = DataPieCore.ExcelTableSql.Generate(excel, "Dates", "SQLSERVER");
+            foreach (var name in new[] { "NativeDate", "TextDate", "Combined", "ChineseDate" })
+                Check(sql.Contains("["+name+"] DATE NULL"), "Date inference failed for " + name + ": " + sql);
+            foreach (var name in new[] { "Timestamp", "Midnight", "NativeTime" })
+                Check(sql.Contains("["+name+"] DATETIME2 NULL"), "Time information lost for " + name);
+            foreach (var name in new[] { "Invalid", "NumberCode", "Mixed", "Ambiguous" })
+                Check(sql.Contains("["+name+"] NVARCHAR(255) NULL"), "Non-date text was converted: " + name);
+            var sqlite = DataPieCore.ExcelTableSql.Generate(excel, "Dates", "SQLITE");
+            Check(sqlite.Contains("\"TextDate\" TEXT NULL"), "SQLite date should remain TEXT");
+            return Task.CompletedTask;
+        });
         await test("Excel Id columns generate identity primary keys and SQLite assigns IDs", async () =>
         {
             foreach (var header in new[] { "Id", "ID", "id" })

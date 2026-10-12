@@ -106,18 +106,18 @@ SQL Server 分为 **Without parameters / With parameters** 两个 TAB。前者�
 
 该页面位于 Convert to SQLite 之后，使用“表格＋铅笔”图标，包含 **Create table / Drop table** 两个 TAB。切换时保留 Excel 选择和 SQL 草稿。
 
-**Create table**：选择 XLSX 或 XLS 文件和工作表，点击 **Generate SQL**。第一行作为列名，Sheet 名称作为默认表名，无需另填表名。程序扫描全部数据行推断字段类型；用户可在 SQL editor 中修改表名、类型和约束，审核后点击 Create table 并确认。
+**Create table**：选择 XLSX 或 XLS 文件和工作表，点击 **Generate SQL**。第一行作为列名，Sheet 名称作为默认表名，无需另填表名。程序只读取表头后的前 1,000 行数据推断字段类型，不足 1,000 行则读取全部；用户可在 SQL editor 中修改表名、类型和约束，审核后点击 Create table 并确认。
 
 | Excel 数据 | SQL Server | SQLite |
 | --- | --- | --- |
 | 文本、混合类型或空列 | 最大长度 ≤255 个 UTF-16 代码单元：NVARCHAR(255)，否则 NVARCHAR(MAX) | TEXT |
 | 整数 | INT；任意值超出 INT 范围时使用 BIGINT | INTEGER |
 | 小数 | FLOAT | REAL |
-| 日期 | DATETIME2 | TEXT |
+| 纯日期 / 日期含时间 | DATE / DATETIME2 | TEXT |
 | 布尔值 | BIT | INTEGER |
 | Id 列，不区分大小写 | BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY | INTEGER PRIMARY KEY AUTOINCREMENT |
 
-文本单元格保持文本类型，包括前导零编号。长度按全部数据行的最大值判断；混合列使用固定区域格式转换为文本后计数，空列长度为 0。INT 范围为 −2,147,483,648～2,147,483,647。Id 列优先应用自增主键规则，不受 Excel 中值的类型影响；其余列默认允许 NULL。空列名和重复列名会被拒绝。请审核推断结果，特别是小数精度、业务编号和主键要求。
+真正的 Excel 日期单元格，以及有效的年在前文本日期（如 2026-10-12、2026/10/12、2026年10月12日，或带时间的年在前格式），在 SQL Server 中，样本全为纯日期时推断为 DATE；存在非零日期单元格时间或文本中明确写出的时间时使用 DATETIME2。两者可以混合在同一日期列。日/月顺序不明确的日期、纯数字日期编号、非法日期或含其他文本的混合列保留文本类型，SQLite 日期仍使用 TEXT。其他文本单元格保持文本类型，包括前导零编号。空单元格、空字符串和纯空格在推断时忽略；空数据行仍计入 1,000 行限制。长度按样本内最大值判断；混合列使用固定区域格式转换为文本后计数，空列长度为 0。INT 范围为 −2,147,483,648～2,147,483,647。Id 列优先应用自增主键规则，不受 Excel 中值的类型影响；其余列默认允许 NULL。空列名和重复列名会被拒绝。第 1,001 行之后的值可能需要更大的整数类型或文本长度；请审核推断结果，特别是小数精度、业务编号和主键要求。
 
 SQLite 使用 AUTOINCREMENT 时会自动创建系统表 `sqlite_sequence`，用于记录已使用的最大编号，这是正常现象。`INTEGER PRIMARY KEY` 也能自动分配编号，但可能复用已删除的编号；需要这种行为时，可在 SQL 中移除 AUTOINCREMENT。
 

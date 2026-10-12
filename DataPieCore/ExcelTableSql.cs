@@ -8,6 +8,15 @@ using ExcelDataReader;
 namespace DataPieCore;
 public static class ExcelTableSql
 {
+    public const int InferenceRowLimit = 1000;
+    private static readonly string[] DateTextFormats =
+    {
+        "yyyy-M-d", "yyyy/M/d", "yyyy年M月d日",
+        "yyyy-M-d H:mm", "yyyy/M/d H:mm",
+        "yyyy-M-d H:mm:ss", "yyyy/M/d H:mm:ss",
+        "yyyy-M-d H:mm:ss.FFFFFFF", "yyyy/M/d H:mm:ss.FFFFFFF",
+        "yyyy-M-d'T'H:mm", "yyyy-M-d'T'H:mm:ss", "yyyy-M-d'T'H:mm:ss.FFFFFFF"
+    };
     private static IExcelDataReader Open(string path, out Stream stream)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -40,21 +49,28 @@ public static class ExcelTableSql
             var kinds = new string[names.Length];
             var maxLengths = new int[names.Length];
             var needsBigInt = new bool[names.Length];
-            while (reader.Read())
+            var hasTime = new bool[names.Length];
+            int sampledRows = 0;
+            while (sampledRows < InferenceRowLimit && reader.Read())
             {
+                sampledRows++;
                 for (int i = 0; i < names.Length; i++)
                 {
                     var value = reader.GetValue(i);
-                    if (value == null || value == DBNull.Value) continue;
+                    if (value == null || value == DBNull.Value || value is string text && string.IsNullOrWhiteSpace(text)) continue;
                     // string.Length counts UTF-16 code units, including surrogate pairs.
                     maxLengths[i] = Math.Max(maxLengths[i], (Convert.ToString(value, CultureInfo.InvariantCulture) ?? "").Length);
                     string kind = value switch
                     {
                         bool => "bool", DateTime => "date",
+                        string dateText when DateTime.TryParseExact(dateText.Trim(), DateTextFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out _) => "date",
                         double d when double.IsFinite(d) && d == Math.Truncate(d) && d >= -9007199254740991d && d <= 9007199254740991d => "integer",
                         byte or short or int or long => "integer",
                         double or float or decimal => "number", _ => "text"
                     };
+                    if (kind == "date")
+                        hasTime[i] |= value is DateTime date ? date.TimeOfDay != TimeSpan.Zero
+                            : ((string)value).Contains(':');
                     if (kind == "integer")
                     {
                         var integer = Convert.ToDecimal(value, CultureInfo.InvariantCulture);
@@ -68,7 +84,7 @@ public static class ExcelTableSql
             bool sqlite = databaseType == "SQLITE";
             string Quote(string name) => sqlite ? "\"" + name.Replace("\"", "\"\"") + "\"" : "[" + name.Replace("]", "]]") + "]";
             string Type(int column) => sqlite ? kinds[column] switch { "integer" or "bool" => "INTEGER", "number" => "REAL", _ => "TEXT" }
-                : kinds[column] switch { "integer" => needsBigInt[column] ? "BIGINT" : "INT", "number" => "FLOAT", "bool" => "BIT", "date" => "DATETIME2", _ => maxLengths[column] <= 255 ? "NVARCHAR(255)" : "NVARCHAR(MAX)" };
+                : kinds[column] switch { "integer" => needsBigInt[column] ? "BIGINT" : "INT", "number" => "FLOAT", "bool" => "BIT", "date" => hasTime[column] ? "DATETIME2" : "DATE", _ => maxLengths[column] <= 255 ? "NVARCHAR(255)" : "NVARCHAR(MAX)" };
             return "CREATE TABLE " + Quote(sheet) + " (" + Environment.NewLine
                 + string.Join("," + Environment.NewLine, names.Select((name, i) => "    " + Quote(name) + " " + (string.Equals(name, "Id", StringComparison.OrdinalIgnoreCase) ? (sqlite ? "INTEGER PRIMARY KEY AUTOINCREMENT" : "BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY") : Type(i) + " NULL"))) + Environment.NewLine + ");";
         }

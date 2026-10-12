@@ -22,7 +22,7 @@
 </section>
 <section class="card">
     <label>SQL editor<textarea class="sql-editor" @bind="Form.CreateTableSql" @bind:event="oninput" spellcheck="false" placeholder="Generate CREATE TABLE SQL from an Excel worksheet"></textarea></label>
-    <p class="muted">Review inferred types before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.</p>
+    <p class="muted">Types are inferred from the first 1,000 data rows after the header; blank cells and whitespace-only text are ignored. Later rows may require wider types or text lengths. Review the SQL before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.</p>
     <div class="actions"><button class="primary" @onclick="CreateAsync" disabled="@(string.IsNullOrWhiteSpace(Form.CreateTableSql))">Create table</button></div>
 </section>
 
