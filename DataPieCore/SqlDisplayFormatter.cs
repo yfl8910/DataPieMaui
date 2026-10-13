@@ -15,19 +15,50 @@ public static class SqlDisplayFormatter
         var tokens = Scan(sql);
         var output = new StringBuilder();
         int depth = 0;
-        bool fresh = true;
+        int parentheses = 0, cases = 0;
+        string? statement = null;
+        bool insertSelectSeen = false;
+        bool fresh = true, blank = false;
         void NewLine() { if (!fresh) { output.AppendLine(); fresh = true; } }
-        foreach (var token in tokens)
+        void BlankLine()
         {
+            NewLine();
+            if (output.Length > 0 && !blank) { output.AppendLine(); blank = true; }
+        }
+        for (int index = 0; index < tokens.Count; index++)
+        {
+            var token = tokens[index];
             var upper = token.Text.ToUpperInvariant();
+            var previous = index > 0 ? tokens[index - 1].Text.ToUpperInvariant() : "";
+            bool command = !token.Protected && parentheses == 0 && cases == 0 && upper is "SELECT" or "UPDATE" or "INSERT" or "DELETE";
+            if (command)
+            {
+                bool continuation = upper == "SELECT" && (previous is "UNION" or "ALL" or "EXCEPT" or "INTERSECT" || statement == "INSERT" && !insertSelectSeen);
+                if (statement != null && !continuation && previous != "THEN") BlankLine();
+                if (!continuation) { statement = upper; insertSelectSeen = false; }
+                else if (statement == "INSERT") insertSelectSeen = true;
+            }
             bool clause = !token.Protected && upper is "SELECT" or "FROM" or "WHERE" or "JOIN" or "LEFT" or "RIGHT" or "INNER" or "GROUP" or "ORDER" or "HAVING" or "UNION" or "WHEN" or "ELSE" or "BEGIN" or "END" or "UPDATE" or "INSERT" or "DELETE" or "SET" or "RETURN";
-            if (!token.Protected && upper == "END") depth = Math.Max(0, depth - 1);
+            bool blockEnd = !token.Protected && upper == "END" && cases == 0;
+            if (!token.Protected && upper == "END")
+            {
+                if (cases > 0) cases--;
+                else depth = Math.Max(0, depth - 1);
+            }
             if (clause || token.Line) NewLine();
             if (fresh) { output.Append(' ', Math.Min(depth, 20) * 4); fresh = false; }
             else output.Append(' ');
             output.Append(token.Text);
-            if (!token.Protected && upper == "BEGIN") depth++;
-            if (token.Line || token.Text == ";" || token.Text == "," || !token.Protected && upper == "BEGIN") NewLine();
+            blank = false;
+            if (!token.Protected && upper == "CASE") cases++;
+            if (!token.Protected && token.Text == "(") parentheses++;
+            if (!token.Protected && token.Text == ")") parentheses = Math.Max(0, parentheses - 1);
+            if (!token.Protected && upper == "BEGIN") { depth++; statement = null; }
+            if (token.Text == ";" || blockEnd && (index + 1 == tokens.Count || tokens[index + 1].Text != ";"))
+            {
+                BlankLine(); statement = null;
+            }
+            else if (token.Line || token.Text == "," || !token.Protected && upper == "BEGIN") NewLine();
         }
         var formatted = output.ToString().Trim();
         if (!tokens.Select(t => t.Text).SequenceEqual(Scan(formatted).Select(t => t.Text)))

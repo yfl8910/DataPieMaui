@@ -46,33 +46,41 @@ internal static class SqlFormattingChecks
             catch (InvalidOperationException) { }
             return Task.CompletedTask;
         });
-        await test("Definition formatting is display-only, copies display and restores original", async () =>
+        await test("SQL formatting separates statements and blocks without accumulating blank lines", () =>
+        {
+            var nl=Environment.NewLine;
+            var formatted=SqlDisplayFormatter.Format("SELECT x FROM t; UPDATE t SET x=2; DELETE FROM t WHERE x=0; BEGIN SELECT x FROM t; END; SELECT y FROM t;");
+            Check(formatted.Contains(";"+nl+nl+"UPDATE") && formatted.Contains(";"+nl+nl+"DELETE"), "Statement separators missing");
+            Check(formatted.Contains("END ;"+nl+nl+"SELECT"), "Block separator missing");
+            Check(!formatted.Contains(nl+nl+nl) && SqlDisplayFormatter.Format(formatted)==formatted,"Formatting accumulates empty lines");
+            var implicitSql=SqlDisplayFormatter.Format("SELECT x FROM t\nUPDATE t SET x=1\nDELETE FROM t WHERE x=0");
+            Check(implicitSql.Contains(nl+nl+"UPDATE") && implicitSql.Contains(nl+nl+"DELETE"),"Statements without semicolons are not separated");
+            var insert=SqlDisplayFormatter.Format("INSERT INTO t(x) SELECT x FROM source UNION ALL SELECT x FROM other;");
+            Check(!insert.Contains(nl+nl+"SELECT"),"INSERT SELECT or UNION was split as a new statement");
+            var nested=SqlDisplayFormatter.Format("SELECT (SELECT x FROM t), CASE WHEN x=1 THEN 'a;b' ELSE 'c' END AS label FROM t;");
+            Check(nested.Contains("'a;b'") && !nested.Contains("END"+nl+nl),"CASE or literal confused with statement end");
+            return Task.CompletedTask;
+        });
+        await test("Formatting controls appear only when editing a definition draft", async () =>
         {
             var js = new ClipboardJs();
             var services = new ServiceCollection().AddLogging().AddSingleton<IJSRuntime>(js);
             await using var provider = services.BuildServiceProvider();
             await using var renderer = new HtmlRenderer(provider,provider.GetRequiredService<ILoggerFactory>());
-            const string original = "SELECT '<script>unsafe</script>', x FROM t WHERE x=1;";
+            const string original = "CREATE VIEW dbo.Report AS SELECT '<script>unsafe</script>' AS x;";
             await renderer.Dispatcher.InvokeAsync(async () =>
             {
                 var root = await renderer.RenderComponentAsync<Harness>(ParameterView.FromDictionary(new Dictionary<string,object?> { ["Sql"] = original }));
-                var component = Harness.Current!;
-                Check(root.ToHtmlString().Contains("Format SQL") && root.ToHtmlString().Contains("Show original"), "Missing display controls");
-                await component.FormatRefresh();
-                Check(component.Sql==original && !root.ToHtmlString().Contains("<script>unsafe</script>"), "Original SQL changed or unsafe rendering");
-                await component.CopyAsync();
-                Check(js.Text==SqlDisplayFormatter.Format(original), "Copy did not use formatted display");
-                component.ShowOriginal(); component.Refresh(); await component.CopyAsync();
-                Check(js.Text==original, "Show original did not restore copy content");
-            });
-            await renderer.Dispatcher.InvokeAsync(async () =>
-            {
-                var root = await renderer.RenderComponentAsync<Harness>(ParameterView.FromDictionary(new Dictionary<string,object?> { ["Sql"] = "SELECT 'unclosed" }));
-                await Harness.Current!.FormatRefresh();
-                Check(root.ToHtmlString().Contains("Formatting failed"), "Failure message missing");
-                await Harness.Current.CopyAsync(); Check(js.Text=="SELECT 'unclosed", "Failed format changed display");
-                var review = await renderer.RenderComponentAsync<SqlDefinitionView>(ParameterView.FromDictionary(new Dictionary<string,object?> { ["Sql"] = original, ["AllowFormatting"] = false }));
-                Check(!review.ToHtmlString().Contains("Format SQL"), "Save review can be formatted");
+                Check(!root.ToHtmlString().Contains("Format SQL") && !root.ToHtmlString().Contains("Show original"), "Viewing has formatting controls");
+                await Harness.Current!.CopyAsync(); Check(js.Text == original, "Viewing did not copy original SQL");
+                Check(!root.ToHtmlString().Contains("<script>unsafe</script>"), "Unsafe SQL rendering");
+                var session = new DataPieMaui.Services.Shared.DefinitionEditorSession(new DBUtil.DefinitionObject("View","dbo","Report"), new DBUtil.ObjectDefinition(original) { CanEdit = true }, "test", (_,sql) => Task.FromResult(new DBUtil.ObjectDefinition(sql) { CanEdit = true }));
+                session.BeginEdit();
+                var edit = await renderer.RenderComponentAsync<DefinitionEditorView>(ParameterView.FromDictionary(new Dictionary<string,object?> { ["Session"] = session }));
+                Check(edit.ToHtmlString().Contains("Format SQL"), "Editing has no formatting button");
+                session.FormatDraft(); session.Review();
+                var review = await renderer.RenderComponentAsync<DefinitionEditorView>(ParameterView.FromDictionary(new Dictionary<string,object?> { ["Session"] = session }));
+                Check(!review.ToHtmlString().Contains("Format SQL"), "Save review has formatting controls");
             });
         });
     }
@@ -81,7 +89,7 @@ internal static class SqlFormattingChecks
     {
         public static Harness? Current;
         protected override void OnInitialized() => Current=this;
-        public async Task FormatRefresh() { await FormatAsync(); StateHasChanged(); }
+
         public void Refresh() => StateHasChanged();
     }
     private sealed class ClipboardJs : IJSRuntime

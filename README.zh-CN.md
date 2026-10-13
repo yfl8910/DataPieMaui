@@ -133,7 +133,7 @@ SQL Server 由数据库检查依赖限制；SQLite 先检查其他表的外键�
 
 ## 查看及编辑对象定义
 
-在 Batch export 的视图或 Stored procedures 的过程旁点击 **View definition**。仅点击后读取对应定义，连接时不会预先加载 SQL 正文。查看状态支持 Format SQL、Show original、Copy SQL、受支持对象的 Edit，以及 Close。Format SQL 在本地保守调整空白、换行和缩进，保留 SQL 标记、字符串、引用标识符、注释及独立 GO 批次分隔；Copy SQL 复制当前显示内容，Show original 恢复原始定义。查看状态的格式化不修改数据库或编辑草稿。编辑状态的 Format SQL 格式化当前草稿，文本变化会标记为未保存，仍需 Save changes… 审核和 Confirm save 确认。保存期间及待保存完整 SQL 的审核区域不提供格式化操作，失败保留草稿。无法处理或未闭合的文本会显示错误并保留当前内容；格式化不代替语法验证。关闭释放文本，重新打开读取最新定义。权限不足或 SQL Server 对象加密可能使定义不可读。
+在 Batch export 的视图或 Stored procedures 的过程旁点击 **View definition**。仅点击后读取对应定义，连接时不会预先加载 SQL 正文。查看状态显示原始 SQL，提供 Copy SQL、受支持对象的 Edit 和 Close。只有编辑草稿时提供 Format SQL，在本地调整换行和缩进，语句之间及代码块结束后补一个空行，并保留 SQL 标记；重复格式化不会累积空行；格式化不会自动保存，失败保留草稿。仍需 Save changes… 审核和 Confirm save 确认，保存审核中不提供格式化按钮。关闭释放文本，重新打开读取最新定义。权限不足或 SQL Server 对象加密可能使定义不可读。
 
 ### SQL Server 定义编辑
 
