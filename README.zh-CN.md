@@ -100,6 +100,10 @@ SQL Server 分为 **Without parameters / With parameters** 两个 TAB。前者�
 
 仅在连接 SQL Server 时可用。选择目标 `.db` 文件后转换数据库，状态栏显示进度并提供取消按钮。无法完整转换的视图或过程会产生警告。
 
+SUBSTRING 的起点为正整数字面量、长度为非负整数字面量时，转换为简洁的 substr；同源 SUBSTRING(value,n,LEN(value)-(n-1)) 后缀模式使用 rtrim 加 substr，去除尾部空格；短于待去除前缀的值返回空字符串，而不是 SQL Server 的负长度错误。其他动态参数或非正起点继续使用兼容逻辑，处理 NULL、负长度及起点差异。
+
+YEAR/MONTH/DAY 直接转换为 SQLite strftime 并转为整数。NULL 或无法解析的日期按 SQLite 行为返回 NULL，不再人为触发溢出错误；这与 SQL Server 对非法日期文本的报错行为不同。LEFT 的长度为非负整数字面量时生成简洁的 substr。
+
 分发转换后的数据库时，应将生成的 `StoredProcedures` 文件夹一并保留在数据库旁。取消或失败可能留下不完整数据库，应重新转换后使用。
 
 ### Table design：表设计
@@ -129,7 +133,7 @@ SQL Server 由数据库检查依赖限制；SQLite 先检查其他表的外键�
 
 ## 查看及编辑对象定义
 
-在 Batch export 的视图或 Stored procedures 的过程旁点击 **View definition**。仅点击后读取对应定义，连接时不会预先加载 SQL 正文。弹窗支持 Copy SQL、受支持对象的 Edit，以及 Close；关闭释放文本，重新打开读取最新定义。权限不足或 SQL Server 对象加密可能使定义不可读。
+在 Batch export 的视图或 Stored procedures 的过程旁点击 **View definition**。仅点击后读取对应定义，连接时不会预先加载 SQL 正文。查看状态支持 Format SQL、Show original、Copy SQL、受支持对象的 Edit，以及 Close。Format SQL 在本地保守调整空白、换行和缩进，保留 SQL 标记、字符串、引用标识符、注释及独立 GO 批次分隔；Copy SQL 复制当前显示内容，Show original 恢复原始定义。查看状态的格式化不修改数据库或编辑草稿。编辑状态的 Format SQL 格式化当前草稿，文本变化会标记为未保存，仍需 Save changes… 审核和 Confirm save 确认。保存期间及待保存完整 SQL 的审核区域不提供格式化操作，失败保留草稿。无法处理或未闭合的文本会显示错误并保留当前内容；格式化不代替语法验证。关闭释放文本，重新打开读取最新定义。权限不足或 SQL Server 对象加密可能使定义不可读。
 
 ### SQL Server 定义编辑
 

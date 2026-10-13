@@ -191,14 +191,39 @@ namespace DataPieCore
                 else if (name == "LEN")
                     expression = $"length(rtrim({args[0]}, ' '))";
                 else if (name == "LEFT")
-                    expression = $"CASE WHEN {args[0]} IS NULL OR {args[1]} IS NULL THEN NULL WHEN {args[1]} < 0 THEN {invalid} ELSE substr({args[0]}, 1, {args[1]}) END";
+                {
+                    if (arguments[1].Count == 1 && int.TryParse(arguments[1][0], System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out int length) && length >= 0)
+                        expression = $"substr({args[0]}, 1, {length})";
+                    else
+                        expression = $"CASE WHEN {args[0]} IS NULL OR {args[1]} IS NULL THEN NULL WHEN {args[1]} < 0 THEN {invalid} ELSE substr({args[0]}, 1, {args[1]}) END";
+                }
                 else if (name == "SUBSTRING")
-                    expression = $"CASE WHEN {args[0]} IS NULL OR {args[1]} IS NULL OR {args[2]} IS NULL THEN NULL WHEN {args[2]} < 0 THEN {invalid} ELSE substr({args[0]}, max(1, {args[1]}), max(0, {args[2]} + min(0, {args[1]} - 1))) END";
+                {
+                    bool IntegerLiteral(List<string> argument, out int value)
+                    {
+                        value = 0;
+                        return argument.Count == 1 && int.TryParse(argument[0], System.Globalization.NumberStyles.None,
+                            System.Globalization.CultureInfo.InvariantCulture, out value);
+                    }
+                    if (IntegerLiteral(arguments[1], out int start) && start > 0 &&
+                        IntegerLiteral(arguments[2], out int length) && length >= 0)
+                        expression = $"substr({args[0]}, {start}, {length})";
+                    else if (start > 0 && arguments[2].Count == 3 && arguments[2][1] == "-" &&
+                        arguments[2][0] == $"(length(rtrim({args[0]}, ' ')))" &&
+                        int.TryParse(arguments[2][2], System.Globalization.NumberStyles.None,
+                            System.Globalization.CultureInfo.InvariantCulture, out int removed) && removed == start - 1)
+                        // Common suffix extraction: exclude trailing spaces like SQL Server LEN.
+                        // SQLite returns empty text for an input shorter than the removed prefix.
+                        expression = $"substr(rtrim({args[0]}, ' '), {start})";
+                    else
+                        expression = $"CASE WHEN {args[0]} IS NULL OR {args[1]} IS NULL OR {args[2]} IS NULL THEN NULL WHEN {args[2]} < 0 THEN {invalid} ELSE substr({args[0]}, max(1, {args[1]}), max(0, {args[2]} + min(0, {args[1]} - 1))) END";
+                }
                 else
                 {
                     string format = name == "YEAR" ? "%Y" : name == "MONTH" ? "%m" : "%d";
                     string value = $"strftime('{format}', {args[0]})";
-                    expression = $"CASE WHEN {args[0]} IS NULL THEN NULL WHEN {value} IS NULL THEN {invalid} ELSE CAST({value} AS INTEGER) END";
+                    expression = $"CAST({value} AS INTEGER)";
                 }
                 expression = "(" + expression + ")";
                 bool NumericArgument(List<string> argument) => argument.Count == 1 &&

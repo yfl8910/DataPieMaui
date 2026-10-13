@@ -12,13 +12,13 @@ else if (Session.ReviewSql is not null)
 {
     <p>Review the changes below. Confirm save updates the definition. Procedure scripts are not executed.</p>
     <pre class="definition-diff" tabindex="0" aria-label="Definition changes">@foreach (var line in Session.Difference()) { <span class="@line.Kind">@line.Text@("\n")</span> }</pre>
-    <details><summary>Full SQL to be saved</summary><SqlDefinitionView Sql="@Session.ReviewSql" /></details>
+    <details><summary>Full SQL to be saved</summary><SqlDefinitionView Sql="@Session.ReviewSql" AllowFormatting="false" /></details>
     <div class="actions"><button class="primary" disabled="@Session.Saving" @onclick="Session.ConfirmSaveAsync">@(Session.Saving ? "Saving…" : "Confirm save")</button><button disabled="@Session.Saving" @onclick="Session.BackToEdit">Back to editing</button></div>
 }
 else if (Session.Editing)
 {
     <label>SQL definition<textarea class="definition-editor" @bind="Session.Draft" @bind:event="oninput" spellcheck="false" disabled="@Session.Saving"></textarea></label>
-    <div class="actions"><button class="primary" disabled="@(!Session.Dirty || Session.Saving)" @onclick="Session.Review">Save changes…</button><button disabled="@Session.Saving" @onclick="Session.CancelEditing">Cancel editing</button></div>
+    <div class="actions"><button disabled="@(Session.Saving || string.IsNullOrWhiteSpace(Session.Draft))" @onclick="Session.FormatDraft">Format SQL</button><button class="primary" disabled="@(!Session.Dirty || Session.Saving)" @onclick="Session.Review">Save changes…</button><button disabled="@Session.Saving" @onclick="Session.CancelEditing">Cancel editing</button></div>
 }
 else
 {

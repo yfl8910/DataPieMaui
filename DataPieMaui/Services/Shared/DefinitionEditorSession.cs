@@ -37,6 +37,22 @@ public sealed class DefinitionEditorSession(
         try { ReviewSql = prepare is null ? DefinitionSqlValidator.PrepareAlter(Target, Draft, Original.QuotedIdentifier) : prepare(Draft); Error = ""; }
         catch (Exception ex) { Error = ex.Message; ReviewSql = null; }
     }
+    public void FormatDraft()
+    {
+        if (!Editing || Saving || !Original.CanEdit || ReviewSql != null || DiscardAction != null) return;
+        try
+        {
+            var formatted = SqlDisplayFormatter.Format(Draft);
+            Draft = formatted;
+            Error = "";
+            Message = "Draft formatted. Review and confirm save to update the definition.";
+        }
+        catch (Exception ex)
+        {
+            Error = "Formatting failed: " + ex.Message;
+            Message = "";
+        }
+    }
     public void BackToEdit() { if (!Saving) ReviewSql = null; }
     public void CancelEditing()
     {

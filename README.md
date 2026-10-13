@@ -55,7 +55,7 @@ Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that suppo
 
 ## View object definitions
 
-Use **View definition** beside a view on **Batch export**, or beside a procedure on **Stored procedures**. Only clicking this button reads the selected definition; initialization does not read SQL bodies. The dialog supports **Copy SQL**, **Edit** for supported objects, and **Close**. Closing releases the text; reopening reads the latest definition. SQL Server permissions or encryption may prevent viewing a definition. SQLite shows converted procedure scripts. Database conversion still loads the definitions it needs.
+Use **View definition** beside a view on **Batch export**, or beside a procedure on **Stored procedures**. Only clicking this button reads the selected definition; initialization does not read SQL bodies. The viewing dialog supports **Format SQL**, **Show original**, **Copy SQL**, **Edit** for supported objects, and **Close**. Format SQL performs local, conservative whitespace formatting; it preserves SQL tokens, quoted literals/identifiers, comments and standalone GO batch separators. Copy SQL copies the current display. Show original restores the exact original definition. Viewing-state formatting does not change the database or editor draft. In editing mode, **Format SQL** formats the current draft and marks it as unsaved when the text changes; **Save changes…** and **Confirm save** are still required. Formatting is disabled in the full-SQL save review and during saving; failures retain the draft. Unsupported or incomplete text keeps its current display and shows a formatting error; formatting is not syntax validation. Closing releases the text; reopening reads the latest definition. SQL Server permissions or encryption may prevent viewing a definition. SQLite shows converted procedure scripts. Database conversion still loads the definitions it needs.
 
 ### Editing SQL Server definitions
 
@@ -136,6 +136,10 @@ Only one operation can run at a time. Navigation and operation buttons are disab
 Opening an existing SQLite database with **Connect and save** saves its configuration. Creating a blank database only creates and connects; it does not add a saved connection. Its destination selector returns a path without creating a placeholder file, and creation refuses to overwrite an existing file.
 
 Saved connections are stored in `%LOCALAPPDATA%\DataPie\connections.db`. Connection strings are stored without application-level encryption and can contain database passwords; treat this file as private configuration.
+
+SUBSTRING conversion uses compact `substr` when the start is a positive integer literal and the length is a nonnegative integer literal. The same-source suffix pattern SUBSTRING(value, n, LEN(value)-(n-1)) uses substr with rtrim to exclude trailing spaces; inputs shorter than the removed prefix return empty text rather than a SQL Server negative-length error. Other dynamic arguments and nonpositive starts retain compatibility handling.
+
+YEAR/MONTH/DAY convert directly to integer casts of SQLite strftime. NULL or unparseable dates return NULL using SQLite behavior rather than forcing an overflow error; this differs from SQL Server error handling for invalid date text. LEFT with a nonnegative integer literal length uses compact substr.
 
 When distributing a converted SQLite database, keep its generated `StoredProcedures` folder alongside it. SQLite procedures are handled as converted scripts; unsupported SQL is reported in warnings. A canceled or failed conversion may leave an incomplete output database, which should be regenerated before use.
 

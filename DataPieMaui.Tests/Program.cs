@@ -256,6 +256,120 @@ try
         Check(files.Any(f => f.Name == "items.csv") && files.All(f => f.Extension is ".csv" or ".xlsx"), "Batch filter changed");
         return Task.CompletedTask;
     });
+    await Test("Converted policy UPDATE uses compact substr and executes correctly in SQLite", () =>
+    {
+        const string source = "UPDATE [dbo].[客户费用余额] SET [Policy reason] =a.[政策原因], [政策描述]=SUBSTRING(a.[政策原因], 1,60) from 客户费用政策 a where [客户费用余额].政策编码=a.[政策编码]";
+        var sql = SQLiteViewMigration.ConvertQuery(SQLiteViewMigration.Tokenize(source), new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dbo.客户费用余额", "dbo.客户费用政策" }, true);
+        Check(sql.Contains("substr(") && !sql.Contains("CASE WHEN") && !sql.Contains("9223372036854775808"), "Constant substring was not simplified");
+        using var db = new SQLiteConnection("Data Source=:memory:"); db.Open();
+        using var create = new SQLiteCommand("CREATE TABLE 客户费用余额(政策编码 INTEGER, [Policy reason] TEXT, 政策描述 TEXT); CREATE TABLE 客户费用政策(政策编码 INTEGER, 政策原因 TEXT); INSERT INTO 客户费用余额 VALUES(1,'old','old'),(2,'old','old'),(3,'old','old'),(4,'keep','keep'); INSERT INTO 客户费用政策 VALUES(1,'short'),(2,@long),(3,NULL)",db);
+        var longText = new string('政',70); create.Parameters.AddWithValue("@long",longText); create.ExecuteNonQuery();
+        using var update = new SQLiteCommand(sql,db); update.ExecuteNonQuery();
+        using var reader = new SQLiteCommand("SELECT [Policy reason],政策描述 FROM 客户费用余额 ORDER BY 政策编码",db).ExecuteReader();
+        Check(reader.Read() && reader.GetString(1)=="short", "Short substring result differs");
+        Check(reader.Read() && reader.GetString(0)==longText && reader.GetString(1)==longText.Substring(0,60), "Policy truncation differs");
+        Check(reader.Read() && reader.IsDBNull(0) && reader.IsDBNull(1), "NULL propagation differs");
+        Check(reader.Read() && reader.GetString(1)=="keep", "Unmatched row was updated");
+        return Task.CompletedTask;
+    });
+    await Test("Payment policy UPDATE retains its source, target and WHERE clause", () =>
+    {
+        const string source = "UPDATE [dbo].[客户费用兑付明细] SET [Policy reason] =SUBSTRING(a.[政策原因], 1,100) from 客户费用政策 a where [客户费用兑付明细].政策编码=a.政策编码";
+        var sql=SQLiteViewMigration.ConvertQuery(SQLiteViewMigration.Tokenize(source),new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dbo.客户费用兑付明细", "dbo.客户费用政策" },true);
+        Check(sql.Contains("[Policy reason]") && sql.Contains("substr(") && sql.Contains("100") && sql.Contains("客户费用政策") && sql.Contains("where",StringComparison.OrdinalIgnoreCase),"UPDATE lost its source or condition");
+        Check(!sql.Contains("兑付归属年份") && !sql.Contains("政策期间"),"Another statement was substituted");
+        using var db=new SQLiteConnection("Data Source=:memory:"); db.Open();
+        using var create=new SQLiteCommand("CREATE TABLE 客户费用兑付明细(政策编码 INTEGER,[Policy reason] TEXT); CREATE TABLE 客户费用政策(政策编码 INTEGER,政策原因 TEXT); INSERT INTO 客户费用兑付明细 VALUES(1,'old'),(2,'keep'),(3,'old'); INSERT INTO 客户费用政策 VALUES(1,@reason),(3,NULL)",db);
+        var reason=new string('政',120); create.Parameters.AddWithValue("@reason",reason); create.ExecuteNonQuery();
+        using var update=new SQLiteCommand(sql,db); update.ExecuteNonQuery();
+        using var result=new SQLiteCommand("SELECT [Policy reason] FROM 客户费用兑付明细 ORDER BY 政策编码",db).ExecuteReader();
+        Check(result.Read() && result.GetString(0)==reason.Substring(0,100),"100-character update failed");
+        Check(result.Read() && result.GetString(0)=="keep","WHERE clause was lost");
+        Check(result.Read() && result.IsDBNull(0),"NULL propagation failed");
+        return Task.CompletedTask;
+    });
+    await Test("SQLite LEFT conversion simplifies constant lengths and preserves boundary behavior", () =>
+    {
+        string ConvertSql(string source,bool writes=false) => SQLiteViewMigration.ConvertQuery(SQLiteViewMigration.Tokenize(source),new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dbo.客户费用兑付明细" },writes);
+        var sql=ConvertSql("UPDATE [dbo].[客户费用兑付明细] SET 兑付归属年份 =LEFT(政策期间, 4)",true);
+        Check(sql.Contains("substr(") && !sql.Contains("CASE WHEN"),"Constant LEFT was not simplified");
+        using var db=new SQLiteConnection("Data Source=:memory:"); db.Open();
+        using var create=new SQLiteCommand("CREATE TABLE 客户费用兑付明细(政策期间 TEXT,兑付归属年份 TEXT); INSERT INTO 客户费用兑付明细(政策期间) VALUES('2026-10'),('20'),(''),(NULL)",db); create.ExecuteNonQuery();
+        using var update=new SQLiteCommand(sql,db); update.ExecuteNonQuery();
+        using(var result=new SQLiteCommand("SELECT 兑付归属年份 FROM 客户费用兑付明细 ORDER BY rowid",db).ExecuteReader())
+        {
+            Check(result.Read() && result.GetString(0)=="2026","Year extraction failed");
+            Check(result.Read() && result.GetString(0)=="20","Short input failed");
+            Check(result.Read() && result.GetString(0)=="","Empty input failed");
+            Check(result.Read() && result.IsDBNull(0),"NULL input failed");
+        }
+        using var zero=new SQLiteCommand(ConvertSql("SELECT LEFT('abcdef',0)"),db); Check(Convert.ToString(zero.ExecuteScalar())=="","Zero length failed");
+        var dynamicSql=ConvertSql("SELECT LEFT('abcdef',@length)"); Check(dynamicSql.Contains("CASE WHEN"),"Dynamic LEFT lost guards");
+        using var dynamic=new SQLiteCommand(dynamicSql,db); dynamic.Parameters.AddWithValue("@length",DBNull.Value); Check(dynamic.ExecuteScalar()==DBNull.Value,"NULL length failed");
+        dynamic.Parameters["@length"].Value=-1; try { dynamic.ExecuteScalar(); throw new Exception("Expected negative-length failure"); } catch(SQLiteException) { }
+        return Task.CompletedTask;
+    });
+    await Test("Converted YEAR MONTH arithmetic preserves YYYYMM and NULL dates", () =>
+    {
+        var sql=SQLiteViewMigration.ConvertQuery(SQLiteViewMigration.Tokenize("UPDATE [dbo].[客户费用计提明细] SET [入账年月] = YEAR([入账日期])*100+MONTH([入账日期])"),new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dbo.客户费用计提明细" },true);
+        Check(sql.Contains("* 100 +") && !sql.Contains("\\*"),"Arithmetic tokens changed");
+        using var db=new SQLiteConnection("Data Source=:memory:"); db.Open();
+        using var create=new SQLiteCommand("CREATE TABLE 客户费用计提明细(入账日期 TEXT,入账年月 INTEGER); INSERT INTO 客户费用计提明细(入账日期) VALUES('2026-10-13'),('2026-01-02 10:30:00'),('2025-12-31T23:59:59.1234567'),(NULL)",db); create.ExecuteNonQuery();
+        using var update=new SQLiteCommand(sql,db); update.ExecuteNonQuery();
+        using(var result=new SQLiteCommand("SELECT 入账年月 FROM 客户费用计提明细 ORDER BY rowid",db).ExecuteReader())
+        {
+            foreach(var expected in new[] {202610,202601,202512}) Check(result.Read() && Convert.ToInt32(result[0])==expected,"YEAR MONTH result differs");
+            Check(result.Read() && result.IsDBNull(0),"NULL date changed");
+        }
+        return Task.CompletedTask;
+    });
+    await Test("SQLite date extraction generates compact SQL and uses native NULL behavior", () =>
+    {
+        var sql=SQLiteViewMigration.ConvertQuery(SQLiteViewMigration.Tokenize("SELECT YEAR(@date), MONTH(@date), DAY(@date)"),new HashSet<string>());
+        Check(!sql.Contains("CASE WHEN") && !sql.Contains("9223372036854775808"),"Date functions retain error scaffolding");
+        using var db=new SQLiteConnection("Data Source=:memory:"); db.Open();
+        using var cmd=new SQLiteCommand(sql,db); cmd.Parameters.AddWithValue("@date","2026-10-13");
+        using(var result=cmd.ExecuteReader()) Check(result.Read() && Convert.ToInt32(result[0])==2026 && Convert.ToInt32(result[1])==10 && Convert.ToInt32(result[2])==13,"Date extraction differs");
+        foreach(var value in new object[] { DBNull.Value, "not a date" })
+        {
+            cmd.Parameters["@date"].Value=value;
+            using var result=cmd.ExecuteReader(); Check(result.Read() && result.IsDBNull(0) && result.IsDBNull(1) && result.IsDBNull(2),"Native NULL date behavior differs");
+        }
+        return Task.CompletedTask;
+    });
+    await Test("SQLite customer code suffix conversion is compact and handles short or blank codes", () =>
+    {
+        var sql=SQLiteViewMigration.ConvertQuery(SQLiteViewMigration.Tokenize("UPDATE [dbo].[基本信息] SET [客户编码2] = substring([客户编码],4,len([客户编码])-3)"),new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dbo.基本信息" },true);
+        Check(sql.Contains("substr(rtrim(") && !sql.Contains("CASE WHEN") && !sql.Contains("9223372036854775808"),"Suffix extraction did not simplify");
+        using var db=new SQLiteConnection("Data Source=:memory:"); db.Open();
+        using var create=new SQLiteCommand("CREATE TABLE 基本信息(客户编码 TEXT,客户编码2 TEXT); INSERT INTO 基本信息(客户编码) VALUES('ABC123'),('ABC123   '),('ABC'),('AB'),(''),(NULL)",db); create.ExecuteNonQuery();
+        using var update=new SQLiteCommand(sql,db); update.ExecuteNonQuery();
+        using var result=new SQLiteCommand("SELECT 客户编码2 FROM 基本信息 ORDER BY rowid",db).ExecuteReader();
+        foreach(var expected in new[] {"123","123","","",""}) Check(result.Read() && result.GetString(0)==expected,"Suffix output differs");
+        Check(result.Read() && result.IsDBNull(0),"Suffix NULL was lost");
+        var different=SQLiteViewMigration.ConvertQuery(SQLiteViewMigration.Tokenize("SELECT SUBSTRING(@code,4,LEN(@other)-3)"),new HashSet<string>());
+        Check(different.Contains("CASE WHEN"),"Different source expression was incorrectly simplified");
+        return Task.CompletedTask;
+    });
+    await Test("SQLite substring conversion retains dynamic and nonpositive-start semantics", () =>
+    {
+        using var db = new SQLiteConnection("Data Source=:memory:"); db.Open();
+        string ConvertSql(string sql) => SQLiteViewMigration.ConvertQuery(SQLiteViewMigration.Tokenize(sql), new HashSet<string>());
+        using var zero = new SQLiteCommand(ConvertSql("SELECT SUBSTRING('abcdef',1,0)"),db);
+        Check(Convert.ToString(zero.ExecuteScalar())=="", "Zero length differs");
+        using var startZero = new SQLiteCommand(ConvertSql("SELECT SUBSTRING('abcdef',0,3)"),db);
+        Check(Convert.ToString(startZero.ExecuteScalar())=="ab", "Nonpositive start lost compatibility");
+        var dynamicSql=ConvertSql("SELECT SUBSTRING(@text,@start,@length)");
+        Check(dynamicSql.Contains("CASE WHEN"), "Dynamic arguments lost guards");
+        using var dynamic = new SQLiteCommand(dynamicSql,db);
+        dynamic.Parameters.AddWithValue("@text","abcdef"); dynamic.Parameters.AddWithValue("@start",2); dynamic.Parameters.AddWithValue("@length",3);
+        Check(Convert.ToString(dynamic.ExecuteScalar())=="bcd", "Dynamic substring differs");
+        dynamic.Parameters["@length"].Value=DBNull.Value;
+        Check(dynamic.ExecuteScalar()==DBNull.Value, "Dynamic NULL did not propagate");
+        dynamic.Parameters["@length"].Value=-1;
+        try { dynamic.ExecuteScalar(); throw new Exception("Expected negative-length error"); } catch(SQLiteException) { }
+        return Task.CompletedTask;
+    });
     await Test("SQLite procedure conversion and execution", () =>
     {
         var converted = Path.Combine(root, "converted.db");
@@ -306,6 +420,7 @@ try
     await ProcedureExecutionChecks.Run(Test);
     await SQLiteDefinitionEditChecks.Run(root, Test);
     await SQLiteImportChecks.Run(root, Test);
+    await SqlFormattingChecks.Run(Test);
     await QueryResultsChecks.Run(Test);
     await WorkspaceChecks.Run(root, Test, args.Contains("--render-ui"));
     Console.WriteLine($"{passed} regression checks passed.");

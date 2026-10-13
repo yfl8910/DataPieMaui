@@ -3,18 +3,47 @@
     <div class="actions">
         <h3>SQL definition</h3>
         <button @onclick="CopyAsync">Copy SQL</button>
+        @if (AllowFormatting)
+        {
+            <button @onclick="FormatAsync" disabled="@(formatting || string.IsNullOrWhiteSpace(Sql))">@(formatting ? "Formatting…" : "Format SQL")</button>
+            <button @onclick="ShowOriginal" disabled="@(formatting || formattedSql is null)">Show original</button>
+        }
         <span role="status">@message</span>
     </div>
-    <pre tabindex="0" aria-label="SQL definition"><code>@Sql</code></pre>
+    <pre tabindex="0" aria-label="SQL definition"><code>@DisplayedSql</code></pre>
 </div>
 
 @code {
     [Parameter, EditorRequired] public string Sql { get; set; } = "";
+    [Parameter] public bool AllowFormatting { get; set; } = true;
     private string message = "";
-    protected override void OnParametersSet() => message = "";
-    private async Task CopyAsync()
+    private string? formattedSql, sourceSql;
+    private bool formatting;
+    private string DisplayedSql => formattedSql ?? Sql;
+    protected override void OnParametersSet()
     {
-        try { await JS.InvokeVoidAsync("dataPie.copyText", Sql); message = "SQL copied."; }
+        if (sourceSql == Sql) return;
+        sourceSql = Sql;
+        formattedSql = null;
+        message = "";
+    }
+    public async Task FormatAsync()
+    {
+        if (!AllowFormatting || formatting || string.IsNullOrWhiteSpace(Sql)) return;
+        formatting = true;
+        var original = Sql;
+        try
+        {
+            var formatted = await Task.Run(() => DataPieCore.SqlDisplayFormatter.Format(original));
+            if (Sql == original) { formattedSql = formatted; message = "Formatted for display only. Database definition is unchanged."; }
+        }
+        catch (Exception ex) { if (Sql == original) message = "Formatting failed: " + ex.Message; }
+        finally { formatting = false; }
+    }
+    public void ShowOriginal() { formattedSql = null; message = "Original SQL shown."; }
+    public async Task CopyAsync()
+    {
+        try { await JS.InvokeVoidAsync("dataPie.copyText", DisplayedSql); message = "SQL copied."; }
         catch { message = "Copy failed. Select the SQL text and press Ctrl+C."; }
     }
 }
