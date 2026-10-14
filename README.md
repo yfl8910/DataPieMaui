@@ -226,3 +226,9 @@ These previews are render snapshots, not an interactive web version of the deskt
 | `DataPieMaui.Tests/` | Console regression checks |
 
 Generated directories such as `publish/`, `.vs/`, `bin/`, and `obj/` are excluded from Git. Source assets under `DataPieMaui/wwwroot/` remain tracked.
+
+### Procedure conversion index
+
+Each `.datapie-<hash>.json` in StoredProcedures now uses a version-2 object with DatabaseFile, GeneratedUtc, and Procedures. Each entry records Name, ScriptFile, Source, Status, Success, Warnings, and Error. Status is Success (fully converted and compiled), Partial (some statements skipped), or Failed. Success is true only for complete conversions; it does not prove business-semantic equivalence. Old name-array indexes remain readable. Regenerate conversion output to upgrade an existing index.
+
+These records provide conversion provenance for a future SQLite-to-SQL-Server script-only export. That reverse export is not implemented yet, and SQLite SQL cannot necessarily recover the original T-SQL definition.

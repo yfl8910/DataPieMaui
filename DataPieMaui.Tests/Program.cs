@@ -412,6 +412,33 @@ try
         var loaded=SQLiteProcedureScripts.Load(Connection(database),"当月SO数据处理"); Check(loaded.Metadata.Source==parsed.Source,"Script loader rejected readable metadata");
         return Task.CompletedTask;
     });
+    await Test("Procedure export index records success partial failure and reads legacy names", () =>
+    {
+        var directory=Path.Combine(root,"status-index"); Directory.CreateDirectory(directory);
+        var path=Path.Combine(directory,"索引测试.db"); SQLiteConnection.CreateFile(path);
+        using(var db=new SQLiteConnection(Connection(path)))
+        {
+            db.Open();
+            var schema=new DbSchema { Tables=new(),Procedures=new()
+            {
+                new Proc {Name="成功",SchemaName="dbo",CreateSql="CREATE PROC dbo.[成功] AS SELECT 1;"},
+                new Proc {Name="部分",SchemaName="dbo",CreateSql="CREATE PROC dbo.[部分] AS BEGIN SELECT 1; SELECT * FROM MissingTable; END"},
+                new Proc {Name="失败",SchemaName="dbo",CreateSql="CREATE PROC dbo.[失败] AS SELECT * FROM MissingTable;"}
+            } };
+            SQLiteProcedureScripts.Export(db,path,schema);
+        }
+        var file=Directory.GetFiles(Path.Combine(directory,"StoredProcedures"),".datapie-*.json").Single();
+        var index=System.Text.Json.JsonSerializer.Deserialize<SQLiteProcedureScripts.ProcedureExportIndex>(File.ReadAllText(file));
+        Check(index.Version==2 && index.DatabaseFile=="索引测试.db" && index.Procedures.Count==3,"Index identity or counts differ");
+        var success=index.Procedures.Single(p=>p.Name=="成功"); Check(success.Success && success.Status=="Success" && success.Source=="dbo.成功" && success.ScriptFile=="成功.txt","Success missing");
+        var partial=index.Procedures.Single(p=>p.Name=="部分"); Check(!partial.Success && partial.Status=="Partial" && partial.Warnings.Count>0,"Partial was marked successful");
+        var failed=index.Procedures.Single(p=>p.Name=="失败"); Check(!failed.Success && failed.Status=="Failed" && failed.Error!=null,"Failure context missing");
+        var current=SQLiteProcedureScripts.List(Connection(path)).Select(p=>p.Name).OrderBy(n=>n).ToArray();
+        File.WriteAllText(file,System.Text.Json.JsonSerializer.Serialize(index.Procedures.Select(p=>p.Name).ToArray()));
+        var legacy=SQLiteProcedureScripts.List(Connection(path)).Select(p=>p.Name).OrderBy(n=>n).ToArray();
+        Check(current.SequenceEqual(legacy) && current.Length==2,"Legacy index compatibility failed");
+        return Task.CompletedTask;
+    });
     await Test("Definitions are read on demand and preserve special names", () =>
     {
         var schemaPath = Path.Combine(root, "schema.db"); SQLiteConnection.CreateFile(schemaPath);

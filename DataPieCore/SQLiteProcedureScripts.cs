@@ -46,6 +46,24 @@ namespace DataPieCore
             public List<ConditionalAssignment> Assignments { get; set; } = new List<ConditionalAssignment>();
         }
 
+        internal sealed class ProcedureExportIndex
+        {
+            public int Version { get; set; } = 2;
+            public string DatabaseFile { get; set; }
+            public DateTime GeneratedUtc { get; set; }
+            public List<ProcedureExportEntry> Procedures { get; set; } = new();
+        }
+        internal sealed class ProcedureExportEntry
+        {
+            public string Name { get; set; }
+            public string ScriptFile { get; set; }
+            public string Source { get; set; }
+            public string Status { get; set; }
+            public bool Success { get; set; }
+            public List<string> Warnings { get; set; } = new();
+            public string Error { get; set; }
+        }
+
         internal sealed class ConditionalAssignment
         {
             public string Left { get; set; }
@@ -72,6 +90,7 @@ namespace DataPieCore
             var objects = new HashSet<string>(schema.Tables.Select(table => table.TableSchemaName + "." + table.Name)
                 .Concat(schema.ViewDefinitions.Select(view => view.SchemaName + "." + view.ViewName)), StringComparer.OrdinalIgnoreCase);
             var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var index = new ProcedureExportIndex { DatabaseFile = Path.GetFileName(sqlitePath), GeneratedUtc = DateTime.UtcNow };
             foreach (var proc in procedures)
             {
                 var metadata = new Metadata
@@ -140,8 +159,12 @@ namespace DataPieCore
                         string.Join(Environment.NewLine, (proc.CreateSql ?? "").Replace("\r\n", "\n").Split('\n').Select(line => "-- " + line));
                 }
                 File.WriteAllText(path, Header + JsonSerializer.Serialize(metadata, ReadableMetadataJson) + Environment.NewLine + sql, new UTF8Encoding(false));
+                string status = metadata.Error != null ? "Failed" : metadata.Warnings.Count > 0 ? "Partial" : "Success";
+                index.Procedures.Add(new ProcedureExportEntry { Name = fileName, ScriptFile = fileName + ".txt", Source = metadata.Source,
+                    Status = status, Success = status == "Success", Warnings = new List<string>(metadata.Warnings), Error = metadata.Error });
             }
-            File.WriteAllText(IndexPath(sqlitePath), JsonSerializer.Serialize(usedNames.OrderBy(name => name).ToArray(), ReadableMetadataJson), new UTF8Encoding(false));
+            index.Procedures = index.Procedures.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            File.WriteAllText(IndexPath(sqlitePath), JsonSerializer.Serialize(index, new JsonSerializerOptions(ReadableMetadataJson) { WriteIndented = true }), new UTF8Encoding(false));
             return errors;
         }
 
@@ -617,7 +640,19 @@ namespace DataPieCore
         {
             string path = IndexPath(database);
             if (!File.Exists(path)) return Array.Empty<string>();
-            var names = JsonSerializer.Deserialize<string[]>(File.ReadAllText(path));
+            string json = File.ReadAllText(path);
+            using var document = JsonDocument.Parse(json);
+            string[] names;
+            if (document.RootElement.ValueKind == JsonValueKind.Array)
+                names = JsonSerializer.Deserialize<string[]>(json);
+            else
+            {
+                var index = JsonSerializer.Deserialize<ProcedureExportIndex>(json);
+                if (index == null || index.Version != 2 || index.Procedures == null ||
+                    !string.Equals(index.DatabaseFile, Path.GetFileName(database), StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("Invalid procedure export index.");
+                names = index.Procedures.Select(entry => entry.Name).ToArray();
+            }
             if (names == null || names.Any(name => string.IsNullOrWhiteSpace(name) ||
                 name != Path.GetFileName(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0))
                 throw new IOException("Invalid procedure export index.");

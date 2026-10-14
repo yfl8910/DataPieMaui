@@ -235,3 +235,9 @@ dotnet run --project DataPieMaui.Tests/DataPieMaui.Tests.csproj -c Release -- --
 | `DataPieMaui.Tests/` | 控制台回归检查 |
 
 `publish/`、`.vs/`、`bin/`、`obj/` 和临时目录不提交到 Git；wwwroot 中的源码资源仍受版本管理。
+
+### 存储过程转换索引
+
+StoredProcedures 中的 `.datapie-<hash>.json` 使用版本 2 对象格式，记录数据库文件名、生成时间及过程列表。每个过程记录名称、脚本文件、SQL Server 来源对象、Status、Success、警告和错误。Status 分为 Success（完整转换且通过编译）、Partial（部分语句被跳过）、Failed（失败）；只有完整成功时 Success 为 true，并不代表已验证业务计算等价。旧名称数组索引仍兼容读取，重新转换可更新现有索引。
+
+这些记录为后续 SQLite → SQL Server 的只生成脚本功能提供转换来源信息。反向导出尚未实现，SQLite SQL 也不一定能还原原始 T-SQL 定义。
