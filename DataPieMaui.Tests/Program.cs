@@ -429,14 +429,77 @@ try
         }
         var file=Directory.GetFiles(Path.Combine(directory,"StoredProcedures"),".datapie-*.json").Single();
         var index=System.Text.Json.JsonSerializer.Deserialize<SQLiteProcedureScripts.ProcedureExportIndex>(File.ReadAllText(file));
+        Check(!File.ReadAllText(file).Contains("OriginalSqlServerSql") && !File.ReadAllText(file).Contains("ConvertedSqlHash"),"Index still stores original SQL");
         Check(index.Version==2 && index.DatabaseFile=="索引测试.db" && index.Procedures.Count==3,"Index identity or counts differ");
         var success=index.Procedures.Single(p=>p.Name=="成功"); Check(success.Success && success.Status=="Success" && success.Source=="dbo.成功" && success.ScriptFile=="成功.txt","Success missing");
         var partial=index.Procedures.Single(p=>p.Name=="部分"); Check(!partial.Success && partial.Status=="Partial" && partial.Warnings.Count>0,"Partial was marked successful");
         var failed=index.Procedures.Single(p=>p.Name=="失败"); Check(!failed.Success && failed.Status=="Failed" && failed.Error!=null,"Failure context missing");
+        var reverse=SQLiteSqlServerExporter.Generate(Connection(path));
+        Check(reverse.Procedures==1 && reverse.Sql.Contains("CREATE OR ALTER PROCEDURE [dbo].[成功]") && !reverse.Sql.Contains("CREATE OR ALTER PROCEDURE [dbo].[部分]"),"Reverse export ignored success status");
+        var successfulPath=Path.Combine(directory,"StoredProcedures",success.ScriptFile);
+        var originalBytes=File.ReadAllBytes(successfulPath); File.AppendAllText(successfulPath,"\nSELECT 2;");
+        var editedExport=SQLiteSqlServerExporter.Generate(Connection(path));
+        Check(editedExport.Procedures==1 && editedExport.Sql.Contains("SELECT 2"),"Reverse export discarded SQLite edits");
+        File.WriteAllBytes(successfulPath,originalBytes);
         var current=SQLiteProcedureScripts.List(Connection(path)).Select(p=>p.Name).OrderBy(n=>n).ToArray();
         File.WriteAllText(file,System.Text.Json.JsonSerializer.Serialize(index.Procedures.Select(p=>p.Name).ToArray()));
         var legacy=SQLiteProcedureScripts.List(Connection(path)).Select(p=>p.Name).OrderBy(n=>n).ToArray();
         Check(current.SequenceEqual(legacy) && current.Length==2,"Legacy index compatibility failed");
+        return Task.CompletedTask;
+    });
+    await Test("SQLite SQL Server export writes schema only and keeps source data intact", () =>
+    {
+        var path=Path.Combine(root,"reverse-schema.db"); SQLiteConnection.CreateFile(path);
+        Sql(path,"CREATE TABLE Parent(Id INTEGER PRIMARY KEY AUTOINCREMENT,Name TEXT NOT NULL,Amount REAL); CREATE TABLE Child(ParentId INTEGER,Label TEXT DEFAULT 'x',FOREIGN KEY(ParentId) REFERENCES Parent(Id)); INSERT INTO Parent(Name,Amount) VALUES('keep',1.5); CREATE VIEW ParentNames AS SELECT Name FROM Parent");
+        var export=SQLiteSqlServerExporter.Generate(Connection(path));
+        Check(export.Tables==2 && export.Procedures==0,"Wrong exported object counts");
+        Check(export.Sql.Contains("CREATE TABLE [dbo].[Parent]") && export.Sql.Contains("[Id] BIGINT IDENTITY(1,1) NOT NULL") && export.Sql.Contains("[Name] NVARCHAR(255) NOT NULL"),"SQL Server table structure missing");
+        Check(export.Sql.Contains("REFERENCES [dbo].[Parent] ([Id])") && !export.Sql.Contains("CREATE TABLE [dbo].[sqlite_sequence]"),"FK or internal table filtering wrong");
+        Check(!export.Sql.Contains("INSERT INTO") && !export.Sql.Contains("'keep'") && Count(path,"Parent")==1,"Reverse export copied or changed data");
+        Check(export.Warnings.Any(w=>w.Contains("default omitted")) && export.Warnings.Any(w=>w.Contains("view ParentNames")),"Omitted objects not reported");
+        return Task.CompletedTask;
+    });
+    await Test("SQLite text inference respects UTF-16 boundaries, blanks and the 1000-row sample", () =>
+    {
+        var path=Path.Combine(root,"reverse-text.db");SQLiteConnection.CreateFile(path);
+        Sql(path,"CREATE TABLE Sample(Id INTEGER PRIMARY KEY,Exact TEXT,Long TEXT,Emoji TEXT,Blank TEXT,Mixed TEXT,Later TEXT); CREATE TABLE Empty(Value TEXT)");
+        using(var db=new SQLiteConnection(Connection(path)))
+        {
+            db.Open();using var transaction=db.BeginTransaction();
+            using var cmd=new SQLiteCommand("INSERT INTO Sample VALUES(@id,@exact,@long,@emoji,@blank,@mixed,@later)",db,transaction);
+            foreach(var name in new[]{"id","exact","long","emoji","blank","mixed","later"})cmd.Parameters.Add(new SQLiteParameter("@"+name));
+            for(int row=1;row<=1001;row++)
+            {
+                cmd.Parameters["@id"].Value=row;
+                cmd.Parameters["@exact"].Value=new string('x',254)+" ";
+                cmd.Parameters["@long"].Value=new string('x',256);
+                cmd.Parameters["@emoji"].Value=string.Concat(Enumerable.Repeat("😀",128));
+                cmd.Parameters["@blank"].Value=row%3==0?DBNull.Value:row%3==1?"":new string(' ',300);
+                cmd.Parameters["@mixed"].Value=row%2==0?(object)123:"abc";
+                cmd.Parameters["@later"].Value=row==1001?new string('x',256):"";
+                cmd.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+        var before=File.ReadAllBytes(path);var export=SQLiteSqlServerExporter.Generate(Connection(path));
+        Check(export.Sql.Contains("[Exact] NVARCHAR(255)") && export.Sql.Contains("[Long] NVARCHAR(MAX)") && export.Sql.Contains("[Emoji] NVARCHAR(MAX)"),"UTF-16 or 255 boundary incorrect");
+        Check(export.Sql.Contains("[Blank] NVARCHAR(255)") && export.Sql.Contains("[Mixed] NVARCHAR(255)") && export.Sql.Contains("[Later] NVARCHAR(255)") && export.Sql.Contains("[Value] NVARCHAR(255)"),"Blank, mixed, empty table or sample boundary incorrect");
+        Check(export.Sql.Contains("first 1000") && before.SequenceEqual(File.ReadAllBytes(path)),"Sampling note missing or source changed");
+        return Task.CompletedTask;
+    });
+    await Test("Standalone SQLite procedure translation uses current bodies and skips unsupported syntax", () =>
+    {
+        var directory=Path.Combine(root,"standalone");Directory.CreateDirectory(directory);
+        var path=Path.Combine(directory,"standalone.db");SQLiteConnection.CreateFile(path);
+        Sql(path,"CREATE TABLE Info(Id INTEGER,Code TEXT); INSERT INTO Info VALUES(1,'keep')");
+        var folder=Path.Combine(directory,"StoredProcedures");Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder,"字符串.txt"),"UPDATE \"Info\" SET Code=substr(rtrim(Code,' '),4); SELECT CAST(strftime('%Y','2026-10-13') AS INTEGER); INSERT INTO Info(Id,Code) VALUES(2,'new');");
+        File.WriteAllText(Path.Combine(folder,"不支持.txt"),"SELECT Code FROM Info LIMIT 1;");
+        var before=File.ReadAllBytes(path);
+        var export=SQLiteSqlServerExporter.Generate(Connection(path));
+        Check(export.Procedures==1 && export.Sql.Contains("SUBSTRING(RTRIM(Code), 4, 2147483647)") && export.Sql.Contains("DATEPART(YEAR") && export.Sql.Contains("INSERT INTO Info"),"Common functions/insert not translated");
+        Check(export.Warnings.Any(w=>w.Contains("不支持: skipped")),"Unsupported body was not reported");
+        Check(before.SequenceEqual(File.ReadAllBytes(path)) && Count(path,"Info")==1,"Source database changed or script executed");
         return Task.CompletedTask;
     });
     await Test("Definitions are read on demand and preserve special names", () =>

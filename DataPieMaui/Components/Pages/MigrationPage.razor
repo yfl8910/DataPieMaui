@@ -1,12 +1,27 @@
-
+@using DataPieCore
 @inherits WorkspacePageBase
-<section class="card"><div class="migration-mark">SQL Server <span>→</span> SQLite</div><h2>Create a SQLite database</h2>
-    <p>Export tables, supported views, and procedure scripts from the current SQL Server database.</p>
-    <div class="callout">Keep the generated <strong>StoredProcedures</strong> folder alongside the output database. Unsupported SQL is reported in the conversion results.</div>
-    <p class="muted">Progress appears in the status bar. You can request cancellation while conversion is running. A canceled or failed conversion may leave an incomplete database.</p>
-    <div class="actions"><button class="primary" @onclick="ConvertSqliteAsync">Choose destination and convert</button></div>
+<section class="card">
+    @if (State.DatabaseType == "SQLSERVER")
+    {
+        <div class="migration-mark">SQL Server <span>→</span> SQLite</div><h2>Create a SQLite database</h2>
+        <p>Export tables, supported views, and procedure scripts from the current SQL Server database.</p>
+        <div class="callout">Keep the generated <strong>StoredProcedures</strong> folder alongside the output database. Unsupported SQL is reported in the conversion results.</div>
+        <p class="muted">Progress appears in the status bar. You can request cancellation while conversion is running. A canceled or failed conversion may leave an incomplete database.</p>
+        <div class="actions"><button class="primary" disabled="@(Model.State.DatabaseType != "SQLSERVER")" @onclick="ConvertSqliteAsync">Choose destination and convert</button></div>
+    }
+    else if (State.DatabaseType == "SQLITE")
+    {
+        <div class="migration-mark">SQLite <span>→</span> SQL Server</div><h2>Generate SQL Server script</h2>
+        <p>Export table columns, primary keys and supported foreign keys to a SQL file. No data is copied and no SQL Server connection is required.</p>
+        <div class="callout">Only procedure records with Status = Success are eligible. Current SQLite .txt bodies are translated, including edits. Without an index, standalone scripts are supported. Unsupported syntax is skipped with warnings. Only a .sql structure script is saved; no data is copied and no SQL is executed.</div>
+        <p class="muted">Tables are mapped to dbo. Review types, defaults, constraints and warnings before executing. Views, triggers and additional indexes require manual conversion. Existing destination tables are not dropped.</p>
+        <div class="actions"><button class="primary" disabled="@(Model.State.DatabaseType != "SQLITE")" @onclick="ExportSqlServerAsync">Choose destination and generate script</button></div>
+    }
+    else
+    {
+        <p class="muted">Connect to SQL Server or SQLite to use database migration.</p>
+    }
 </section>
-
 @code {
     public Task ConvertSqliteAsync() => RunAsync("Convert to SQLite", async watch =>
     {
@@ -14,5 +29,22 @@
         var path = await Desktop.SaveAsync(Database.Schema!.Name, ".db");
         if (path == null) return;
         await Workspace.Conversion.ConvertAsync(path, watch);
+    });
+    public Task ExportSqlServerAsync() => RunAsync("Generate SQL Server script", async watch =>
+    {
+        if (Type != "SQLITE") throw new InvalidOperationException("Connect to SQLite first.");
+        var path = await Desktop.SaveAsync(Database.Schema!.Name + "_SQLServer", ".sql");
+        if (path == null) return;
+        var connection = Database.Connection!.ConnectionString;
+        watch.Start();
+        var result = await Task.Run(() =>
+        {
+            var export = SQLiteSqlServerExporter.Generate(connection);
+            File.WriteAllText(path, export.Sql, new System.Text.UTF8Encoding(false));
+            return export;
+        });
+        watch.Stop();
+        State.Status = $"SQL Server script generated in {watch.Elapsed.TotalSeconds:F1} s · {result.Tables} tables · {result.Procedures} procedures · {result.Warnings.Count} warnings · File: {path}";
+        if(result.Warnings.Count > 0) await Dialogs.AlertAsync("Script export warnings", string.Join(Environment.NewLine,result.Warnings));
     });
 }

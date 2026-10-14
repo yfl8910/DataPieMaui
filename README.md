@@ -80,8 +80,8 @@ Each successful script save atomically replaces the file and retains the origina
 3. View results in the separate window. Click column headers to sort, select a row to copy it, or copy all preview rows. Subsequent queries update the same window. Use **Open results** to reopen a closed result window without rerunning the query.
 4. Use the export buttons for the full query result, or **Batch export** for selected tables and views.
 5. Use **Import data** for its **Import a file** and **Batch import** tabs; **Clear data** empties the target table while keeping its structure.
-6. Use **Stored procedures** to run procedures or inspect definitions, and **Convert to SQLite** to export a SQL Server database.
-7. Open **Table design**, immediately after **Convert to SQLite**, and choose **Create table** or **Drop table**. Creation defaults to the Excel sheet name; deletion removes the structure and data after confirmation.
+6. Use **Stored procedures** to run procedures or inspect definitions, and **Database migration** to export a SQL Server database.
+7. Open **Table design**, immediately after **Database migration**, and choose **Create table** or **Drop table**. Creation defaults to the Excel sheet name; deletion removes the structure and data after confirmation.
 
 On **Import data**, select a **Target table** and click **Query data** to inspect it. On **Batch export**, each table/view has its own **Query data** button, independent of the export checkboxes. These actions reuse the results window, show the object name, and preserve your SQL editor and selections. Object previews have the same 1,000-row limit, sorting, paging, and copying as SQL previews.
 
@@ -231,4 +231,12 @@ Generated directories such as `publish/`, `.vs/`, `bin/`, and `obj/` are exclude
 
 Each `.datapie-<hash>.json` in StoredProcedures now uses a version-2 object with DatabaseFile, GeneratedUtc, and Procedures. Each entry records Name, ScriptFile, Source, Status, Success, Warnings, and Error. Status is Success (fully converted and compiled), Partial (some statements skipped), or Failed. Success is true only for complete conversions; it does not prove business-semantic equivalence. Old name-array indexes remain readable. Regenerate conversion output to upgrade an existing index.
 
-These records provide conversion provenance for a future SQLite-to-SQL-Server script-only export. That reverse export is not implemented yet, and SQLite SQL cannot necessarily recover the original T-SQL definition.
+SQLite → SQL Server translates the current StoredProcedures/*.txt bodies rather than restoring original T-SQL. Indexed scripts require Status = Success; independent scripts without an index are also supported. Failed, partial and unsupported scripts are skipped with warnings. SQL Server → SQLite no longer stores original T-SQL.
+
+### Database migration: SQLite → SQL Server
+
+Connect to SQLite, select **Database migration → SQLite → SQL Server**, and choose a `.sql` destination. The export reads schema metadata and samples up to 1,000 returned rows per table for text column lengths and generates SQL Server table columns, primary keys, AUTOINCREMENT identity columns and supported foreign keys under dbo. It does not copy rows, connect to SQL Server, execute DDL, drop target tables or modify the source database.
+
+Review all mappings: INTEGER becomes BIGINT, TEXT/CHAR/CLOB uses NVARCHAR(255) when the sampled maximum length is <=255 UTF-16 code units, otherwise NVARCHAR(MAX). NULL, empty and whitespace-only values are ignored; mixed values remain text. Empty tables/columns default to NVARCHAR(255). Sampling has no explicit row ordering, and later rows may require a wider type, BLOB becomes VARBINARY(MAX), REAL becomes FLOAT, date/time declarations become DATETIME2 and other numeric declarations use DECIMAL(38,10). SQLite defaults, CHECK/UNIQUE constraints, cascading actions, views, triggers and additional indexes require manual conversion and are reported; virtual/generated-column tables are skipped. The generated script uses GO batch separators and CREATE OR ALTER procedures. Execute it manually in the intended SQL Server database after reviewing warnings, schemas, permissions and object dependencies.
+
+Supported procedure bodies include SELECT/INSERT/UPDATE/DELETE/WITH, common string and date functions, and DataPie parameter/local metadata. Dynamic SUBSTR bounds, SQLite-specific options and unknown functions require manual conversion. Review generated SQL for type, collation and NULL semantics. Only a .sql schema script is saved; no data is copied and no generated SQL is executed.

@@ -8,6 +8,12 @@ namespace DataPieCore;
 // Declaration guard only. SQL Server validates the complete body in the save transaction.
 public static class DefinitionSqlValidator
 {
+    internal static string PrepareCreateOrAlter(DefinitionObject target, string sql)
+    {
+        string altered = PrepareAlter(target, sql);
+        var first = Scan(altered, true)[0];
+        return altered.Substring(0, first.Start) + "CREATE OR ALTER" + altered.Substring(first.Start + first.Length);
+    }
     private sealed record Token(string Text, int Start, int Length, bool Word, bool Identifier)
     {
         public bool Is(string keyword) => Word && Text.Equals(keyword, StringComparison.OrdinalIgnoreCase);

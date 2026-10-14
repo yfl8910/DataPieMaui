@@ -26,7 +26,7 @@ public sealed class WorkspaceController
     public void Navigate(string section)
     {
         if (IsOperationRunning) return;
-        Context.Section = section == "About" || section == "Connections" || Context.State.IsConnected && (section != "Migration" || Context.State.CanConvertToSqlite)
+        Context.Section = section == "About" || section == "Connections" || Context.State.IsConnected
             ? section : "Connections";
         Context.Notify();
     }

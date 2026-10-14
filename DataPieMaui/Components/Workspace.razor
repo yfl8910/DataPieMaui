@@ -7,7 +7,7 @@
             <nav aria-label="Workspace sections">
                 @foreach (var item in navigation)
                 {
-                    bool enabled = item.Id is "Connections" or "About" || Controller.Context.State.IsConnected && (item.Id != "Migration" || Controller.Context.State.CanConvertToSqlite);
+                    bool enabled = item.Id is "Connections" or "About" || Controller.Context.State.IsConnected;
                     <button class="nav-item @(Controller.Context.Section == item.Id ? "active" : "")" disabled="@(!enabled || Controller.Context.State.Busy)" aria-current="@(Controller.Context.Section == item.Id ? "page" : null)" @onclick="() => Controller.Navigate(item.Id)"><span class="nav-symbol" aria-hidden="true">
                         @if (item.Id == "TableDesign")
                         {
@@ -68,7 +68,7 @@
         ("Import", "Import data", "↓", "Bring files into an existing database table."),
         ("Export", "Batch export", "↑", "Export selected tables and views to Excel or CSV."),
         ("Procedures", "Stored procedures", "▷", "Run selected procedures in sequence."),
-        ("Migration", "Convert to SQLite", "⇄", "Create a portable SQLite copy of your SQL Server database."),
+        ("Migration", "Database migration", "⇄", "Convert SQL Server to SQLite or generate SQL Server scripts from SQLite."),
         ("TableDesign", "Table design", "", "Create table structure from Excel or permanently delete a database table."),
         ("About", "About", "ⓘ", "A local workspace for your database tasks.")
     ];

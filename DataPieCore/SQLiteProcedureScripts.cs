@@ -62,6 +62,8 @@ namespace DataPieCore
             public bool Success { get; set; }
             public List<string> Warnings { get; set; } = new();
             public string Error { get; set; }
+            public string SourceSchema { get; set; }
+            public string SourceName { get; set; }
         }
 
         internal sealed class ConditionalAssignment
@@ -154,14 +156,13 @@ namespace DataPieCore
                 {
                     metadata.Error = ex.Message;
                     errors.Add($"{metadata.Source}: {ex.Message}");
-                    sql = "-- UNSUPPORTED: " + ex.Message.Replace("\r", " ").Replace("\n", " ") + Environment.NewLine +
-                        "-- Original SQL Server definition (not executable in SQLite):" + Environment.NewLine +
-                        string.Join(Environment.NewLine, (proc.CreateSql ?? "").Replace("\r\n", "\n").Split('\n').Select(line => "-- " + line));
+                    sql = "-- UNSUPPORTED: " + ex.Message.Replace("\r", " ").Replace("\n", " ");
                 }
                 File.WriteAllText(path, Header + JsonSerializer.Serialize(metadata, ReadableMetadataJson) + Environment.NewLine + sql, new UTF8Encoding(false));
                 string status = metadata.Error != null ? "Failed" : metadata.Warnings.Count > 0 ? "Partial" : "Success";
                 index.Procedures.Add(new ProcedureExportEntry { Name = fileName, ScriptFile = fileName + ".txt", Source = metadata.Source,
-                    Status = status, Success = status == "Success", Warnings = new List<string>(metadata.Warnings), Error = metadata.Error });
+                    Status = status, Success = status == "Success", Warnings = new List<string>(metadata.Warnings), Error = metadata.Error,
+                    SourceSchema = proc.SchemaName, SourceName = proc.Name });
             }
             index.Procedures = index.Procedures.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase).ToList();
             File.WriteAllText(IndexPath(sqlitePath), JsonSerializer.Serialize(index, new JsonSerializerOptions(ReadableMetadataJson) { WriteIndented = true }), new UTF8Encoding(false));

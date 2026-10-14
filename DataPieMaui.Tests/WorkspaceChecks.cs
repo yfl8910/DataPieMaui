@@ -366,7 +366,7 @@ internal static class WorkspaceChecks
             var pages = new[]
             {
                 ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("TableDesign", "Excel worksheet"), ("TableDesign", "Table to delete"), ("Import", "Source folder"),
-                ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("About", "Blazor Hybrid")
+                ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("Migration", "Choose destination and generate script"), ("About", "Blazor Hybrid")
             };
             // Render the conversion page without connecting to an external SQL Server.
             workspace.Context.State.DatabaseType = "SQLSERVER";
@@ -375,6 +375,7 @@ internal static class WorkspaceChecks
                 workspace.Navigate(section);
                 if (section == "Export") exportPage.ChangeTab("View");
                 if (section == "Import") importPage.ChangeTab("Batch");
+                if (section == "Migration") workspace.Context.State.DatabaseType = expected == "Choose destination and generate script" ? "SQLITE" : "SQLSERVER";
                 if (section == "TableDesign") tableDesignPage.ChangeTab(expected == "Table to delete" ? "Drop" : "Create");
                 await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
                 string html = await renderer.Dispatcher.InvokeAsync(async () =>
@@ -383,6 +384,11 @@ internal static class WorkspaceChecks
                     return component.ToHtmlString();
                 });
                 Check(html.Contains(expected), "Missing content for " + section);
+                if (section == "Migration")
+                {
+                    string otherAction = expected == "Choose destination and generate script" ? "Choose destination and convert" : "Choose destination and generate script";
+                    Check(!html.Contains(otherAction) && !html.Contains("Database migration direction"), "Migration shows an irrelevant direction or direction tabs");
+                }
                 if (section == "Import") Check(!html.Contains("Drop table"), "Deletion remains on import page" );
                 if (section == "TableDesign") Check(html.Contains("Generate SQL") == (expected == "Excel worksheet"), "Table design tabs show the wrong form" );
                 if (section is "Import" or "Export") Check(html.Contains("Query data"), "Object query button missing in " + section);

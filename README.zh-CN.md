@@ -96,9 +96,9 @@ SQL Server 分为 **Without parameters / With parameters** 两个 TAB。前者�
 
 执行超时为 120 秒，程序不会自动包裹应用事务。错误保留输入；失败或超时的过程可能已修改数据，重试前请核实状态。SQLite 使用转换后的过程脚本执行流程。
 
-### Convert to SQLite：数据库转换
+### Database migration：数据库迁移
 
-仅在连接 SQL Server 时可用。选择目标 `.db` 文件后转换数据库，状态栏显示进度并提供取消按钮。无法完整转换的视图或过程会产生警告。
+SQL Server → SQLite TAB 仅在连接 SQL Server 时可用。选择目标 `.db` 文件后转换数据库，状态栏显示进度并提供取消按钮。无法完整转换的视图或过程会产生警告。
 
 SUBSTRING 的起点为正整数字面量、长度为非负整数字面量时，转换为简洁的 substr；同源 SUBSTRING(value,n,LEN(value)-(n-1)) 后缀模式使用 rtrim 加 substr，去除尾部空格；短于待去除前缀的值返回空字符串，而不是 SQL Server 的负长度错误。其他动态参数或非正起点继续使用兼容逻辑，处理 NULL、负长度及起点差异。
 
@@ -108,7 +108,7 @@ YEAR/MONTH/DAY 直接转换为 SQLite strftime 并转为整数。NULL 或无法�
 
 ### Table design：表设计
 
-该页面位于 Convert to SQLite 之后，使用“表格＋铅笔”图标，包含 **Create table / Drop table** 两个 TAB。切换时保留 Excel 选择和 SQL 草稿。
+该页面位于 Database migration 之后，使用“表格＋铅笔”图标，包含 **Create table / Drop table** 两个 TAB。切换时保留 Excel 选择和 SQL 草稿。
 
 **Create table**：选择 XLSX 或 XLS 文件和工作表，点击 **Generate SQL**。第一行作为列名，Sheet 名称作为默认表名，无需另填表名。程序只读取表头后的前 1,000 行数据推断字段类型，不足 1,000 行则读取全部；用户可在 SQL editor 中修改表名、类型和约束，审核后点击 Create table 并确认。
 
@@ -240,4 +240,12 @@ dotnet run --project DataPieMaui.Tests/DataPieMaui.Tests.csproj -c Release -- --
 
 StoredProcedures 中的 `.datapie-<hash>.json` 使用版本 2 对象格式，记录数据库文件名、生成时间及过程列表。每个过程记录名称、脚本文件、SQL Server 来源对象、Status、Success、警告和错误。Status 分为 Success（完整转换且通过编译）、Partial（部分语句被跳过）、Failed（失败）；只有完整成功时 Success 为 true，并不代表已验证业务计算等价。旧名称数组索引仍兼容读取，重新转换可更新现有索引。
 
-这些记录为后续 SQLite → SQL Server 的只生成脚本功能提供转换来源信息。反向导出尚未实现，SQLite SQL 也不一定能还原原始 T-SQL 定义。
+Database migration 读取当前 StoredProcedures/*.txt 正文转换为 SQL Server 过程，包含编辑后的内容。有索引时仅转换 Status = Success 的记录；没有索引时支持独立脚本。失败、部分成功及不支持的脚本会跳过并报告。SQL Server → SQLite 不再保存原始 T-SQL。
+
+### Database migration：SQLite → SQL Server
+
+连接 SQLite 后，选择 Database migration → SQLite → SQL Server，保存为 `.sql` 文件。读取架构元数据，并抽样每张表返回的前 1000 行推断文本列长度，生成 dbo 下的表列、主键、AUTOINCREMENT 自增列及可处理的外键。不复制数据行，不连接 SQL Server，不执行生成的 SQL，也不修改源数据库或删除目标表。
+
+类型映射需审核：INTEGER → BIGINT、TEXT/CHAR/CLOB 根据抽样最大 UTF-16 长度选择 NVARCHAR(255)（≤255）或 NVARCHAR(MAX)（>255）；忽略 NULL、空字符串和纯空格，混合内容仍保留文本类型。空表或空列默认 NVARCHAR(255)。抽样无显式排序，范围外的数据可能需要更长字段、BLOB → VARBINARY(MAX)、REAL → FLOAT、日期时间声明 → DATETIME2，其他数值声明 → DECIMAL(38,10)。默认值、CHECK/UNIQUE 约束、级联动作、视图、触发器和附加索引需要人工转换，报告中会列出；虚拟表和包含生成列的表会跳过。脚本使用 GO 分隔批次，过程使用 CREATE OR ALTER；核对类型、架构、权限和依赖后，在目标 SQL Server 数据库中手动执行。
+
+支持 SELECT、INSERT、UPDATE、DELETE、WITH、常见字符串和日期函数，以及 DataPie 参数和局部变量元数据。动态 SUBSTR 边界、SQLite 专用选项和未知函数需人工转换。生成后请审核类型、排序规则和 NULL 语义。仅保存 .sql 结构脚本，不复制数据、不执行生成的 SQL。
