@@ -392,6 +392,26 @@ try
         Check(Count(converted, "Items") == 1, "Procedure did not insert");
         return Task.CompletedTask;
     });
+    await Test("SQLite procedure headers display Chinese and retain JSON compatibility", () =>
+    {
+        var directory=Path.Combine(root,"readable-metadata"); Directory.CreateDirectory(directory);
+        var database=Path.Combine(directory,"DACH管理数据.db"); SQLiteConnection.CreateFile(database);
+        using(var db=new SQLiteConnection(Connection(database)))
+        {
+            db.Open();
+            var schema=new DbSchema { Name="DACH管理数据",Tables=new(),Procedures=new() { new Proc {Name="当月SO数据处理",SchemaName="dbo",CreateSql="CREATE PROCEDURE [dbo].[当月SO数据处理] AS BEGIN SELECT 1; END"} } };
+            var errors=SQLiteProcedureScripts.Export(db,database,schema); Check(errors.Count==0,"Chinese procedure export failed");
+        }
+        var scriptPath=Directory.GetFiles(Path.Combine(directory,"StoredProcedures"),"*.txt").Single();
+        var header=File.ReadLines(scriptPath,Encoding.UTF8).First();
+        Check(header.Contains("DACH管理数据.db") && header.Contains("dbo.当月SO数据处理") && !header.Contains("\\u7BA1"),"Chinese header is still escaped");
+        var parsed=System.Text.Json.JsonSerializer.Deserialize<SQLiteProcedureScripts.Metadata>(header.Substring("-- DataPie SQLite procedure: ".Length));
+        Check(parsed.DatabaseFile=="DACH管理数据.db" && parsed.Source=="dbo.当月SO数据处理","Readable JSON failed to round-trip");
+        var legacy=System.Text.Json.JsonSerializer.Serialize(parsed);
+        Check(System.Text.Json.JsonSerializer.Deserialize<SQLiteProcedureScripts.Metadata>(legacy).Source==parsed.Source,"Legacy escaped header no longer reads");
+        var loaded=SQLiteProcedureScripts.Load(Connection(database),"当月SO数据处理"); Check(loaded.Metadata.Source==parsed.Source,"Script loader rejected readable metadata");
+        return Task.CompletedTask;
+    });
     await Test("Definitions are read on demand and preserve special names", () =>
     {
         var schemaPath = Path.Combine(root, "schema.db"); SQLiteConnection.CreateFile(schemaPath);

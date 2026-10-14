@@ -8,6 +8,8 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using System.Text.RegularExpressions;
 using DBUtil;
 
@@ -16,6 +18,10 @@ namespace DataPieCore
     internal static partial class SQLiteProcedureScripts
     {
         private const string Header = "-- DataPie SQLite procedure: ";
+        private static readonly JsonSerializerOptions ReadableMetadataJson = new JsonSerializerOptions
+        {
+            Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+        };
 
         internal sealed class Parameter
         {
@@ -133,9 +139,9 @@ namespace DataPieCore
                         "-- Original SQL Server definition (not executable in SQLite):" + Environment.NewLine +
                         string.Join(Environment.NewLine, (proc.CreateSql ?? "").Replace("\r\n", "\n").Split('\n').Select(line => "-- " + line));
                 }
-                File.WriteAllText(path, Header + JsonSerializer.Serialize(metadata) + Environment.NewLine + sql, new UTF8Encoding(false));
+                File.WriteAllText(path, Header + JsonSerializer.Serialize(metadata, ReadableMetadataJson) + Environment.NewLine + sql, new UTF8Encoding(false));
             }
-            File.WriteAllText(IndexPath(sqlitePath), JsonSerializer.Serialize(usedNames.OrderBy(name => name).ToArray()), new UTF8Encoding(false));
+            File.WriteAllText(IndexPath(sqlitePath), JsonSerializer.Serialize(usedNames.OrderBy(name => name).ToArray(), ReadableMetadataJson), new UTF8Encoding(false));
             return errors;
         }
 
