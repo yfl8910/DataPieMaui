@@ -24,6 +24,7 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 - Run selected procedures without parameters, or run SQL Server procedures individually with typed parameter inputs, review, OUTPUT values, and RETURN codes.
 - View and edit supported SQL Server and SQLite view/procedure definitions with diff review and explicit save confirmation.
 - Convert SQL Server databases to SQLite, with warnings for unsupported view or procedure SQL.
+- Export SQL Server schemas, supported tables, primary keys, defaults, views and stored procedures to a creation script, with skipped-object and dependency warnings.
 - Generate a SQL Server schema/procedure script from SQLite without copying rows or executing it against a server.
 
 ## Requirements
@@ -88,7 +89,7 @@ The sidebar follows this order. Database operations become available after conne
 | Import data | Import a file/folder, export a template, or clear table data |
 | Batch export | Export selected tables/views to Excel or CSV |
 | Stored procedures | Run procedures and inspect/edit supported definitions |
-| Database migration | Convert SQL Server to SQLite or generate SQL Server scripts from SQLite |
+| Database migration | Convert SQL Server to SQLite, export SQL Server object scripts, or generate SQL Server scripts from SQLite |
 | Table design | Create table structure from Excel or drop an entire table |
 | About | Application information |
 
@@ -206,6 +207,18 @@ YEAR/MONTH/DAY convert directly to integer casts of SQLite strftime. NULL or unp
 
 When distributing a converted SQLite database, keep its generated `StoredProcedures` folder alongside it. SQLite procedures are handled as converted scripts; unsupported SQL is reported in warnings. A canceled or failed conversion may leave an incomplete output database, which should be regenerated before use.
 
+### Database migration: SQL Server object script
+
+When connected to SQL Server, **Database migration** retains **Choose destination and convert** for SQLite conversion and adds a separate **Generate SQL Server script** button. Choose a `.sql` destination to export object creation SQL from the current source database. Export requires SQL Server 2016 or later and database-level `VIEW DEFINITION` permission. Metadata is read on demand, without selecting table rows, changing source objects or executing the generated script.
+
+The script includes non-system schemas and supported tables with field types, lengths, precision/scale, collation, nullability, identity seed/increment, and computed expressions. Primary keys preserve their name, column order, ascending/descending keys and clustered/nonclustered form; creating a primary key necessarily creates its backing index. Defaults preserve their constraint name and expression. Views and procedures preserve their SQL bodies and persisted ANSI_NULLS/QUOTED_IDENTIFIER options; declarations become schema-qualified CREATE statements using current catalog names. Schema ownership is normalized to dbo rather than exporting source principals.
+
+Foreign keys, independent UNIQUE/CHECK constraints, non-primary indexes, functions, triggers, user-defined types, sequences, permissions and data are excluded. Alias column types are expanded to base types with a warning. CLR user-defined/typed XML/encrypted/hidden/generated-always/FILESTREAM/column-set columns, legacy bound defaults and special tables such as temporal, memory-optimized and FileTable are not fully supported; affected tables are skipped with warnings. Encrypted, inaccessible, CLR or natively compiled module definitions are also skipped. EXECUTE AS/signature dependencies are reported; principals and signatures are not recreated.
+
+Included objects are ordered using catalog dependencies. Excluded or unresolved dependencies, cross-database references and dependency cycles produce warnings for manual review; dynamic SQL dependencies may not be represented in the catalog. The script is not a complete database backup or version-downgrade tool and may require excluded objects to be created separately. Use a compatible target SQL Server and avoid concurrent source DDL while exporting.
+
+Output contains no generated DROP statements or source-database USE directive. Review it before executing in the intended empty target database, using a GO-aware client such as SSMS. The application generates the complete text before replacing the destination through a sibling temporary file; a failed replacement preserves the previous file. Completion shows exported table/view/procedure counts, warning count, duration and full path. Warnings also appear as script comments and in a results dialog. No SMO dependency or server-side export procedure is installed.
+
 ### Converted procedure index
 
 Each `.datapie-<hash>.json` in StoredProcedures now uses a version-2 object with DatabaseFile, GeneratedUtc, and Procedures. Each entry records Name, ScriptFile, Source, Status, Success, Warnings, and Error. Status is Success (fully converted and compiled), Partial (some statements skipped), or Failed. Success is true only for complete conversions; it does not prove business-semantic equivalence. Old name-array indexes remain readable. Regenerate conversion output to upgrade an existing index.
@@ -276,7 +289,7 @@ The test project is a console-based regression runner. Run it with:
 dotnet run --project DataPieMaui.Tests\DataPieMaui.Tests.csproj -c Release
 ```
 
-Checks cover SQLite access, connection management, schema browsing and type formatting, table-editor insertion/defaults, editing, page selection, confirmed deletion and conflict rollback, query previews, import/export and length validation, Excel-based table creation and Id identity defaults, table deletion and foreign-key protection, procedure parameters, definition editing, conversion, cancellation, result snapshots, typed sorting, copy formatting, result-component updates, and desktop clipboard delegation. Workspace checks also exercise confirmation and cancellation, concurrent-operation protection, state retention, and rendering of the actual Razor pages. These checks use a test desktop adapter; they do not automate native window/file-picker interactions or require a live SQL Server instance.
+Checks cover SQL Server script generation from metadata fixtures (types, defaults, primary keys, declaration normalization, dependency ordering, warnings and atomic file replacement), SQLite access, connection management, schema browsing and type formatting, table-editor insertion/defaults, editing, page selection, confirmed deletion and conflict rollback, query previews, import/export and length validation, Excel-based table creation and Id identity defaults, table deletion and foreign-key protection, procedure parameters, definition editing, conversion, cancellation, result snapshots, typed sorting, copy formatting, result-component updates, and desktop clipboard delegation. Workspace checks also exercise confirmation and cancellation, concurrent-operation protection, state retention, and rendering of the actual Razor pages. These checks use a test desktop adapter; they do not automate native window/file-picker interactions or require a live SQL Server instance.
 
 To also write static page previews to the ignored `tmp/ui-review/` directory, run:
 
@@ -306,6 +319,7 @@ These checks exercise dragging, resizing, viewport bounds, maximize/restore, bus
 - `Services/Shared/WorkspaceContext` owns session state and the shared capabilities for one workspace. Shared services survive navigation; `WorkspaceForm` retains input values when page components are recreated. `DatabaseConversionService` owns conversion execution, progress, and cancellation so the status bar and native close handler do not depend on a page instance.
 - `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by main-workspace pages. Table-editor windows maintain their own busy and draft state. `QueryPreviewService` shares table/view and SQL result loading, `WorkspaceContext.RefreshSchemaAsync` refreshes table lists after creation/deletion, and `FileNames` shares export filename normalization. `TableSelection` carries schema-qualified import targets separately from source worksheet/table names, and `WorkspacePageBase.OpenTableEditorAsync` is shared by SQL query, Import data and Database schema. `ExcelTableSql` reads worksheets and generates provider-specific table definitions.
 - `IDesktopServices` separates the workspace from Windows-specific operations. `WindowsDesktopServices` dispatches native work to the UI thread, binds file pickers to their owner, and manages result and table-editor windows.
+- `DataPieCore/SqlServerScriptExporter.cs` reads fresh SQL Server catalog metadata and generates scoped object-creation scripts independently of the lightweight connection-time `DbSchema` cache.
 - `DataPieCore` remains the database/import/export engine. Razor components run locally; no web server is required.
 
 ## Repository layout

@@ -22,7 +22,28 @@
         <p class="muted">Connect to SQL Server or SQLite to use database migration.</p>
     }
 </section>
+@if (State.DatabaseType == "SQLSERVER")
+{
+    <section class="card">
+        <h2>SQL Server object script</h2>
+        <p>Generate creation SQL for schemas, supported tables, primary keys, defaults, views and stored procedures from the current database.</p>
+        <p class="muted">No data is copied and no generated SQL is executed. Other indexes and constraints, functions, triggers and user-defined types are excluded. Missing dependencies and skipped objects are reported; review the script before running it in an empty target database.</p>
+        <div class="actions"><button @onclick="ExportSqlServerObjectsAsync">Generate SQL Server script</button></div>
+    </section>
+}
 @code {
+    public Task ExportSqlServerObjectsAsync() => RunAsync("Generate SQL Server object script", async watch =>
+    {
+        if (Type != "SQLSERVER") throw new InvalidOperationException("Connect to SQL Server first.");
+        var connection = Database.Connection!;
+        var path = await Desktop.SaveAsync(Database.Schema!.Name + "_schema", ".sql");
+        if (path == null) return;
+        watch.Start();
+        var result = await Task.Run(() => SqlServerScriptExporter.Export(connection.ConnectionString, path));
+        watch.Stop();
+        State.Status = $"SQL Server object script generated{(result.Warnings.Count > 0 ? " with warnings" : "")} in {watch.Elapsed.TotalSeconds:F1} s · {result.Tables} tables · {result.Views} views · {result.Procedures} procedures · {result.Warnings.Count} warnings · File: {Path.GetFullPath(path)}";
+        if (result.Warnings.Count > 0) await Dialogs.AlertAsync("SQL Server script export warnings", string.Join(Environment.NewLine, result.Warnings));
+    });
     public Task ConvertSqliteAsync() => RunAsync("Convert to SQLite", async watch =>
     {
         if (Type != "SQLSERVER") throw new InvalidOperationException("Connect to SQL Server first.");

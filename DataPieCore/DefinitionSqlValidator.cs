@@ -8,6 +8,37 @@ namespace DataPieCore;
 // Declaration guard only. SQL Server validates the complete body in the save transaction.
 public static class DefinitionSqlValidator
 {
+    // Export only: normalize the declaration to CREATE and the current catalog name.
+    // Do not apply the interactive editor's conservative body restrictions.
+    internal static string PrepareCreateForExport(DefinitionObject target, string sql, bool quotedIdentifier)
+    {
+        var tokens = Scan(sql, quotedIdentifier);
+        int position = 0;
+        if (tokens.Count == 0 || !(tokens[0].Is("CREATE") || tokens[0].Is("ALTER"))) throw new ArgumentException("Unrecognized module declaration.");
+        position++;
+        var replacements = new List<(int Start, int Length, string Value)> { (tokens[0].Start, tokens[0].Length, "CREATE") };
+        if (position < tokens.Count && tokens[position].Is("OR"))
+        {
+            if (!tokens[0].Is("CREATE") || position + 1 >= tokens.Count || !tokens[position + 1].Is("ALTER")) throw new ArgumentException("Unrecognized module declaration.");
+            foreach (var token in tokens.Skip(position).Take(2)) replacements.Add((token.Start, token.Length, new string(' ', token.Length)));
+            position += 2;
+        }
+        if (position >= tokens.Count || !(target.Kind == "View" ? tokens[position].Is("VIEW") : tokens[position].Is("PROC") || tokens[position].Is("PROCEDURE"))) throw new ArgumentException("Unexpected module type.");
+        position++;
+        if (position >= tokens.Count || !tokens[position].Identifier) throw new ArgumentException("Module name missing.");
+        int firstName = position++;
+        if (position < tokens.Count && tokens[position].Symbol("."))
+        {
+            position++;
+            if (position >= tokens.Count || !tokens[position].Identifier) throw new ArgumentException("Module name missing.");
+            position++;
+        }
+        if (position >= tokens.Count || tokens[position].Symbol(".") || tokens[position].Symbol(";")) throw new ArgumentException("Multipart or numbered modules are not supported.");
+        replacements.Add((tokens[firstName].Start, tokens[position - 1].Start + tokens[position - 1].Length - tokens[firstName].Start,
+            SqlQueryBuilder.QuoteIdentifier(target.Schema, "SQLSERVER") + "." + SqlQueryBuilder.QuoteIdentifier(target.Name, "SQLSERVER")));
+        foreach (var change in replacements.OrderByDescending(c => c.Start)) sql = sql.Remove(change.Start, change.Length).Insert(change.Start, change.Value);
+        return sql;
+    }
     internal static string PrepareCreateOrAlter(DefinitionObject target, string sql)
     {
         string altered = PrepareAlter(target, sql);

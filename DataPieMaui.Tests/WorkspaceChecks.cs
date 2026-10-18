@@ -432,6 +432,7 @@ internal static class WorkspaceChecks
                 {
                     string otherAction = expected == "Choose destination and generate script" ? "Choose destination and convert" : "Choose destination and generate script";
                     Check(!html.Contains(otherAction) && !html.Contains("Database migration direction"), "Migration shows an irrelevant direction or direction tabs");
+                    Check(html.Contains("<h2>SQL Server object script</h2>") == (expected == "Choose destination and convert"), "SQL Server object script action shown for wrong provider");
                 }
                 if (section == "Import") Check(!html.Contains("Drop table"), "Deletion remains on import page" );
                 if (section == "TableDesign") Check(html.Contains("Generate SQL") == (expected == "Excel worksheet"), "Table design tabs show the wrong form" );
