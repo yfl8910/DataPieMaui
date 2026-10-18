@@ -1,25 +1,26 @@
 @using DBUtil
 @inherits WorkspacePageBase
 
-<section class="card">
-    <div class="actions"><h2>Database schema · @Database.Schema?.Name</h2><button @onclick="RefreshAsync">Refresh schema</button></div>
-    <p>@Database.Schema?.Tables.Count tables · @Definitions.Count(o => o.Kind == "View") views · @Definitions.Count(o => o.Kind == "Procedure") procedures</p>
-    <div class="actions align-end">
-        <label class="grow">Search objects<input @bind="search" @bind:event="oninput" placeholder="Name or schema" /></label>
-        <label>Object type<select @bind="kind"><option>All</option><option>Table</option><option>View</option><option>Procedure</option></select></label>
-    </div>
+<section class="card schema-toolbar" aria-label="Schema search and filters">
+    <input @bind="search" @bind:event="oninput" aria-label="Search objects" placeholder="Search objects by name or schema" />
+    <select @bind="kind" aria-label="Object type"><option value="All">All types</option><option value="Table">Tables</option><option value="View">Views</option><option value="Procedure">Stored procedures</option></select>
+    <button @onclick="RefreshAsync">Refresh schema</button>
 </section>
 <section class="card schema-browser">
     <div class="schema-object-list" aria-label="Database objects">
-        @foreach (var group in Objects.GroupBy(o => o.Schema).OrderBy(g => g.Key))
+        @foreach (var category in new[] { (Kind: "Table", Label: "Tables"), (Kind: "View", Label: "Views"), (Kind: "Procedure", Label: "Stored procedures") })
         {
-            <h3>@(string.IsNullOrEmpty(group.Key) ? "Scripts" : group.Key)</h3>
-            @foreach (var item in group.OrderBy(o => o.Name))
+            var items = Objects.Where(o => o.Kind == category.Kind).OrderBy(o => o.Schema).ThenBy(o => o.Name).ToArray();
+            @if (kind == "All" || kind == category.Kind)
             {
-                <button class="@(selected == item ? "primary" : "")" @onclick="() => SelectAsync(item)">@item.Kind · @item.Name</button>
+                <h3>@category.Label (@items.Length)</h3>
+                @foreach (var item in items)
+                {
+                    <button class="@(selected == item ? "primary" : "")" @onclick="() => SelectAsync(item)">@item.DisplayName</button>
+                }
+                @if (items.Length == 0) { <p class="muted">No matching objects.</p> }
             }
         }
-        @if (!Objects.Any()) { <p>No matching objects.</p> }
     </div>
     <div class="schema-details">
         @if (selected is null) { <p>Select a table, view or procedure to inspect it.</p> }

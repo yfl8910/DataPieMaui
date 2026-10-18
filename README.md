@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Windows desktop workspace for querying, importing, exporting, designing tables, and converting SQL Server and SQLite data. Built with .NET 11 RC1 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace and a separate query-results window.
+A Windows desktop workspace for querying, importing, exporting, designing tables, and converting SQL Server and SQLite data. Built with .NET 11 RC1 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace, a separate query-results window, and independent table-editor windows.
 
 <img width="1262" height="937" alt="image" src="https://github.com/user-attachments/assets/b3ca694d-e905-4772-8ec2-1fb8b9aeb46b" />
 
@@ -14,14 +14,17 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 - Connect to SQL Server using Windows or SQL Server authentication, open a local SQLite database, or create a blank SQLite database and connect automatically without saving its connection configuration.
 - Navigate between Blazor pages without losing SQL or form inputs; review operations in shared confirmation dialogs and a persistent status bar.
 - Save and manage database connections.
+- Browse tables, views, and stored procedures in a dedicated Database schema page, with search, type filtering, and column details.
 - Generate SELECT, UPDATE, and DELETE statements and execute SQL.
 - Preview query results in a separate, resizable Blazor window with dynamic columns, typed sorting, pagination, and copying.
 - Export queries and tables to Excel or CSV; export multiple tables or views to worksheets or separate CSV files.
 - Import Excel, CSV, or a matching table from a SQLite database through Import a file; use Batch import for CSV/XLSX folders. Optional single-file and automatic batch length validation report SQL Server field-length problems.
 - Design tables from Excel worksheets, review CREATE TABLE SQL, and open a separate table data editor from the Table Edit menu.
+- Add, edit, and delete table records in independent editor windows, with full-table paging, current-page selection, modal dialogs, and conflict checks; drop entire tables separately through Table design.
 - Run selected procedures without parameters, or run SQL Server procedures individually with typed parameter inputs, review, OUTPUT values, and RETURN codes.
 - View and edit supported SQL Server and SQLite view/procedure definitions with diff review and explicit save confirmation.
 - Convert SQL Server databases to SQLite, with warnings for unsupported view or procedure SQL.
+- Generate a SQL Server schema/procedure script from SQLite without copying rows or executing it against a server.
 
 ## Requirements
 
@@ -32,7 +35,7 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 
 The current project targets Windows only.
 
-The repository currently uses .NET 11 RC1 packages: MAUI Controls and Blazor WebView `11.0.0-rc.1.26451.6`. Install the SDK selected by `global.json` and a compatible MAUI workload. Visual Studio must support that SDK and allow preview SDK usage where required.
+The SDK is pinned to .NET 11 RC1; MAUI Controls and Blazor WebView packages are `11.0.0-rc.2.26505.5`, and Microsoft.Extensions.Logging.Debug is `11.0.0-rc.2.26504.105`. Install the SDK selected by `global.json` and a compatible MAUI workload. Visual Studio must support that SDK and allow preview SDK usage where required.
 
 Visual Studio needs the SDK installed system-wide (normally under `C:\Program Files\dotnet`), plus the matching MAUI workload. An SDK installed only in `tmp/net11/sdk/` is sufficient for explicit command-line validation but is not automatically discovered by Visual Studio. `global.json` selects an installed SDK; it does not install one.
 
@@ -55,7 +58,7 @@ Alternatively, open `DataPieMaui.sln` in a Visual Studio installation that suppo
 
 ## View object definitions
 
-Use **View definition** beside a view on **Batch export**, or beside a procedure on **Stored procedures**. Only clicking this button reads the selected definition; initialization does not read SQL bodies. Viewing shows the original SQL and supports **Copy SQL**, **Edit** for supported objects, and **Close**. **Format SQL** is available only while editing the draft; it changes whitespace and indentation locally, adds a single blank line between statements and after completed blocks, preserves SQL tokens, and never saves automatically. Reformatting does not accumulate blank lines. Failures retain the draft. Saving still requires **Save changes…** and **Confirm save**; the save review has no formatting controls. Closing releases the text; reopening reads the latest definition. SQL Server permissions or encryption may prevent viewing a definition. SQLite shows converted procedure scripts. Database conversion still loads the definitions it needs.
+Use **View definition** beside a view on **Batch export**, or beside a procedure on **Stored procedures**. **Database schema** also offers a read-only definition viewer; the editing workflow described below is available through the first two pages. Only clicking this button reads the selected definition; initialization does not read SQL bodies. Viewing shows the original SQL and supports **Copy SQL**, **Edit** for supported objects, and **Close**. **Format SQL** is available only while editing the draft; it changes whitespace and indentation locally, adds a single blank line between statements and after completed blocks, preserves SQL tokens, and never saves automatically. Reformatting does not accumulate blank lines. Failures retain the draft. Saving still requires **Save changes…** and **Confirm save**; the save review has no formatting controls. Closing releases the text; reopening reads the latest definition. SQL Server permissions or encryption may prevent viewing a definition. SQLite shows converted procedure scripts. Database conversion still loads the definitions it needs.
 
 ### Editing SQL Server definitions
 
@@ -75,6 +78,21 @@ Each successful script save atomically replaces the file and retains the origina
 
 ## Using the app
 
+The sidebar follows this order. Database operations become available after connecting.
+
+| Menu | Purpose |
+| --- | --- |
+| Database connection | Connect, create a blank SQLite database, or manage saved connections |
+| Database schema | Browse object categories and column metadata; view definitions on demand |
+| SQL query | Generate SQL, preview results, run statements, and export |
+| Import data | Import a file/folder, export a template, or clear table data |
+| Batch export | Export selected tables/views to Excel or CSV |
+| Stored procedures | Run procedures and inspect/edit supported definitions |
+| Database migration | Convert SQL Server to SQLite or generate SQL Server scripts from SQLite |
+| Table design | Create table structure from Excel or drop an entire table |
+| Table Edit | Open independent windows to add, edit, or delete table records |
+| About | Application information |
+
 1. Open **Database connection** and connect to SQL Server or SQLite. In the **SQLite** tab, **Create blank database and connect** opens a save picker, creates a valid empty `.db` file and connects without saving its connection configuration. Existing files are never overwritten; choose a new filename. Canceling the picker preserves the current connection. Use **Table design** afterward to create tables.
 2. Open **SQL query**, select a table to generate SQL or enter your own statement, and click **Preview query**.
 3. View results in the separate window. Click column headers to sort, select a row to copy it, or copy all preview rows. Subsequent queries update the same window. Use **Open results** to reopen a closed result window without rerunning the query.
@@ -85,11 +103,17 @@ Each successful script save atomically replaces the file and retains the origina
 
 On **Import data**, select a **Target table** and click **Query data** to inspect it. On **Batch export**, each table/view has its own **Query data** button, independent of the export checkboxes. These actions reuse the results window, show the object name, and preserve your SQL editor and selections. Object previews have the same 1,000-row limit, sorting, paging, and copying as SQL previews.
 
+**Saved connections** retains its connection selector, **Connect**, and **Delete** buttons. **Connection details** shows a read-only, selectable connection string; it does not offer manual name/type/string editing, Test, Save as new, or Update selected. Removing a saved connection removes its configuration, not the database.
+
+Successful exports append the output file's full path to the bottom status message alongside the completion information. Batch CSV export lists the generated file paths. Shared workspace failures display the full exception, including inner exceptions and stack traces, and send it to Trace; this does not create a dedicated on-disk log file.
+
 ### Import data layout and validation
 
 The top card contains **Target table**, **Query data**, **Export template**, and **Clear data**. Below it, **Import a file** and **Batch import** switch the content inside one shared white card. The target table and file/folder paths remain available when switching tabs or navigating away.
 
-**Import a file** supports XLSX, XLS, CSV, and a SQLite database containing the matching source table. SQL Server import normalizes blank strings and whitespace to NULL for numeric, date/time, and bit destination columns in both normal and length-validation modes; text columns retain their contents. NOT NULL constraints without a usable default can still reject missing values. SQLite import resets parameter types for each row. Blank strings and whitespace in numeric/date destination columns become NULL; text columns retain empty strings and whitespace. NOT NULL constraints still apply. A failed file is rolled back, and errors identify the target table and data-row number. **Validate lengths and import** additionally checks SQL Server destination field lengths. **Batch import** appends supported CSV/XLSX files sequentially and enables length validation. A failed batch retains data already imported; the status identifies the failing file. **Export template** writes the selected table's columns to an empty Excel workbook. **Clear data** requires confirmation and retains the table structure.
+**Import a file** supports XLSX, XLS, CSV, and a SQLite database containing the matching source table. SQL Server import normalizes blank strings and whitespace to NULL for numeric, date/time, and bit destination columns in both normal and length-validation modes; text columns retain their contents. NOT NULL constraints without a usable default can still reject missing values. SQLite import resets parameter types for each row. Blank strings and whitespace in numeric/date destination columns become NULL; text columns retain empty strings and whitespace. NOT NULL constraints still apply. A failed SQLite file import is rolled back, and its errors identify the target table and data-row number. **Validate lengths and import** additionally checks SQL Server destination field lengths. **Batch import** appends supported CSV/XLSX files sequentially and enables length validation. A failed batch retains data already imported; the status identifies the failing file. **Export template** writes the selected table's columns to an empty Excel workbook. **Clear data** requires confirmation and retains the table structure.
+
+The two single-file buttons are distinct: **Import file** uses the normal import path, while **Validate lengths and import** checks SQL Server `nvarchar`/`nchar` lengths as rows are read. A length failure reports the source file, data-row number excluding the header, column, actual length, and allowed length in UTF-16 units. Values are not truncated. SQL Server bulk import may retain records written before a failure; SQLite file imports use a rollback transaction.
 
 ### Running SQL Server procedures with parameters
 
@@ -105,6 +129,16 @@ SQL Server uses Microsoft.Data.SqlClient 7.0.3. All application SQL Server conne
 
 If opening a modal via JavaScript fails or times out, its controls remain available in a plain open dialog, preserving drafts. When the WebView disappears, pending confirmations are canceled. An executing procedure or definition save retains its operation lock until completion before the unavailable dialog is dismissed. SQLite errors retain their original stack trace.
 
+### Database schema
+
+**Database schema** is an independent sidebar page immediately after **Database connection**. Its compact toolbar places search, object-type filtering, and **Refresh schema** on one row; narrow windows wrap the controls. The top area does not repeat the database name or overall object totals.
+
+Objects are grouped into **Tables**, **Views**, and **Stored procedures**, with a matching-object count for each category. Names include the schema where available and sort by schema and name within each category. Search matches object names and schemas; the type filter limits the categories shown.
+
+Select a table to inspect column names, types, primary keys, auto-generated IDs, nullability, computed fields, and defaults. SQL Server character lengths, decimal precision/scale, and temporal scale are formatted from metadata; spatial columns are included. SQLite defaults, generated columns, and rowid identity details load only when a table is selected. Indexes, unique/check constraints, and foreign key details are explicitly marked as not loaded, rather than absent.
+
+Table structure is read-only here: column renaming, type changes, and constraint editing are not implemented. Use **Table Edit** to change table records. **View definition** loads one view or procedure definition into a read-only dialog on request; opening this page does not load SQL bodies. For supported definition editing, use the definition actions on **Batch export** or **Stored procedures**. SQLite procedure parameter metadata is shown as not loaded. **Refresh schema** reloads the cached object list and clears the selected details.
+
 ### Table design: Create table
 
 Connect to SQL Server or SQLite, open **Table design → Create table**, and select an XLSX or XLS file and worksheet. **Generate SQL** samples at most the first 1,000 data rows after the header (all rows if fewer) and uses the worksheet name as the table name and the first row as column names. Review the editable SQL, including the table name, then select **Create table** and confirm execution. The shared table lists refresh after successful execution. This creates structure only; use **Import data** to load rows afterward.
@@ -113,13 +147,39 @@ Empty cells, empty strings, and whitespace-only strings are ignored during infer
 
 SQLite automatically creates the internal `sqlite_sequence` table when an AUTOINCREMENT table is created; it tracks the largest assigned IDs. This is expected. `INTEGER PRIMARY KEY` also assigns IDs automatically but may reuse deleted IDs; remove AUTOINCREMENT in the SQL editor only if that behavior is acceptable.
 
+### Table design: Drop table
+
+**Table design → Drop table** retains its separate table selection and **Drop table** button. Confirm before permanently deleting the table structure and all data. Cancel leaves it intact. SQLite incoming foreign keys block deletion; SQL Server enforces database dependencies. Successful deletion refreshes the table lists and clears stale selections and query previews. The Table Edit window remains a separate feature for editing records.
+
 ### Table Edit
 
-**Table design** has separate **Create table** and **Drop table** tabs. **Database schema** is a separate sidebar entry immediately below **Database connection**. **Table Edit** follows **Table design**. Switching tabs preserves the Excel selection and SQL draft. Import file/folder inputs remain on **Import data**.
+**Table Edit** is an independent sidebar page directly below **Table design**. Select a table and click **Edit** to open its **Table editor** window. SQL Server table choices include the schema. Each window stays bound to its original database and table, even if the main workspace changes connections.
 
-**Table Edit** uses a separate table selection, including schema names for SQL Server. Select a table and click **Edit**. The editor is bound to that database and table even if the main window changes connections. Browse the entire table using 100-row pages; the query preview's 1,000-row limit does not apply. Select one record and click **EDIT** to open an edit dialog, then choose **Save** or **Cancel** in that dialog. Fields scroll while the action buttons remain visible. Failed saves preserve the draft and show the error in the dialog; closing a modified draft asks whether to discard it. Primary keys, generated fields and binary fields are read-only. Tables without usable primary keys or with unsupported column types remain read-only. The editor does not show a Set to NULL checkbox. Untouched NULL values remain NULL, while entering text replaces NULL with that value. Clearing existing text saves an empty string; dates use yyyy-MM-dd and decimals use a dot.
+The editor reads 100 records per page and can page through the entire table; it does not share the query preview's 1,000-row limit. Rows are ordered by the primary key when available. Tables without usable non-NULL primary keys, or with unsupported column types, remain read-only. Composite primary keys are supported. The editor does not offer arbitrary SQL or field filters.
 
-Use the selection-column header checkbox to select or clear all records on the current page, or select individual records, then choose **Delete selected** to open a confirmation dialog with the table name, count and selected key summary, then confirm. Background clicks do not dismiss dialogs; Escape follows the same close checks as Cancel. This deletes records, not the table structure; database cascades and triggers still apply. Updates and deletes compare original values to detect conflicts, and a conflict rolls back the operation. Refresh after another tool changes data. Drafts block paging and refresh; closing an editor with a draft asks whether to discard it. Finish or cancel editor drafts before closing the main application. Existing query preview snapshots are not automatically refreshed by editor writes.
+#### Add records
+
+Click **Add record** to open a new-record dialog. Auto-generated identities, computed columns, rowversion fields, and other read-only fields cannot be entered; manual primary keys can be supplied for new records. Required fields must be supplied. Untouched optional fields are omitted so the database applies their default or NULL. Entering and then clearing an optional text field explicitly submits an empty string.
+
+**Save** performs a parameterized insert in a transaction. Failed inserts retain the input and show the error inside the dialog. Success closes the dialog and reloads the first page; the new record may be on a later page depending on its key. Closing a modified draft asks whether to discard it.
+
+#### Edit records
+
+Select one record and click **EDIT** to open a field-editing dialog. Primary keys, generated fields, and binary fields remain read-only. Fields scroll while **Save** and **Cancel** stay visible. Dates use yyyy-MM-dd and decimals use a dot. Save failures retain input and display the error in the dialog.
+
+There is no **Set to NULL** checkbox. An untouched NULL field stays NULL, and entering a value replaces it. Clearing an existing text value saves an empty string; clearing numeric/date fields does not automatically set NULL and may fail validation. Existing non-NULL fields cannot explicitly be set to NULL through this editor.
+
+#### Select and delete records
+
+Use the checkbox at the top of the Select column to select or clear the **current page**. A partial selection shows a mixed checkbox state. Individual row selection is also available; loading another page clears the selection.
+
+**Delete selected** opens a confirmation dialog with the database/table, record count, and primary-key summary. Confirming deletes records, not the table structure; database cascades and triggers still apply. A successful delete refreshes the page and moves back one page if the current page becomes empty.
+
+#### Drafts and concurrent changes
+
+Updates and deletes compare original row values to detect conflicts, and a conflict rolls back the operation. Cancel the draft and refresh after another tool changes the record. Dialogs prevent background interaction; clicking the backdrop does not close them. Escape follows the same close checks as Cancel. Saving disables duplicate submissions and closing until the operation finishes.
+
+Drafts block paging and refresh. Closing an editor with a modified draft asks whether to discard it; finish or cancel drafts before closing the main application. Existing query-preview snapshots and other editor windows are not automatically refreshed after a write.
 
 ### Query preview behavior
 
@@ -131,7 +191,7 @@ Use the selection-column header checkbox to select or clear all records on the c
 
 For operations with a save picker or confirmation dialog, elapsed-time measurement starts after the final confirmation, excluding time spent choosing a destination or waiting to confirm.
 
-Only one operation can run at a time. Navigation and operation buttons are disabled while it runs; conversion cancellation remains available in the status bar. Confirmation dialogs support keyboard focus and Escape to cancel. Native Windows file pickers remain in use for opening files and choosing export destinations.
+The main workspace serializes its operations and disables navigation and operation buttons while one runs; conversion cancellation remains available in the status bar. Each independent table editor has its own operation guard and remains bound to its original connection. Confirmation dialogs support keyboard focus and Escape to cancel. Native Windows file pickers remain in use for opening files and choosing export destinations.
 
 ### Local data and conversion
 
@@ -144,6 +204,20 @@ SUBSTRING conversion uses compact `substr` when the start is a positive integer 
 YEAR/MONTH/DAY convert directly to integer casts of SQLite strftime. NULL or unparseable dates return NULL using SQLite behavior rather than forcing an overflow error; this differs from SQL Server error handling for invalid date text. LEFT with a nonnegative integer literal length uses compact substr.
 
 When distributing a converted SQLite database, keep its generated `StoredProcedures` folder alongside it. SQLite procedures are handled as converted scripts; unsupported SQL is reported in warnings. A canceled or failed conversion may leave an incomplete output database, which should be regenerated before use.
+
+### Converted procedure index
+
+Each `.datapie-<hash>.json` in StoredProcedures now uses a version-2 object with DatabaseFile, GeneratedUtc, and Procedures. Each entry records Name, ScriptFile, Source, Status, Success, Warnings, and Error. Status is Success (fully converted and compiled), Partial (some statements skipped), or Failed. Success is true only for complete conversions; it does not prove business-semantic equivalence. Old name-array indexes remain readable. Regenerate conversion output to upgrade an existing index.
+
+SQLite → SQL Server translates the current StoredProcedures/*.txt bodies rather than restoring original T-SQL. Indexed scripts require Status = Success; independent scripts without an index are also supported. Failed, partial and unsupported scripts are skipped with warnings. SQL Server → SQLite no longer stores original T-SQL.
+
+### Database migration: SQLite → SQL Server
+
+Connect to SQLite, select **Database migration → SQLite → SQL Server**, and choose a `.sql` destination. The export reads schema metadata and samples up to 1,000 returned rows per table for text column lengths and generates SQL Server table columns, primary keys, AUTOINCREMENT identity columns and supported foreign keys under dbo. It does not copy rows, connect to SQL Server, execute DDL, drop target tables or modify the source database.
+
+Review all mappings: INTEGER becomes BIGINT, TEXT/CHAR/CLOB uses NVARCHAR(255) when the sampled maximum length is <=255 UTF-16 code units, otherwise NVARCHAR(MAX). NULL, empty and whitespace-only values are ignored; mixed values remain text. Empty tables/columns default to NVARCHAR(255). Sampling has no explicit row ordering, and later rows may require a wider type, BLOB becomes VARBINARY(MAX), REAL becomes FLOAT, date/time declarations become DATETIME2 and other numeric declarations use DECIMAL(38,10). SQLite defaults, CHECK/UNIQUE constraints, cascading actions, views, triggers and additional indexes require manual conversion and are reported; virtual/generated-column tables are skipped. The generated script uses GO batch separators and CREATE OR ALTER procedures. Execute it manually in the intended SQL Server database after reviewing warnings, schemas, permissions and object dependencies.
+
+Supported procedure bodies include SELECT/INSERT/UPDATE/DELETE/WITH, common string and date functions, and DataPie parameter/local metadata. Dynamic SUBSTR bounds, SQLite-specific options and unknown functions require manual conversion. Review generated SQL for type, collation and NULL semantics. Only a .sql schema script is saved; no data is copied and no generated SQL is executed.
 
 ## Publish for Windows x64
 
@@ -185,6 +259,14 @@ dotnet publish DataPieMaui/DataPieMaui.csproj -c Release -r win-x64 --self-conta
 
 WebView2 Runtime is still required. Close running copies of the app before overwriting their files. `FolderProfile` currently uses framework-dependent deployment and contains an absolute destination path; override it with `-o publish/win-x64` when publishing from a different checkout.
 
+The repository also includes `SelfContainedProfile` for Visual Studio or command-line publishing:
+
+```powershell
+dotnet publish DataPieMaui/DataPieMaui.csproj -c Release -p:PublishProfile=SelfContainedProfile
+```
+
+This profile writes to `publish/win-x64-self-contained` under the repository root. Both profiles produce folder deployments, with trimming and single-file publishing disabled for the self-contained profile. Copy the complete output folder, including the local web assets. Updating source files does not regenerate a previously published copy; publish again to distribute new features.
+
 ## Regression checks
 
 The test project is a console-based regression runner. Run it with:
@@ -193,7 +275,7 @@ The test project is a console-based regression runner. Run it with:
 dotnet run --project DataPieMaui.Tests\DataPieMaui.Tests.csproj -c Release
 ```
 
-Checks cover SQLite access, connection management, query previews, import/export and length validation, Excel-based table creation and Id identity defaults, table deletion and foreign-key protection, procedure parameters, definition editing, conversion, cancellation, result snapshots, typed sorting, copy formatting, result-component updates, and desktop clipboard delegation. Workspace checks also exercise confirmation and cancellation, concurrent-operation protection, state retention, and rendering of the actual Razor pages. These checks use a test desktop adapter; they do not automate native window/file-picker interactions or require a live SQL Server instance.
+Checks cover SQLite access, connection management, schema browsing and type formatting, table-editor insertion/defaults, editing, page selection, confirmed deletion and conflict rollback, query previews, import/export and length validation, Excel-based table creation and Id identity defaults, table deletion and foreign-key protection, procedure parameters, definition editing, conversion, cancellation, result snapshots, typed sorting, copy formatting, result-component updates, and desktop clipboard delegation. Workspace checks also exercise confirmation and cancellation, concurrent-operation protection, state retention, and rendering of the actual Razor pages. These checks use a test desktop adapter; they do not automate native window/file-picker interactions or require a live SQL Server instance.
 
 To also write static page previews to the ignored `tmp/ui-review/` directory, run:
 
@@ -205,14 +287,16 @@ These previews are render snapshots, not an interactive web version of the deskt
 
 ## UI architecture
 
+- `Controls/TableEditorHostPage.cs` hosts each independent table-editor window; `Components/TableEditor.razor` provides paging, page selection, and add/edit/delete dialogs. `DataPieCore/TableEditorSession.cs` owns the bound connection/table, metadata, validation, parameterized writes, and conflict checks.
+- `Components/Pages/DatabaseSchemaView.razor` is the independent schema-browser page. It uses cached object lists, selected-table SQLite detail reads, and single-object definition loading; table-structure editing is not implemented.
 - `Controls/QueryResultsHostPage.cs` hosts the independent result window; `Components/QueryResults.razor` owns result rendering and interactions. Clipboard access is provided by `IDesktopServices.CopyTextAsync`, so the result component can be rendered and tested without MAUI.
 - `MainPage.cs` hosts the main `BlazorWebView` and provides a native fallback when WebView2 is missing.
 - `Components/Workspace.razor` provides navigation and the status bar; `Components/Pages/` contains the business pages, and `Components/Shared/` contains shared controls and dialogs.
 - All business pages, including login and connection management, keep their markup and page-specific workflows together in a single `.razor` file using an `@code` block. The static About page needs no code block.
 - `WorkspaceController` composes shared services and coordinates navigation and native-window lifecycle. Pages use `WorkspacePageBase` to access shared state and the operation runner. The connection page initializes saved connections once per workspace; revisiting the page preserves loaded configuration and operation status.
 - `Services/Shared/WorkspaceContext` owns session state and the shared capabilities for one workspace. Shared services survive navigation; `WorkspaceForm` retains input values when page components are recreated. `DatabaseConversionService` owns conversion execution, progress, and cancellation so the status bar and native close handler do not depend on a page instance.
-- `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by every page. `QueryPreviewService` shares table/view and SQL result loading, `WorkspaceContext.RefreshSchemaAsync` refreshes table lists after creation/deletion, and `FileNames` shares export filename normalization. `ExcelTableSql` reads worksheets and generates provider-specific table definitions.
-- `IDesktopServices` separates the workspace from Windows-specific operations. `WindowsDesktopServices` dispatches native work to the UI thread, binds file pickers to their owner, and manages the result window.
+- `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by main-workspace pages. Table-editor windows maintain their own busy and draft state. `QueryPreviewService` shares table/view and SQL result loading, `WorkspaceContext.RefreshSchemaAsync` refreshes table lists after creation/deletion, and `FileNames` shares export filename normalization. `ExcelTableSql` reads worksheets and generates provider-specific table definitions.
+- `IDesktopServices` separates the workspace from Windows-specific operations. `WindowsDesktopServices` dispatches native work to the UI thread, binds file pickers to their owner, and manages result and table-editor windows.
 - `DataPieCore` remains the database/import/export engine. Razor components run locally; no web server is required.
 
 ## Repository layout
@@ -228,28 +312,3 @@ These previews are render snapshots, not an interactive web version of the deskt
 | `DataPieMaui.Tests/` | Console regression checks |
 
 Generated directories such as `publish/`, `.vs/`, `bin/`, and `obj/` are excluded from Git. Source assets under `DataPieMaui/wwwroot/` remain tracked.
-
-### Procedure conversion index
-
-Each `.datapie-<hash>.json` in StoredProcedures now uses a version-2 object with DatabaseFile, GeneratedUtc, and Procedures. Each entry records Name, ScriptFile, Source, Status, Success, Warnings, and Error. Status is Success (fully converted and compiled), Partial (some statements skipped), or Failed. Success is true only for complete conversions; it does not prove business-semantic equivalence. Old name-array indexes remain readable. Regenerate conversion output to upgrade an existing index.
-
-SQLite → SQL Server translates the current StoredProcedures/*.txt bodies rather than restoring original T-SQL. Indexed scripts require Status = Success; independent scripts without an index are also supported. Failed, partial and unsupported scripts are skipped with warnings. SQL Server → SQLite no longer stores original T-SQL.
-
-### Database migration: SQLite → SQL Server
-
-Connect to SQLite, select **Database migration → SQLite → SQL Server**, and choose a `.sql` destination. The export reads schema metadata and samples up to 1,000 returned rows per table for text column lengths and generates SQL Server table columns, primary keys, AUTOINCREMENT identity columns and supported foreign keys under dbo. It does not copy rows, connect to SQL Server, execute DDL, drop target tables or modify the source database.
-
-Review all mappings: INTEGER becomes BIGINT, TEXT/CHAR/CLOB uses NVARCHAR(255) when the sampled maximum length is <=255 UTF-16 code units, otherwise NVARCHAR(MAX). NULL, empty and whitespace-only values are ignored; mixed values remain text. Empty tables/columns default to NVARCHAR(255). Sampling has no explicit row ordering, and later rows may require a wider type, BLOB becomes VARBINARY(MAX), REAL becomes FLOAT, date/time declarations become DATETIME2 and other numeric declarations use DECIMAL(38,10). SQLite defaults, CHECK/UNIQUE constraints, cascading actions, views, triggers and additional indexes require manual conversion and are reported; virtual/generated-column tables are skipped. The generated script uses GO batch separators and CREATE OR ALTER procedures. Execute it manually in the intended SQL Server database after reviewing warnings, schemas, permissions and object dependencies.
-
-Supported procedure bodies include SELECT/INSERT/UPDATE/DELETE/WITH, common string and date functions, and DataPie parameter/local metadata. Dynamic SUBSTR bounds, SQLite-specific options and unknown functions require manual conversion. Review generated SQL for type, collation and NULL semantics. Only a .sql schema script is saved; no data is copied and no generated SQL is executed.
-
-Use **Add record** in the table editor to open a new-record dialog. Generated identities, computed columns and rowversion fields are read-only; manual primary keys can be entered for new records. Untouched optional fields are omitted so the database supplies defaults or NULL. Required fields must be supplied; touching and clearing a text field explicitly saves empty text. Save uses a parameterized insert in a transaction. Failed inserts retain the draft; successful inserts close the dialog and reload the first page. Tables without a usable primary key retain their read-only restriction.
-
-### Table design: Drop table
-
-**Table design → Drop table** retains its separate table selection and **Drop table** button. Confirm before permanently deleting the table structure and all data. Cancel leaves it intact. SQLite incoming foreign keys block deletion; SQL Server enforces database dependencies. Successful deletion refreshes the table lists and clears stale selections and query previews. The Table Edit window remains a separate feature for editing records.
-
-
-### Database schema
-
-Open **Database schema** in the sidebar immediately below **Database connection** to browse cached tables, views and procedures grouped by schema. Search by object name or schema and filter by object type. Selecting a table displays its columns, correctly formatted types, primary key, identity, nullable, computed and default metadata. SQL Server precision and scale are collected with the existing column query; SQLite detailed metadata is read only when a table is selected, including generated columns. SQL Server spatial columns are included in the schema list. Indexes, unique/check constraints and foreign key details are explicitly marked as not loaded rather than absent. **View definition** reads a single view or procedure definition on request in a read-only dialog; opening the browser does not load all SQL bodies. **Refresh schema** reloads the object list and clears the selected details. SQLite procedure parameter metadata is shown as not loaded.
