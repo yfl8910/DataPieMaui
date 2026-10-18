@@ -1,0 +1,19 @@
+.modal-overlay { position: fixed; inset: 0; z-index: 20; background: #13233388; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.editor-dialog { width: min(760px, 100%); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; background: white; border-radius: 12px; box-shadow: 0 16px 60px #13233355; overflow: hidden; }
+.dialog-header, .dialog-actions { display: flex; align-items: center; gap: 12px; padding: 16px 20px; flex-shrink: 0; }
+.dialog-header { border-bottom: 1px solid #d8e0e9; justify-content: space-between; }
+.dialog-header h2 { font-size: 20px; margin: 0; }
+.dialog-body { overflow: auto; padding: 20px; min-height: 0; }
+.dialog-body > p { margin-bottom: 16px; }
+.dialog-actions { border-top: 1px solid #d8e0e9; justify-content: flex-end; }
+.edit-fields { display: grid; gap: 16px; }
+.edit-field > label:first-child { display: grid; gap: 6px; font-weight: 600; overflow-wrap: anywhere; }
+.edit-field input:not([type=checkbox]), .edit-field textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #cbd5df; border-radius: 6px; font: inherit; }
+.edit-field textarea { min-height: 64px; resize: vertical; }
+.edit-field input[readonly], .edit-field textarea:disabled { background: #f0f3f6; color: #68778c; }
+.page-selection { display: flex; align-items: center; gap: 6px; padding: 10px 12px; font-size: 13px; }
+.dialog-error { white-space: pre-wrap; overflow-wrap: anywhere; background: #fff0ed; color: #9b3022; padding: 12px; margin-top: 16px; border-radius: 6px; }
+button.primary { color: white; background: #176b64; }
+button.danger { color: #a62b20; border-color: #daaca7; }
+.dialog-body li { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .modal-overlay { padding: 12px; } .editor-dialog { max-height: calc(100dvh - 24px); } }

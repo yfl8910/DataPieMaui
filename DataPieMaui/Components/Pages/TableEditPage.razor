@@ -1,0 +1,22 @@
+@using DataPieCore
+@inherits WorkspacePageBase
+    <section class="card"><h2>Table Edit</h2>
+        <p class="muted">Open a table in a separate editor to browse, update or delete records.</p>
+        <label>Table<select @bind="Form.EditTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableKey(table)">@TableLabel(table)</option> }</select></label>
+        <div class="actions"><button class="primary" @onclick="EditTableAsync" disabled="@(string.IsNullOrEmpty(Form.EditTable))">Edit</button></div>
+    </section>
+@code {
+    private static string TableKey(DBUtil.TableStruct table) => System.Text.Json.JsonSerializer.Serialize(new[] { table.TableSchemaName, table.Name });
+    private string TableLabel(DBUtil.TableStruct table) => Type == "SQLSERVER" ? table.TableSchemaName + "." + table.Name : table.Name;
+    public Task EditTableAsync() => RunAsync("Open table editor", async watch =>
+    {
+        var key = Required(Form.EditTable, "Select a table to edit.");
+        var table = Database.Schema!.Tables.SingleOrDefault(t => TableKey(t) == key)
+            ?? throw new InvalidOperationException("The table is not in the current database. Reconnect to refresh the list.");
+        var connection = Database.Connection!;
+        watch.Start();
+        var session = await Task.Run(() => TableEditorSession.Open(connection.ConnectionString, connection.DatabaseType, table.TableSchemaName, table.Name));
+        await Desktop.ShowTableEditorAsync(session, State.Connection);
+    });
+
+}

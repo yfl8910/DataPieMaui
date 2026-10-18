@@ -532,6 +532,7 @@ try
     await SQLiteImportChecks.Run(root, Test);
     await SqlFormattingChecks.Run(Test);
     await QueryResultsChecks.Run(Test);
+    await TableEditorChecks.Run(root, Test);
     await WorkspaceChecks.Run(root, Test, args.Contains("--render-ui"));
     Console.WriteLine($"{passed} regression checks passed.");
     return 0;

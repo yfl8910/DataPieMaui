@@ -19,8 +19,13 @@ public partial class App : Application
             var native = (Microsoft.UI.Xaml.Window)window.Handler!.PlatformView!;
             native.AppWindow.Closing += (_, args) =>
             {
-                if (page.Workspace.CanClose) { page.Close(); return; }
+                if (page.Workspace.CanClose && !page.HasPendingTableEdits) { page.Close(); return; }
                 args.Cancel = true;
+                if (page.HasPendingTableEdits)
+                {
+                    page.Workspace.Context.State.Status = "Save or cancel table editor drafts and wait for table operations to finish before closing the application.";
+                    return;
+                }
                 page.Workspace.NotifyCloseBlocked();
             };
         };

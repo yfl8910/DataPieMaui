@@ -10,4 +10,5 @@ public interface IDesktopServices
     Task<string?> FolderAsync();
     Task CopyTextAsync(string text);
     Task ShowResultsAsync(QueryResultSession session);
+    Task ShowTableEditorAsync(DataPieCore.TableEditorSession session, string connectionLabel);
 }

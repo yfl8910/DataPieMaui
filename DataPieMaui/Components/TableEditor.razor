@@ -1,0 +1,215 @@
+@using System.Data
+@using System.Globalization
+@using DataPieCore
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<main inert="@DialogOpen">
+    <header><div><h1>Table editor</h1><p>@ConnectionLabel</p><p>@Session.TableName</p></div><span class="badge">@(Session.CanEdit ? "Table data" : "Read-only")</span></header>
+    <div class="toolbar">
+        <button @onclick="BeginAdd" disabled="@(Session.IsBusy || DialogOpen || !Session.CanInsert)">Add record</button>
+        <button @onclick="BeginEdit" disabled="@(Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit)">EDIT</button>
+        <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">Delete selected</button>
+        <button @onclick="() => LoadAsync(Session.Page)" disabled="@(Session.IsBusy || DialogOpen)">Refresh</button>
+    </div>
+    @if (!Session.CanEdit) { <p class="notice">@Session.ReadOnlyReason</p> }
+    <div class="table-scroll" tabindex="0" aria-label="Table data">
+        <table><thead><tr><th><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> Select all on this page</label></th>@foreach (DataColumn column in Session.Data.Columns) { <th>@column.ColumnName</th> }</tr></thead>
+        <tbody>
+            @foreach (DataRow row in Session.Data.Rows)
+            {
+                <tr class="@(selected.Contains(row) ? "selected" : "")">
+                    <td><input type="checkbox" aria-label="Select record" checked="@selected.Contains(row)" @onchange="e => Select(row, e.Value is true)" disabled="@(Session.IsBusy || DialogOpen)" /></td>
+                    @foreach (DataColumn column in Session.Data.Columns)
+                    {
+                        <td class="@(row.IsNull(column) ? "null" : "")">@Format(row[column])</td>
+                    }
+                </tr>
+            }
+        </tbody></table>
+    </div>
+    <footer><span role="status" style="white-space:pre-wrap">@message</span><div class="pagination">
+        <button @onclick="() => LoadAsync(Session.Page - 1)" disabled="@(Session.Page == 0 || Session.IsBusy || DialogOpen)">Previous</button>
+        <span>Page @(Session.Page + 1) · @Session.Data.Rows.Count records · @TableEditorSession.PageSize per page</span>
+        <button @onclick="() => LoadAsync(Session.Page + 1)" disabled="@(!Session.HasNext || Session.IsBusy || DialogOpen)">Next</button>
+    </div></footer>
+</main>
+
+@if (DialogOpen)
+{
+    <div class="modal-overlay">
+        <section class="editor-dialog" role="@(confirmDelete ? "alertdialog" : "dialog")" aria-modal="true" aria-labelledby="editor-dialog-title" tabindex="-1">
+            <div class="dialog-header">
+                <h2 id="editor-dialog-title">@(confirmDelete ? "Delete selected records" : adding ? "New record" : "Edit record")</h2>
+                <button aria-label="Close dialog" data-dialog-close @onclick="RequestClose" disabled="@Session.IsBusy">×</button>
+            </div>
+            <div class="dialog-body">
+                <p>@ConnectionLabel · @Session.TableName</p>
+                @if (confirmDelete)
+                {
+                    <p class="notice">Delete @selected.Count selected records? Database cascades and triggers may affect related data. This cannot be undone.</p>
+                    <p>Selected record keys</p>
+                    <ul>@foreach (var row in selected.Take(20)) { <li>@RecordKey(row)</li> }</ul>
+                    @if (selected.Count > 20) { <p>And @(selected.Count - 20) more records.</p> }
+                }
+                else if (editing != null || adding)
+                {
+                    <p>Use yyyy-MM-dd for dates and a dot for decimals. Read-only fields identify the record or are managed by the database.</p>
+                    @if (adding) { <p>Required fields must be supplied. Untouched optional fields use their database default or NULL. Generated fields are filled automatically.</p> }
+                    <div class="edit-fields">
+                    @foreach (DataColumn column in Session.Data.Columns)
+                    {
+                        string name = column.ColumnName;
+                        bool editable = adding ? Session.IsInsertable(name) : Session.IsEditable(name);
+                        <div class="edit-field">
+                            <label>@name
+                                @if (editable)
+                                {
+                                    <textarea @bind="draft[name]" @bind:event="oninput" @bind:after="() => DraftChanged(name)" disabled="@Session.IsBusy" placeholder="@(adding ? (Session.HasDefault(name) ? "Database default" : Session.IsRequiredForInsert(name) ? "Required" : "Leave blank for NULL") : editing!.IsNull(name) ? "NULL" : null)" aria-label="@name"></textarea>
+                                }
+                                else { <input value="@(adding ? "Generated / read-only" : Format(editing![name]))" readonly aria-label="@name" /> }
+                            </label>
+                        </div>
+                    }
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(dialogError)) { <div class="dialog-error" role="alert">@dialogError</div> }
+                @if (confirmDiscard) { <p class="notice" role="alert">Discard your unsaved changes?</p> }
+            </div>
+            <div class="dialog-actions">
+                @if (confirmDiscard)
+                {
+                    <button @onclick="DiscardDraft" disabled="@Session.IsBusy">Discard changes</button>
+                    <button @onclick="() => confirmDiscard = false" disabled="@Session.IsBusy">Keep editing</button>
+                }
+                else
+                {
+                    @if (confirmDelete) { <button class="danger" @onclick="DeleteAsync" disabled="@Session.IsBusy">Confirm delete</button> }
+                    else { <button class="primary" @onclick="SaveAsync" disabled="@Session.IsBusy">Save</button> }
+                    <button @onclick="RequestClose" disabled="@Session.IsBusy">Cancel</button>
+                }
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public TableEditorSession Session { get; set; } = default!;
+    [Parameter] public string ConnectionLabel { get; set; } = "";
+    private readonly HashSet<DataRow> selected = [];
+    private readonly Dictionary<string, string> draft = new();
+    private DataRow? editing;
+    private bool confirmDelete, confirmDiscard, adding;
+    private bool DialogOpen => editing != null || adding || confirmDelete;
+    private readonly HashSet<string> touched = [];
+    private string dialogError = "";
+    private string message = "Select one record to edit, or select records to delete. All table records are available through paging.";
+    private static string Format(object value) => value switch
+    {
+        DBNull => "NULL", byte[] bytes => Convert.ToHexString(bytes),
+        DateTime date => date.ToString("O", CultureInfo.InvariantCulture),
+        DateTimeOffset date => date.ToString("O", CultureInfo.InvariantCulture),
+        _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? ""
+    };
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("tableEditorModal.sync");
+    public void Select(DataRow row, bool value) { if (Session.IsBusy || DialogOpen) return; if (value) selected.Add(row); else selected.Remove(row); }
+    private bool AllPageSelected => Session.Data.Rows.Count > 0 && Session.Data.Rows.Cast<DataRow>().All(selected.Contains);
+    public void SelectPage(bool value)
+    {
+        if (Session.IsBusy || DialogOpen) return;
+        selected.Clear();
+        if (value) foreach (DataRow row in Session.Data.Rows) selected.Add(row);
+    }
+    public void SetDraft(string name, string value) { if (Session.IsBusy || (!adding && editing == null) || !draft.ContainsKey(name)) return; draft[name] = value; DraftChanged(name); }
+    private void DraftChanged(string name) { if (adding) touched.Add(name); UpdateDirty(); }
+    private bool Dirty => adding ? touched.Count > 0 : editing != null && draft.Any(x => x.Value != (editing.IsNull(x.Key) ? "" : Format(editing[x.Key])));
+    private void UpdateDirty() { Session.HasDraft = Dirty; confirmDiscard = false; }
+    private string RecordKey(DataRow row) => string.Join(", ", Session.Data.Columns.Cast<DataColumn>().Where(c => Session.IsPrimaryKey(c.ColumnName)).Select(c => c.ColumnName + "=" + Format(row[c])));
+    public void BeginEdit()
+    {
+        if (Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit) return;
+        editing = selected.Single(); draft.Clear();
+        foreach (DataColumn column in Session.Data.Columns)
+            if (Session.IsEditable(column.ColumnName))
+            {
+                draft[column.ColumnName] = editing.IsNull(column) ? "" : Format(editing[column]);
+            }
+        dialogError = ""; confirmDiscard = false; Session.HasDraft = false;
+    }
+    public void BeginAdd()
+    {
+        if (Session.IsBusy || DialogOpen || !Session.CanInsert) return;
+        adding = true; draft.Clear(); touched.Clear();
+        foreach (DataColumn column in Session.Data.Columns)
+            if (Session.IsInsertable(column.ColumnName)) draft[column.ColumnName] = "";
+        dialogError = ""; confirmDiscard = false; Session.HasDraft = false;
+    }
+    private void Cancel() { editing = null; adding = false; draft.Clear(); touched.Clear(); Session.HasDraft = false; message = "Draft discarded."; }
+    public void RequestClose()
+    {
+        if (Session.IsBusy) return;
+        if (confirmDelete) { confirmDelete = false; dialogError = ""; return; }
+        if (Dirty) { confirmDiscard = true; return; }
+        Cancel();
+    }
+    public void DiscardDraft() { if (Session.IsBusy) return; confirmDiscard = false; dialogError = ""; Cancel(); }
+    public void RequestDelete() { if (!Session.IsBusy && !DialogOpen && selected.Count > 0 && Session.CanEdit) { dialogError = ""; confirmDelete = true; } }
+    private async Task LoadAsync(int page)
+    {
+        if (Session.IsBusy || DialogOpen) return;
+        Session.IsBusy = true;
+        try { await Task.Run(() => Session.LoadPage(page)); selected.Clear(); message = "Table page loaded."; }
+        catch (Exception ex) { message = ex.ToString(); }
+        finally { Session.IsBusy = false; }
+    }
+    public async Task SaveAsync()
+    {
+        if (Session.IsBusy || (!adding && editing == null)) return;
+        Session.IsBusy = true;
+        dialogError = "";
+        try
+        {
+            bool inserting = adding;
+            if (inserting)
+            {
+                var values = draft.Where(x => touched.Contains(x.Key) || Session.IsRequiredForInsert(x.Key))
+                    .ToDictionary(x => x.Key, x => Session.Parse(x.Key, x.Value, false, forInsert: true));
+                await Task.Run(() => Session.Insert(values));
+            }
+            else
+            {
+                var changes = draft.ToDictionary(x => x.Key, x => Session.Parse(x.Key, x.Value, editing!.IsNull(x.Key) && x.Value.Length == 0))
+                    .Where(x => !Equals(x.Value, editing![x.Key])).ToDictionary(x => x.Key, x => x.Value);
+                var original = editing!;
+                await Task.Run(() => Session.Save(original, changes));
+            }
+            Cancel(); selected.Clear();
+            message = inserting ? "Record added. Refresh or page through the table to locate the new record." : "Changes saved.";
+            try { await Task.Run(() => Session.LoadPage(inserting ? 0 : Session.Page)); }
+            catch (Exception ex) { message = (inserting ? "Record added" : "Changes saved") + ", but refresh failed. Refresh before editing again. " + ex; }
+        }
+        catch (Exception ex) { dialogError = ex.ToString(); }
+        finally { Session.IsBusy = false; }
+    }
+    public async Task DeleteAsync()
+    {
+        if (Session.IsBusy || editing != null || !confirmDelete) return;
+        Session.IsBusy = true;
+        dialogError = "";
+        try
+        {
+            var rows = selected.ToArray();
+            await Task.Run(() => Session.Delete(rows));
+            selected.Clear(); confirmDelete = false;
+            message = $"Deleted {rows.Length} records.";
+            try
+            {
+                await Task.Run(() => Session.LoadPage(Session.Page));
+                if (Session.Data.Rows.Count == 0 && Session.Page > 0) await Task.Run(() => Session.LoadPage(Session.Page - 1));
+            }
+            catch (Exception ex) { message += " Refresh failed. Refresh before editing again. " + ex; }
+        }
+        catch (Exception ex) { dialogError = ex.ToString(); }
+        finally { Session.IsBusy = false; }
+    }
+}

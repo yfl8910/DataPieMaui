@@ -72,5 +72,6 @@ internal static class QueryResultsChecks
         public Task<string?> SelectNewFilePathAsync(string name, string extension) => Task.FromResult<string?>(null);
         public Task<string?> FolderAsync() => Task.FromResult<string?>(null);
         public Task ShowResultsAsync(QueryResultSession session) => Task.CompletedTask;
+        public Task ShowTableEditorAsync(DataPieCore.TableEditorSession session, string connectionLabel) => Task.CompletedTask;
     }
 }

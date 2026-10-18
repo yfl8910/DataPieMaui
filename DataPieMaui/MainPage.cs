@@ -9,6 +9,7 @@ public sealed class MainPage : ContentPage
     private readonly WindowsDesktopServices desktop;
     private readonly BlazorWebView? webView;
     public WorkspaceController Workspace { get; }
+    public bool HasPendingTableEdits => desktop.HasPendingTableEdits;
 
     public MainPage()
     {

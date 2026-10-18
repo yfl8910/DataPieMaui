@@ -18,7 +18,7 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 - Preview query results in a separate, resizable Blazor window with dynamic columns, typed sorting, pagination, and copying.
 - Export queries and tables to Excel or CSV; export multiple tables or views to worksheets or separate CSV files.
 - Import Excel, CSV, or a matching table from a SQLite database through Import a file; use Batch import for CSV/XLSX folders. Optional single-file and automatic batch length validation report SQL Server field-length problems.
-- Design tables from Excel worksheets, review CREATE TABLE SQL, and permanently delete tables through separate Table design tabs.
+- Design tables from Excel worksheets, review CREATE TABLE SQL, and open a separate table data editor from the Table Edit menu.
 - Run selected procedures without parameters, or run SQL Server procedures individually with typed parameter inputs, review, OUTPUT values, and RETURN codes.
 - View and edit supported SQL Server and SQLite view/procedure definitions with diff review and explicit save confirmation.
 - Convert SQL Server databases to SQLite, with warnings for unsupported view or procedure SQL.
@@ -81,7 +81,7 @@ Each successful script save atomically replaces the file and retains the origina
 4. Use the export buttons for the full query result, or **Batch export** for selected tables and views.
 5. Use **Import data** for its **Import a file** and **Batch import** tabs; **Clear data** empties the target table while keeping its structure.
 6. Use **Stored procedures** to run procedures or inspect definitions, and **Database migration** to export a SQL Server database.
-7. Open **Table design**, immediately after **Database migration**, and choose **Create table** or **Drop table**. Creation defaults to the Excel sheet name; deletion removes the structure and data after confirmation.
+7. Open **Table design**, immediately after **Database migration**, and choose **Create table** or **Drop table**. The separate **Table Edit** menu is directly below **Table design**. Creation defaults to the Excel sheet name; **Table Edit → select a table → Edit** opens a separate editor window.
 
 On **Import data**, select a **Target table** and click **Query data** to inspect it. On **Batch export**, each table/view has its own **Query data** button, independent of the export checkboxes. These actions reuse the results window, show the object name, and preserve your SQL editor and selections. Object previews have the same 1,000-row limit, sorting, paging, and copying as SQL previews.
 
@@ -113,11 +113,13 @@ Empty cells, empty strings, and whitespace-only strings are ignored during infer
 
 SQLite automatically creates the internal `sqlite_sequence` table when an AUTOINCREMENT table is created; it tracks the largest assigned IDs. This is expected. `INTEGER PRIMARY KEY` also assigns IDs automatically but may reuse deleted IDs; remove AUTOINCREMENT in the SQL editor only if that behavior is acceptable.
 
-### Table design: Drop table
+### Table Edit
 
-**Table design** has separate **Create table** and **Drop table** tabs. Switching tabs preserves the Excel selection and SQL draft. Import file/folder inputs remain on **Import data**.
+**Table design** has separate **Create table** and **Drop table** tabs. **Table Edit** is a separate sidebar entry directly below **Table design**. Switching tabs preserves the Excel selection and SQL draft. Import file/folder inputs remain on **Import data**.
 
-**Table design → Drop table** uses a separate table selection. Select the table, click **Drop table**, and confirm the database and table in the final dialog. Execution timing starts after that confirmation. The operation permanently removes the table and all its data; cancellation leaves it intact. SQL Server enforces its dependency restrictions. SQLite incoming foreign keys are checked before deletion to prevent cascading data loss. After deletion the shared table lists refresh, invalid selections are cleared, and the query preview is discarded. Close any old result windows containing previously loaded snapshots if necessary.
+**Table Edit** uses a separate table selection, including schema names for SQL Server. Select a table and click **Edit**. The editor is bound to that database and table even if the main window changes connections. Browse the entire table using 100-row pages; the query preview's 1,000-row limit does not apply. Select one record and click **EDIT** to open an edit dialog, then choose **Save** or **Cancel** in that dialog. Fields scroll while the action buttons remain visible. Failed saves preserve the draft and show the error in the dialog; closing a modified draft asks whether to discard it. Primary keys, generated fields and binary fields are read-only. Tables without usable primary keys or with unsupported column types remain read-only. The editor does not show a Set to NULL checkbox. Untouched NULL values remain NULL, while entering text replaces NULL with that value. Clearing existing text saves an empty string; dates use yyyy-MM-dd and decimals use a dot.
+
+Use the selection-column header checkbox to select or clear all records on the current page, or select individual records, then choose **Delete selected** to open a confirmation dialog with the table name, count and selected key summary, then confirm. Background clicks do not dismiss dialogs; Escape follows the same close checks as Cancel. This deletes records, not the table structure; database cascades and triggers still apply. Updates and deletes compare original values to detect conflicts, and a conflict rolls back the operation. Refresh after another tool changes data. Drafts block paging and refresh; closing an editor with a draft asks whether to discard it. Finish or cancel editor drafts before closing the main application. Existing query preview snapshots are not automatically refreshed by editor writes.
 
 ### Query preview behavior
 
@@ -240,3 +242,9 @@ Connect to SQLite, select **Database migration → SQLite → SQL Server**, and 
 Review all mappings: INTEGER becomes BIGINT, TEXT/CHAR/CLOB uses NVARCHAR(255) when the sampled maximum length is <=255 UTF-16 code units, otherwise NVARCHAR(MAX). NULL, empty and whitespace-only values are ignored; mixed values remain text. Empty tables/columns default to NVARCHAR(255). Sampling has no explicit row ordering, and later rows may require a wider type, BLOB becomes VARBINARY(MAX), REAL becomes FLOAT, date/time declarations become DATETIME2 and other numeric declarations use DECIMAL(38,10). SQLite defaults, CHECK/UNIQUE constraints, cascading actions, views, triggers and additional indexes require manual conversion and are reported; virtual/generated-column tables are skipped. The generated script uses GO batch separators and CREATE OR ALTER procedures. Execute it manually in the intended SQL Server database after reviewing warnings, schemas, permissions and object dependencies.
 
 Supported procedure bodies include SELECT/INSERT/UPDATE/DELETE/WITH, common string and date functions, and DataPie parameter/local metadata. Dynamic SUBSTR bounds, SQLite-specific options and unknown functions require manual conversion. Review generated SQL for type, collation and NULL semantics. Only a .sql schema script is saved; no data is copied and no generated SQL is executed.
+
+Use **Add record** in the table editor to open a new-record dialog. Generated identities, computed columns and rowversion fields are read-only; manual primary keys can be entered for new records. Untouched optional fields are omitted so the database supplies defaults or NULL. Required fields must be supplied; touching and clearing a text field explicitly saves empty text. Save uses a parameterized insert in a transaction. Failed inserts retain the draft; successful inserts close the dialog and reload the first page. Tables without a usable primary key retain their read-only restriction.
+
+### Table design: Drop table
+
+**Table design → Drop table** retains its separate table selection and **Drop table** button. Confirm before permanently deleting the table structure and all data. Cancel leaves it intact. SQLite incoming foreign keys block deletion; SQL Server enforces database dependencies. Successful deletion refreshes the table lists and clears stale selections and query previews. The Table Edit window remains a separate feature for editing records.

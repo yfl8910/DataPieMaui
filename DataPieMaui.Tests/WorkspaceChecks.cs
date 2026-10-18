@@ -365,7 +365,7 @@ internal static class WorkspaceChecks
             workspace.Context.Form.Sql = "SELECT '<script>alert(1)</script>'";
             var pages = new[]
             {
-                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("TableDesign", "Excel worksheet"), ("TableDesign", "Table to delete"), ("Import", "Source folder"),
+                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("TableDesign", "Excel worksheet"), ("TableEdit", "Table Edit"), ("TableDesign", "Table to delete"), ("Import", "Source folder"),
                 ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("Migration", "Choose destination and generate script"), ("About", "Blazor Hybrid")
             };
             // Render the conversion page without connecting to an external SQL Server.
@@ -497,6 +497,18 @@ internal static class WorkspaceChecks
             workspace.Context.Form.ImportTable = originalImport; workspace.Context.Form.QueryTable = originalQuery;
             importPage.ChangeTab("File");
         });
+        await test("Table Edit opens a bound editor without dropping the selected table", async () =>
+        {
+            workspace.Navigate("TableEdit");
+            Check(workspace.Context.Section == "TableEdit", "Edit menu not selected");
+            var editPage = new TableEditPage { Workspace = workspace };
+            var table = workspace.Context.Database.Schema!.Tables.First(t => t.Name == "Items");
+            workspace.Context.Form.EditTable = System.Text.Json.JsonSerializer.Serialize(new[] { table.TableSchemaName, table.Name });
+            await editPage.EditTableAsync();
+            Check(desktop.TableEditor?.TableName == "Items" && desktop.TableEditor.Data.Rows.Count > 0, "Table editor did not receive selected table");
+            Check(workspace.Context.Tables.Contains("Items"), "Edit removed table");
+            desktop.TableEditor!.Data.Dispose();
+        });
         await test("SQLite Drop table rejects foreign-key references without deleting data", async () =>
         {
             using (var db = new SQLiteConnection(connection))
@@ -504,11 +516,8 @@ internal static class WorkspaceChecks
                 db.Open(); using var create = new SQLiteCommand("CREATE TABLE DropParent(Id INTEGER PRIMARY KEY); CREATE TABLE DropChild(ParentId INTEGER REFERENCES DropParent(Id) ON DELETE CASCADE); INSERT INTO DropParent VALUES(1); INSERT INTO DropChild VALUES(1)", db); create.ExecuteNonQuery();
             }
             await workspace.Context.RefreshSchemaAsync();
-            workspace.Context.Form.DropTable = "DropParent";
-            var pending = tableDesignPage.DropTableAsync(); workspace.Context.Dialogs.Complete(true);
-            for (int i = 0; i < 100 && workspace.Context.Dialogs.Current == null; i++) await Task.Delay(10);
-            Check(workspace.Context.Dialogs.Current?.Title == "Drop table failed", "Incoming foreign key did not block deletion");
-            workspace.Context.Dialogs.Complete(true); await pending;
+            try { await workspace.Context.Database.DropTableAsync("DropParent"); throw new Exception("Expected foreign key rejection"); }
+            catch (InvalidOperationException) { }
             using (var db = new SQLiteConnection(connection))
             {
                 db.Open(); using var count = new SQLiteCommand("SELECT COUNT(*) FROM DropChild", db); Check(Convert.ToInt64(count.ExecuteScalar()) == 1, "Referenced data was deleted");
@@ -575,6 +584,8 @@ internal static class WorkspaceChecks
     private sealed class FakeDesktop : IDesktopServices
     {
         public int ResultWindows { get; private set; }
+        public DataPieCore.TableEditorSession? TableEditor { get; private set; }
+        public Task ShowTableEditorAsync(DataPieCore.TableEditorSession session, string connectionLabel) { TableEditor = session; return Task.CompletedTask; }
         public Func<Task<string?>> Save { get; set; } = () => Task.FromResult<string?>(null);
         public Func<Task<string?>> NewSave { get; set; } = () => Task.FromResult<string?>(null);
         public Task<string?> SelectNewFilePathAsync(string name, string extension) => NewSave();
