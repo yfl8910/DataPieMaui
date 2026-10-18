@@ -2,7 +2,9 @@
 
 [English](README.md) | 简体中文
 
-面向 Windows x64 的数据库桌面工具，支持 SQL Server 和 SQLite 的查询、导入、导出、表设计、存储过程及数据库转换。程序使用 .NET 11 RC1、.NET MAUI Blazor Hybrid，工作区界面采用 Blazor，查询结果在独立窗口中显示。
+面向 Windows的数据库桌面工具，支持 SQL Server 和 SQLite 的查询、导入、导出、表设计、存储过程及数据库转换、表数据行的增删改、查询。程序使用 .NET 11、.NET MAUI Blazor Hybrid，工作区界面采用 Blazor。
+
+
 
 ## 功能概览
 
