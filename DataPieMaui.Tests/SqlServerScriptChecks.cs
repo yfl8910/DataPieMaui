@@ -29,6 +29,19 @@ internal static class SqlServerScriptChecks
             Check(!result.Sql.Contains("CREATE INDEX") && !result.Sql.Contains("DROP TABLE") && !result.Sql.Contains("INSERT INTO"), "Out-of-scope statements generated");
             return Task.CompletedTask;
         });
+        await test("SQL Server script omits database-default collation and preserves column overrides", () =>
+        {
+            var table = new ScriptTable(1, "dbo", "Names", new()
+            {
+                new("DefaultName", "nvarchar", 100, 0, 0, true, Collation: "Chinese_PRC_CI_AS"),
+                new("CaseName", "varchar", 50, 0, 0, true, Collation: "chinese_prc_ci_as"),
+                new("SpecialName", "nvarchar", 100, 0, 0, true, Collation: "Latin1_General_100_CS_AS")
+            });
+            var result = Generate(new Snapshot("Source", new(), new() { table }, new(), new(), new(), "Chinese_PRC_CI_AS"));
+            Check(result.Sql.Contains("[DefaultName] nvarchar(50) NULL") && result.Sql.Contains("[CaseName] varchar(50) NULL"), "Database-default collation should be inherited");
+            Check(result.Sql.Contains("[SpecialName] nvarchar(50) COLLATE [Latin1_General_100_CS_AS] NULL"), "Non-default column collation lost");
+            return Task.CompletedTask;
+        });
         await test("SQL Server script normalizes module declarations without modifying bodies and orders dependencies", () =>
         {
             var table = new ScriptTable(1, "dbo", "ZTable", new() { new("Id", "int", 4, 10, 0, false) });
@@ -61,8 +74,9 @@ internal static class SqlServerScriptChecks
             Check(result.Sql.Contains("-- Source database: Source GO") && !result.Sql.Contains("CREATE TABLE [dbo].[Special]"), "Comment escaping or skipped table failed");
             return Task.CompletedTask;
         });
-        await test("SQL Server script metadata reader preserves result-set ordinals and writes one complete UTF-8 file", () =>
+        await test("SQL Server script metadata reader preserves result-set ordinals and writes one complete UTF-16 LE file with BOM", () =>
         {
+            using var databaseCollation = Table(typeof(string)); databaseCollation.Rows.Add("Chinese_PRC_CI_AS");
             using var schemas = Table(typeof(string)); schemas.Rows.Add("dbo");
             using var tables = Table(typeof(int), typeof(string), typeof(string), typeof(bool)); tables.Rows.Add(1, "dbo", "Items", false);
             using var columns = Table(typeof(int), typeof(string), typeof(string), typeof(short), typeof(byte), typeof(byte), typeof(bool), typeof(string), typeof(string), typeof(string), typeof(bool), typeof(string), typeof(bool), typeof(string), typeof(string), typeof(bool), typeof(bool), typeof(int), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(string));
@@ -71,10 +85,15 @@ internal static class SqlServerScriptChecks
             using var modules = Table(typeof(int), typeof(string), typeof(string), typeof(string), typeof(string), typeof(bool), typeof(bool), typeof(bool));
             using var dependencies = Table(typeof(int), typeof(int), typeof(string), typeof(int));
             using var warnings = Table(typeof(string));
-            using var reader = new DataTableReader(new[] { schemas, tables, columns, keys, modules, dependencies, warnings });
-            var result = Generate(ReadSnapshot("数据库", reader));
+            using var reader = new DataTableReader(new[] { databaseCollation, schemas, tables, columns, keys, modules, dependencies, warnings });
+            var snapshot = ReadSnapshot("数据库", reader);
+            Check(snapshot.DatabaseCollation == "Chinese_PRC_CI_AS", "Database collation metadata lost");
+            var result = Generate(snapshot);
             Check(result.Sql.Contains("IDENTITY(10,2) NOT FOR REPLICATION") && result.Sql.Contains("PRIMARY KEY CLUSTERED ([Id] ASC)"), "Reader ordinal mapping incorrect");
             string file = Path.Combine(root, "object-script.sql"); File.WriteAllText(file, "old content"); WriteFile(file, result.Sql);
+            byte[] bytes = File.ReadAllBytes(file);
+            Check(bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE
+                && System.Text.Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2) == result.Sql, "Expected UTF-16 LE BOM and intact Unicode content");
             Check(File.ReadAllText(file) == result.Sql && Directory.GetFiles(root, "object-script.sql.*.tmp").Length == 0, "Atomic output left partial content or temporary file");
             using (var locked = File.Open(file, FileMode.Open, FileAccess.Read, FileShare.None))
             {

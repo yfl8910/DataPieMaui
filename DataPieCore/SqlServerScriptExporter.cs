@@ -21,7 +21,7 @@ public static class SqlServerScriptExporter
     internal sealed record ScriptModule(int Id, string Schema, string Name, string Kind, string Sql, bool QuotedIdentifier, bool AnsiNulls, bool Unsupported = false);
     internal sealed record Dependency(int From, int? To, string Name, bool ObjectReference = true);
     internal sealed record Snapshot(string Database, List<string> Schemas, List<ScriptTable> Tables, List<ScriptModule> Modules,
-        List<Dependency> Dependencies, List<string> Warnings);
+        List<Dependency> Dependencies, List<string> Warnings, string DatabaseCollation = null);
 
     public static SqlServerScriptResult Generate(string connectionString)
     {
@@ -51,7 +51,7 @@ public static class SqlServerScriptExporter
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            File.WriteAllText(temporary, sql, new UTF8Encoding(false));
+            File.WriteAllText(temporary, sql, Encoding.Unicode);
             File.Move(temporary, path, true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
@@ -72,7 +72,7 @@ public static class SqlServerScriptExporter
             { warnings.Add(name + ": table skipped: " + (table.Unsupported ?? "column metadata unavailable")); continue; }
             try
             {
-                var columns = table.Columns.Select(ColumnSql).ToList();
+                var columns = table.Columns.Select(column => ColumnSql(column, snapshot.DatabaseCollation)).ToList();
                 if (table.Key is { } key)
                 {
                     if (key.Columns.Count == 0 || key.Columns.Any(k => !table.Columns.Any(c => c.Name == k.Name))) throw new InvalidOperationException("primary key metadata is incomplete");
@@ -132,7 +132,7 @@ public static class SqlServerScriptExporter
         }
         return new(header.Append(output).ToString(), tableCount, viewCount, procedureCount, warnings);
     }
-    private static string ColumnSql(ScriptColumn column)
+    private static string ColumnSql(ScriptColumn column, string databaseCollation)
     {
         string sql = "    " + Q(column.Name);
         if (column.Computed != null) return sql + " AS " + column.Computed + (column.Persisted ? " PERSISTED" + (column.Nullable ? "" : " NOT NULL") : "");
@@ -140,7 +140,8 @@ public static class SqlServerScriptExporter
         string type = column.Type.ToLowerInvariant();
         var info = new Column { Type = type, MaxLength = column.Length, Precision = column.Precision, Scale = column.Scale };
         sql += " " + info.DisplayType("SQLSERVER");
-        if (column.Collation != null && type is "char" or "varchar" or "nchar" or "nvarchar" or "text" or "ntext" or "sysname") sql += " COLLATE " + Q(column.Collation);
+        if (column.Collation != null && !string.Equals(column.Collation, databaseCollation, StringComparison.OrdinalIgnoreCase)
+            && type is "char" or "varchar" or "nchar" or "nvarchar" or "text" or "ntext" or "sysname") sql += " COLLATE " + Q(column.Collation);
         if (column.IdentitySeed != null)
             sql += " IDENTITY(" + column.IdentitySeed + "," + column.IdentityIncrement + ")" + (column.IdentityNotForReplication ? " NOT FOR REPLICATION" : "");
         if (column.RowGuid) sql += " ROWGUIDCOL";
@@ -156,6 +157,9 @@ public static class SqlServerScriptExporter
 
     internal static Snapshot ReadSnapshot(string database, IDataReader reader)
     {
+        if (!reader.Read() || reader.IsDBNull(0)) throw new InvalidOperationException("Database collation metadata unavailable.");
+        string databaseCollation = reader.GetString(0);
+        Next(reader);
         var schemas = new List<string>();
         while (reader.Read()) schemas.Add(reader.GetString(0));
         Next(reader);
@@ -194,11 +198,12 @@ public static class SqlServerScriptExporter
         while (reader.Read()) dependencies.Add(new(reader.GetInt32(0), reader.IsDBNull(1) ? null : reader.GetInt32(1), reader.GetString(2), reader.GetInt32(3) == 1));
         Next(reader);
         while (reader.Read()) warnings.Add(reader.GetString(0));
-        return new(database, schemas, tables.Values.OrderBy(t => t.Schema).ThenBy(t => t.Name).ToList(), modules, dependencies, warnings);
+        return new(database, schemas, tables.Values.OrderBy(t => t.Schema).ThenBy(t => t.Name).ToList(), modules, dependencies, warnings, databaseCollation);
     }
     private static void Next(IDataReader reader) { if (!reader.NextResult()) throw new InvalidOperationException("Incomplete SQL Server script metadata."); }
 
     private const string MetadataSql = """
+        SELECT CONVERT(nvarchar(128),DATABASEPROPERTYEX(DB_NAME(),'Collation'));
         SELECT s.name FROM sys.schemas s WHERE s.name NOT IN ('sys','INFORMATION_SCHEMA','guest','db_owner','db_accessadmin','db_securityadmin','db_ddladmin','db_backupoperator','db_datareader','db_datawriter','db_denydatareader','db_denydatawriter') ORDER BY s.name;
         SELECT t.object_id,s.name,t.name,CONVERT(bit,CASE WHEN t.temporal_type<>0 OR t.is_memory_optimized=1 OR t.is_filetable=1 THEN 1 ELSE 0 END)
         FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE t.is_ms_shipped=0 ORDER BY s.name,t.name;
