@@ -99,6 +99,17 @@ dt { color: #8493a0; } dd { margin: 0; }
 .procedure-summary { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 35vh; overflow: auto; }
 @media (max-width: 700px) { .procedure-parameter { grid-template-columns: 1fr; } }
 .schema-browser { display: grid; grid-template-columns: minmax(200px, 28%) minmax(0, 1fr); gap: 24px; }
+.card.table-design-card { padding: 16px 20px; }
+.table-design-card .tabs { margin-bottom: 16px; }
+.table-design-card .tabs button { padding-bottom: 10px; }
+.table-design-card h2 { margin-bottom: 8px; }
+.table-design-card .muted { margin: 8px 0 12px; }
+.table-design-card .actions.align-end { margin: 0; }
+.table-design-sql { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
+.table-design-card .actions { margin-top: 12px; }
+.table-design-card .callout { padding: 10px 14px; margin: 8px 0 12px; }
+.table-design-notes { margin-top: 10px; font-size: 13px; color: #748390; }
+.table-design-notes summary { cursor: pointer; }
 .card.schema-toolbar { display: grid; grid-template-columns: minmax(120px, 1fr) 170px auto; align-items: center; gap: 10px; padding: 12px 16px; }
 .schema-toolbar button { white-space: nowrap; }
 @media (max-width: 600px) { .card.schema-toolbar { grid-template-columns: minmax(0, 1fr) auto; } .schema-toolbar input { grid-column: 1 / -1; } }

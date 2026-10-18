@@ -1,16 +1,15 @@
 @using DataPieCore
 @inherits WorkspacePageBase
-<section class="card">
+<section class="card table-design-card">
     <div class="tabs" aria-label="Table design actions">
         @foreach (var tab in new[] { ("Create", "Create table"), ("Drop", "Drop table") })
         {
             <button class="@(Form.TableDesignTab == tab.Item1 ? "active" : "")" aria-pressed="@(Form.TableDesignTab == tab.Item1)" @onclick="() => ChangeTab(tab.Item1)">@tab.Item2</button>
         }
     </div>
-</section>
 @if (Form.TableDesignTab == "Create")
 {
-<section class="card">
+<div class="table-design-panel">
     <h2>Excel worksheet</h2>
     <p class="muted">The first row supplies column names. The worksheet name becomes the table name; edit it directly in the SQL below.</p>
     <div class="actions align-end">
@@ -19,22 +18,22 @@
         <label class="grow">Worksheet<select @bind="Form.CreateTableSheet"><option value="">Select a worksheet</option>@foreach (var sheet in Form.CreateTableSheets) { <option value="@sheet">@sheet</option> }</select></label>
         <button @onclick="GenerateAsync" disabled="@(string.IsNullOrEmpty(Form.CreateTableSheet))">Generate SQL</button>
     </div>
-</section>
-<section class="card">
+</div>
+<div class="table-design-sql">
     <label>SQL editor<textarea class="sql-editor" @bind="Form.CreateTableSql" @bind:event="oninput" spellcheck="false" placeholder="Generate CREATE TABLE SQL from an Excel worksheet"></textarea></label>
-    <p class="muted">Types are inferred from the first 1,000 data rows after the header; blank cells and whitespace-only text are ignored. Later rows may require wider types or text lengths. Review the SQL before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.</p>
+    <details class="table-design-notes"><summary>Type inference and creation notes</summary><p class="muted">Types are inferred from the first 1,000 data rows after the header; blank cells and whitespace-only text are ignored. Later rows may require wider types or text lengths. Review the SQL before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.</p></details>
     <div class="actions"><button class="primary" @onclick="CreateAsync" disabled="@(string.IsNullOrWhiteSpace(Form.CreateTableSql))">Create table</button></div>
-</section>
+</div>
 
 }
 else
 {
-    <section class="card"><h2>Drop table</h2>
+    <div class="table-design-panel"><h2>Drop table</h2>
         <p class="callout danger">Permanently delete the table structure and all its data from @State.Connection. This cannot be undone.</p>
-        <label>Table to delete<select @bind="Form.DropTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label>
-        <div class="actions"><button class="danger" @onclick="DropTableAsync" disabled="@(string.IsNullOrEmpty(Form.DropTable))">Drop table</button></div>
-    </section>
+        <div class="actions align-end"><label class="grow">Table to delete<select @bind="Form.DropTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label><button class="danger" @onclick="DropTableAsync" disabled="@(string.IsNullOrEmpty(Form.DropTable))">Drop table</button></div>
+    </div>
 }
+</section>
 @code {
     public void ChangeTab(string tab)
     {
