@@ -19,7 +19,7 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 - Preview query results in a separate, resizable Blazor window with dynamic columns, typed sorting, pagination, and copying.
 - Export queries and tables to Excel or CSV; export multiple tables or views to worksheets or separate CSV files.
 - Import Excel, CSV, or a matching table from a SQLite database through Import a file; use Batch import for CSV/XLSX folders. Optional single-file and automatic batch length validation report SQL Server field-length problems.
-- Design tables from Excel worksheets, review CREATE TABLE SQL, and open a separate table data editor from Import data or Database schema.
+- Design tables from Excel worksheets, review CREATE TABLE SQL, and open a separate table data editor from SQL query, Import data or Database schema.
 - Add, edit, and delete table records in independent editor windows, with full-table paging, current-page selection, modal dialogs, and conflict checks; drop entire tables separately through Table design.
 - Run selected procedures without parameters, or run SQL Server procedures individually with typed parameter inputs, review, OUTPUT values, and RETURN codes.
 - View and edit supported SQL Server and SQLite view/procedure definitions with diff review and explicit save confirmation.
@@ -106,6 +106,8 @@ On **Import data**, select a **Target table** and click **EDIT** to open an inde
 
 Successful exports append the output file's full path to the bottom status message alongside the completion information. Batch CSV export lists the generated file paths. Shared workspace failures display the full exception, including inner exceptions and stack traces, and send it to Trace; this does not create a dedicated on-disk log file.
 
+On **SQL query**, **EDIT** beside the table selector opens the selected table in the same independent editor. It uses the selected table, not the SQL text or query result, and preserves the SQL draft, preview and selection. SQL Server choices distinguish schemas; generated SELECT/UPDATE/DELETE statements and whole-table exports use the selected schema-qualified table.
+
 ### Import data layout and validation
 
 The top card contains **Target table**, **EDIT**, **Export template**, and **Clear data**. The selected SQL Server schema/table identity is used consistently for editing, file/folder import, template export and clearing data. Excel worksheets and SQLite source tables still match the original unqualified table name. Below it, **Import a file** and **Batch import** switch the content inside one shared white card. The target table and file/folder paths remain available when switching tabs or navigating away.
@@ -152,7 +154,7 @@ SQLite automatically creates the internal `sqlite_sequence` table when an AUTOIN
 
 ### Table editor
 
-There is no standalone Table Edit menu. Open a **Table editor** window using **Import data → Target table → EDIT**, or select a table on **Database schema** and click **EDIT**. SQL Server table choices include the schema. Each window stays bound to its original database and table, even if the main workspace changes connections.
+There is no standalone Table Edit menu. Open a **Table editor** window using **SQL query → Table → EDIT**, **Import data → Target table → EDIT**, or select a table on **Database schema** and click **EDIT**. SQL Server table choices include the schema. Each window stays bound to its original database and table, even if the main workspace changes connections.
 
 The editor reads 100 records per page and can page through the entire table; it does not share the query preview's 1,000-row limit. Rows are ordered by the primary key when available. Tables without usable non-NULL primary keys, or with unsupported column types, remain read-only. Composite primary keys are supported. The editor does not offer arbitrary SQL or field filters.
 
@@ -302,7 +304,7 @@ These checks exercise dragging, resizing, viewport bounds, maximize/restore, bus
 - All business pages, including login and connection management, keep their markup and page-specific workflows together in a single `.razor` file using an `@code` block. The static About page needs no code block.
 - `WorkspaceController` composes shared services and coordinates navigation and native-window lifecycle. Pages use `WorkspacePageBase` to access shared state and the operation runner. The connection page initializes saved connections once per workspace; revisiting the page preserves loaded configuration and operation status.
 - `Services/Shared/WorkspaceContext` owns session state and the shared capabilities for one workspace. Shared services survive navigation; `WorkspaceForm` retains input values when page components are recreated. `DatabaseConversionService` owns conversion execution, progress, and cancellation so the status bar and native close handler do not depend on a page instance.
-- `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by main-workspace pages. Table-editor windows maintain their own busy and draft state. `QueryPreviewService` shares table/view and SQL result loading, `WorkspaceContext.RefreshSchemaAsync` refreshes table lists after creation/deletion, and `FileNames` shares export filename normalization. `TableSelection` carries schema-qualified import targets separately from source worksheet/table names, and `WorkspacePageBase.OpenTableEditorAsync` is shared by Import data and Database schema. `ExcelTableSql` reads worksheets and generates provider-specific table definitions.
+- `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by main-workspace pages. Table-editor windows maintain their own busy and draft state. `QueryPreviewService` shares table/view and SQL result loading, `WorkspaceContext.RefreshSchemaAsync` refreshes table lists after creation/deletion, and `FileNames` shares export filename normalization. `TableSelection` carries schema-qualified import targets separately from source worksheet/table names, and `WorkspacePageBase.OpenTableEditorAsync` is shared by SQL query, Import data and Database schema. `ExcelTableSql` reads worksheets and generates provider-specific table definitions.
 - `IDesktopServices` separates the workspace from Windows-specific operations. `WindowsDesktopServices` dispatches native work to the UI thread, binds file pickers to their owner, and manages result and table-editor windows.
 - `DataPieCore` remains the database/import/export engine. Razor components run locally; no web server is required.
 

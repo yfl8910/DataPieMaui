@@ -48,7 +48,7 @@ public sealed class WorkspaceContext
         Exports.AddRange(Tables.Select(n => new SelectableObject(n, "Table") { Selected = selected.Contains((n, "Table")) }));
         Exports.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "View").Select(o => new SelectableObject(o.Name, o.Kind) { DefinitionObject = o, Selected = selected.Contains((o.Name, o.Kind)) }));
         if (!Database.Schema.Tables.Any(t => TableSelection.Key(t, Database.Connection!.DatabaseType) == Form.ImportTable)) Form.ImportTable = "";
-        if (!Tables.Contains(Form.QueryTable)) Form.QueryTable = "";
+        if (!Database.Schema.Tables.Any(t => TableSelection.Key(t, Database.Connection!.DatabaseType) == Form.QueryTable)) Form.QueryTable = "";
         if (!Tables.Contains(Form.DropTable)) Form.DropTable = "";
         Notify();
     }

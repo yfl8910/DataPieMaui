@@ -2,7 +2,8 @@
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
 <section class="card">
-    <div class="actions align-end"><label class="grow">Table<select @bind="Model.Form.QueryTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label>
+    <div class="actions align-end"><label class="grow">Table<select @bind="Model.Form.QueryTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label>
+        <button @onclick="EditQueryTableAsync" disabled="@(string.IsNullOrEmpty(Form.QueryTable))">EDIT</button>
         @foreach (var kind in new[] { "SELECT", "UPDATE", "DELETE" }) { <button @onclick="() => GenerateAsync(kind)">@kind</button> }
     </div>
     <label>SQL editor<textarea class="sql-editor" @bind="Model.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="Enter SQL. Preview shows up to 1,000 rows."></textarea></label>
@@ -11,10 +12,11 @@
 <section class="card result-summary"><div><h2>Query results</h2><p>@Model.QuerySummary</p><p class="muted">Sort, page, and copy data in the independent results window.</p></div><button @onclick="OpenResultsAsync" disabled="@(Model.Results.Current is null)">Open results</button></section>
 
 @code {
+    private DBUtil.TableStruct SelectedQueryTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.QueryTable, "Select a table."), Type);
+    public Task EditQueryTableAsync() => RunAsync("Open table editor", watch => OpenTableEditorAsync(SelectedQueryTable(), watch));
     private void Generate(string kind)
     {
-        var name = Required(Form.QueryTable, "Select a table.");
-        var table = Database.Schema!.Tables.First(t => t.Name == name);
+        var table = SelectedQueryTable();
         Form.Sql = kind switch
         {
             "UPDATE" => SqlWriter.WriteUpdate(table, Type),
@@ -56,8 +58,9 @@
     });
     public Task ExportQueryAsync(bool csv, bool wholeTable) => RunAsync("Export data", async watch =>
     {
-        string name = wholeTable ? Required(Form.QueryTable, "Select a table.") : "Query";
-        string sql = wholeTable ? SqlQueryBuilder.BuildSelectAll(name, Type) : Required(Form.Sql, "Enter SQL.");
+        var table = wholeTable ? SelectedQueryTable() : null;
+        string name = table?.Name ?? "Query";
+        string sql = table != null ? TableSelection.SelectAll(table, Type) : Required(Form.Sql, "Enter SQL.");
         var path = await Desktop.SaveAsync(name, csv ? ".csv" : ".xlsx");
         if (path == null) return;
         watch.Start();

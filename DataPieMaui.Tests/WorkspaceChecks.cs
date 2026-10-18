@@ -183,6 +183,18 @@ internal static class WorkspaceChecks
             Check(ReferenceEquals(connections, workspace.Context.Connections), "Recreated page reloaded connection configuration");
             Check(workspace.Context.State.Status == status && !workspace.IsOperationRunning, "Recreated page changed operation status");
         });
+        await test("SQL query opens the selected table editor without changing SQL or preview", async () =>
+        {
+            string sql = workspace.Context.Form.Sql;
+            var preview = workspace.Context.Results.Current;
+            var selection = workspace.Context.Form.QueryTable;
+            workspace.Navigate("Query");
+            await queryPage.EditQueryTableAsync();
+            Check(desktop.TableEditor?.TableName == "Items" && desktop.TableEditor.Data.Rows.Count == 2, "Query EDIT opened wrong table");
+            Check(workspace.Context.Form.Sql == sql && workspace.Context.Form.QueryTable == selection
+                && ReferenceEquals(preview, workspace.Context.Results.Current) && workspace.Context.Section == "Query", "Query EDIT changed the editor or preview");
+            desktop.TableEditor!.Data.Dispose();
+        });
         await test("Import opens table editor and export previews preserve page inputs and selection", async () =>
         {
             string sql = workspace.Context.Form.Sql;
@@ -424,6 +436,7 @@ internal static class WorkspaceChecks
                 if (section == "Import") Check(!html.Contains("Drop table"), "Deletion remains on import page" );
                 if (section == "TableDesign") Check(html.Contains("Generate SQL") == (expected == "Excel worksheet"), "Table design tabs show the wrong form" );
                 if (section == "Import") Check(html.Contains(">EDIT</button>") && !html.Contains("Query data"), "Import edit button missing or old preview button retained");
+                if (section == "Query") Check(html.Contains(">EDIT</button>"), "SQL query edit button missing");
                 if (section == "Export") Check(html.Contains("Query data"), "Object query button missing in " + section);
                 if (section == "Procedures") Check(!html.Contains("object-preview"), "Procedures incorrectly offer table preview");
                 if (section == "Export") Check(html.Contains("View definition") && !html.Contains("SQL definition"), "Definition action missing or SQL eagerly shown");

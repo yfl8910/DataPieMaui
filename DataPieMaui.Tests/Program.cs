@@ -37,6 +37,11 @@ try
         string key = DataPieMaui.Services.Shared.TableSelection.Key(archive, "SQLSERVER");
         Check(key == "[arch]]ive].[Items]" && ReferenceEquals(DataPieMaui.Services.Shared.TableSelection.Resolve(candidates, key, "SQLSERVER"), archive), "Schema-qualified selection failed");
         Check(DataPieMaui.Services.Shared.TableSelection.SelectAll(archive, "SQLSERVER") == "SELECT * FROM [arch]]ive].[Items]", "Template query did not qualify the target");
+        archive.Columns.Add(new Column { Name = "Id", Type = "int", IsPrimaryKey = true });
+        archive.Columns.Add(new Column { Name = "Items", Type = "nvarchar", MaxLength = 100 });
+        Check(SqlWriter.WriteSelect(archive, "SQLSERVER", 1000) == "SELECT TOP 1000 [Id], [Items] FROM [arch]]ive].[Items]", "SQL query generation lost schema or changed column names");
+        Check(SqlWriter.WriteUpdate(archive, "SQLSERVER").StartsWith("UPDATE [arch]]ive].[Items]")
+            && SqlWriter.WriteDelete(archive, "SQLSERVER").StartsWith("DELETE FROM [arch]]ive].[Items]"), "Generated writes lost table schema");
         try { DataPieMaui.Services.Shared.TableSelection.Resolve(candidates, "Items", "SQLSERVER"); throw new Exception("Expected ambiguous target rejection"); }
         catch (InvalidOperationException) { }
         return Task.CompletedTask;
