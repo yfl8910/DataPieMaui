@@ -138,6 +138,7 @@ internal static class TableEditorChecks
                 editor!.Select(original, true); editor.BeginEdit(); editor.Render();
                 string html = rootComponent.ToHtmlString();
                 Check(html.Contains("aria-modal=\"true\"") && html.Contains("Edit record") && html.Contains("readonly") && !html.Contains("Set to NULL"), "Missing edit modal, read-only fields or unexpected NULL checkbox");
+                Check(html.Contains("data-movable=\"true\"") && html.Contains("data-dialog-maximize") && html.Contains("data-dialog-resize"), "Edit dialog missing window controls");
                 Check(!session.HasDraft, "Opening an unchanged record marked it dirty");
                 editor.SetDraft("Name", "draft text"); editor.RequestClose(); editor.Render();
                 Check(rootComponent.ToHtmlString().Contains("Discard your unsaved changes?") && session.HasDraft, "Dirty close did not ask to discard");
@@ -168,6 +169,7 @@ internal static class TableEditorChecks
                 editor.RequestClose(); editor.SelectPage(false);
                 editor.Select(session.Data.Rows[0], true); editor.RequestDelete(); editor.Render();
                 Check(rootComponent.ToHtmlString().Contains("Selected record keys") && session.Data.Rows.Count == 2, "Delete lacks record summary or ran early");
+                Check(!rootComponent.ToHtmlString().Contains("data-dialog-maximize") && !rootComponent.ToHtmlString().Contains("data-dialog-resize"), "Delete confirmation should stay compact");
                 editor.RequestClose(); editor.Render();
                 Check(!rootComponent.ToHtmlString().Contains("aria-modal") && session.Data.Rows.Count == 2, "Cancel deleted data");
                 editor.RequestDelete(); await editor.DeleteAsync(); editor.Render();

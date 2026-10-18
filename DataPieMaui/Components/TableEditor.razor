@@ -38,10 +38,13 @@
 @if (DialogOpen)
 {
     <div class="modal-overlay">
-        <section class="editor-dialog" role="@(confirmDelete ? "alertdialog" : "dialog")" aria-modal="true" aria-labelledby="editor-dialog-title" tabindex="-1">
-            <div class="dialog-header">
+        <section @key="DialogKey" class="editor-dialog" data-movable="@(confirmDelete ? "false" : "true")" data-busy="@(Session.IsBusy ? "true" : "false")" role="@(confirmDelete ? "alertdialog" : "dialog")" aria-modal="true" aria-labelledby="editor-dialog-title" tabindex="-1">
+            <div class="dialog-header" data-dialog-drag tabindex="@(confirmDelete ? -1 : 0)" aria-label="@(confirmDelete ? null : "Move dialog using arrow keys or drag the title bar")">
                 <h2 id="editor-dialog-title">@(confirmDelete ? "Delete selected records" : adding ? "New record" : "Edit record")</h2>
-                <button aria-label="Close dialog" data-dialog-close @onclick="RequestClose" disabled="@Session.IsBusy">×</button>
+                <div class="dialog-window-actions">
+                    @if (!confirmDelete) { <button type="button" aria-label="Maximize dialog" title="Maximize dialog" data-dialog-maximize disabled="@Session.IsBusy">□</button> }
+                    <button aria-label="Close dialog" data-dialog-close @onclick="RequestClose" disabled="@Session.IsBusy">×</button>
+                </div>
             </div>
             <div class="dialog-body">
                 <p>@ConnectionLabel · @Session.TableName</p>
@@ -89,6 +92,7 @@
                     <button @onclick="RequestClose" disabled="@Session.IsBusy">Cancel</button>
                 }
             </div>
+            @if (!confirmDelete) { <button type="button" class="dialog-resize-handle" data-dialog-resize aria-label="Resize dialog using arrow keys or drag" title="Drag to resize; arrow keys also adjust size" disabled="@Session.IsBusy">◢</button> }
         </section>
     </div>
 }
@@ -101,6 +105,7 @@
     private DataRow? editing;
     private bool confirmDelete, confirmDiscard, adding;
     private bool DialogOpen => editing != null || adding || confirmDelete;
+    private string DialogKey => confirmDelete ? "delete" : adding ? "new" : "edit";
     private readonly HashSet<string> touched = [];
     private string dialogError = "";
     private string message = "Select one record to edit, or select records to delete. All table records are available through paging.";

@@ -164,7 +164,7 @@ Click **Add record** to open a new-record dialog. Auto-generated identities, com
 
 #### Edit records
 
-Select one record and click **EDIT** to open a field-editing dialog. Primary keys, generated fields, and binary fields remain read-only. Fields scroll while **Save** and **Cancel** stay visible. Dates use yyyy-MM-dd and decimals use a dot. Save failures retain input and display the error in the dialog.
+Select one record and click **EDIT** to open a field-editing dialog. Primary keys, generated fields, and binary fields remain read-only. Fields scroll while **Save** and **Cancel** stay visible. Both Edit record and New record dialogs support dragging the title bar, resizing from the lower-right corner, and maximize/restore. Position and size are remembered within the current Table editor window and clamped when the window shrinks; dialogs cannot move outside it. Focus the title bar or resize handle and use arrow keys for keyboard movement/resizing (Shift uses larger steps). Saving disables these controls. Delete confirmation remains centered and compact. Dates use yyyy-MM-dd and decimals use a dot. Save failures retain input and display the error in the dialog.
 
 There is no **Set to NULL** checkbox. An untouched NULL field stays NULL, and entering a value replaces it. Clearing an existing text value saves an empty string; clearing numeric/date fields does not automatically set NULL and may fail validation. Existing non-NULL fields cannot explicitly be set to NULL through this editor.
 
@@ -283,6 +283,14 @@ dotnet run --project DataPieMaui.Tests\DataPieMaui.Tests.csproj -c Release -- --
 ```
 
 These previews are render snapshots, not an interactive web version of the desktop application.
+
+With Node.js available, run the dialog geometry interaction checks separately:
+
+```powershell
+node DataPieMaui.Tests/table-editor-window-checks.cjs
+```
+
+These checks exercise dragging, resizing, viewport bounds, maximize/restore, busy guards, keyboard controls and remembered geometry using a simulated DOM; they do not automate the native desktop UI.
 
 ## UI architecture
 
