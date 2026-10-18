@@ -11,6 +11,31 @@ internal static class QueryResultsChecks
 {
     public static async Task Run(Func<string, Func<Task>, Task> test)
     {
+        await test("Numeric previews use two decimals without losing raw precision", () =>
+        {
+            foreach (var culture in new[] { "en-US", "de-DE" })
+            {
+                var previous = System.Globalization.CultureInfo.CurrentCulture;
+                try
+                {
+                    var current = System.Globalization.CultureInfo.GetCultureInfo(culture);
+                    System.Globalization.CultureInfo.CurrentCulture = current;
+                    using var table = new DataTable();
+                    table.Columns.Add("Value", typeof(object));
+                    table.Rows.Add(12); table.Rows.Add(1.2345m); table.Rows.Add(-2.346d);
+                    table.Rows.Add("001.2345"); table.Rows.Add(DBNull.Value); table.Rows.Add(true);
+                    using var reader = table.CreateDataReader();
+                    var raw = QueryPreviewResult.Read(reader, 1000);
+                    var snapshot = new QueryResultSnapshot(raw, "Test");
+                    Check(snapshot.FormatCell(0, 0) == "12", "Integer gained decimal places");
+                    Check(snapshot.FormatCell(1, 0) == 1.2345m.ToString("F2", current) && snapshot.FormatCell(2, 0) == (-2.346d).ToString("F2", current), "Fractional rounding incorrect");
+                    Check(snapshot.FormatCell(3, 0) == "001.2345" && snapshot.FormatCell(4, 0) == "NULL" && snapshot.FormatCell(5, 0) == "True", "Nonnumeric values changed");
+                    Check((decimal)raw.GetValue(1, 0) == 1.2345m && snapshot.CopyText(new[] { 1 }).Contains(1.2345m.ToString(current)), "Copy or backing value lost precision");
+                }
+                finally { System.Globalization.CultureInfo.CurrentCulture = previous; }
+            }
+            return Task.CompletedTask;
+        });
         await test("Query results search spans preview pages and preserves filtering when sorting and copying", async () =>
         {
             using var data = new DataTable(); data.Columns.Add("Name", typeof(string));

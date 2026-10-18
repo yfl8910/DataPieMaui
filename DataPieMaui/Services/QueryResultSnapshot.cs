@@ -14,7 +14,7 @@ public sealed class QueryResultSnapshot
     public string GetColumnName(int column) => data.GetColumnName(column);
     public Type GetColumnType(int column) => data.GetColumnType(column);
     public bool IsNull(int row, int column) => data.IsNull(row, column);
-    public string FormatCell(int row, int column) => data.FormatCell(row, column);
+    public string FormatCell(int row, int column) => data.FormatDisplayCell(row, column);
 
     // The immutable result is shared, without copying rows or binary buffers.
     public QueryResultSnapshot(QueryPreviewResult data, string connection, string source = "SQL query")
@@ -30,7 +30,7 @@ public sealed class QueryResultSnapshot
         var output = new StringBuilder();
         output.AppendLine(string.Join('\t', Enumerable.Range(0, ColumnCount).Select(c => Escape(GetColumnName(c)))));
         foreach (int index in indices)
-            output.AppendLine(string.Join('\t', Enumerable.Range(0, ColumnCount).Select(c => Escape(FormatCell(index, c)))));
+            output.AppendLine(string.Join('\t', Enumerable.Range(0, ColumnCount).Select(c => Escape(data.FormatCell(index, c)))));
         return output.ToString();
     }
 

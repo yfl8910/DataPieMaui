@@ -19,6 +19,7 @@ public sealed class QueryPreviewResult
     public bool IsNull(int row, int column) => rows[row][column] is null or DBNull;
     // Binary values are copied only when explicitly requested by an external caller.
     public object GetValue(int row, int column) => rows[row][column] is byte[] bytes ? bytes.Clone() : rows[row][column];
+    public string FormatDisplayCell(int row, int column) => NumericDisplay.Format(rows[row][column], System.Globalization.CultureInfo.CurrentCulture) ?? FormatCell(row, column);
     public string FormatCell(int row, int column) => rows[row][column] switch
     {
         null or DBNull => "NULL",

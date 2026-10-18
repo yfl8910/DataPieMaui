@@ -36,7 +36,7 @@
                     <td><input type="checkbox" aria-label="Select record" checked="@selected.Contains(row)" @onchange="e => Select(row, e.Value is true)" disabled="@(Session.IsBusy || DialogOpen)" /></td>
                     @foreach (DataColumn column in Session.Data.Columns)
                     {
-                        <td class="@(row.IsNull(column) ? "null" : "")">@Format(row[column])</td>
+                        <td class="@(row.IsNull(column) ? "null" : "")">@(DataPieCore.NumericDisplay.Format(row[column], CultureInfo.CurrentCulture) ?? Format(row[column]))</td>
                     }
                 </tr>
             }
