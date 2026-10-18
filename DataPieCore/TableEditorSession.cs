@@ -21,6 +21,11 @@ public sealed class TableEditorSession
     public DataTable Data { get; private set; } = new();
     public int Page { get; private set; }
     public bool HasNext { get; private set; }
+    public long TotalRows { get; private set; }
+    public string? SearchColumn { get; private set; }
+    public string SearchText { get; private set; } = "";
+    public bool IsSearchable(string column) => Data.Columns.Contains(column)
+        && Comparable(Data.Columns[column].DataType) && Data.Columns[column].DataType != typeof(byte[]);
     public bool HasDraft { get; set; }
     public bool IsBusy { get; set; }
     public bool CanEdit => keys.Count > 0 && Data.Rows.Cast<DataRow>().All(r => keys.All(k => !r.IsNull(k)))
@@ -49,6 +54,11 @@ public sealed class TableEditorSession
     }
 
     public void LoadPage(int page)
+        => LoadPage(page, SearchColumn, SearchText);
+
+    public void Search(string? column, string text) => LoadPage(0, string.IsNullOrEmpty(text) ? null : column, text);
+
+    private void LoadPage(int page, string? searchColumn, string searchText)
     {
         if (page < 0) throw new ArgumentOutOfRangeException(nameof(page));
         long offset = checked((long)page * PageSize);
@@ -56,10 +66,48 @@ public sealed class TableEditorSession
         access.conn.Open();
         using var command = access.conn.CreateCommand();
         command.CommandTimeout = 30;
+        string filter = "";
+        if (!string.IsNullOrEmpty(searchText))
+        {
+            if (searchColumn == null || !IsSearchable(searchColumn)) throw new ArgumentException("Select a searchable column.");
+            var type = Data.Columns[searchColumn].DataType;
+            string column = Quote(searchColumn);
+            var parameter = command.CreateParameter(); parameter.ParameterName = "@search";
+            if (type == typeof(string))
+            {
+                string literal = searchText.Replace("!", "!!").Replace("%", "!%").Replace("_", "!_");
+                if (databaseType == "SQLSERVER") literal = literal.Replace("[", "![");
+                parameter.Value = "%" + literal + "%";
+                filter = $" WHERE {column} LIKE @search ESCAPE '!'";
+            }
+            else if (type == typeof(DateTime) && DateTime.TryParseExact(searchText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+            {
+                parameter.Value = day;
+                var end = command.CreateParameter(); end.ParameterName = "@searchEnd"; end.Value = day.AddDays(1); command.Parameters.Add(end);
+                filter = $" WHERE {column} >= @search AND {column} < @searchEnd";
+            }
+            else
+            {
+                try
+                {
+                    parameter.Value = type == typeof(Guid) ? Guid.Parse(searchText)
+                        : type == typeof(DateTime) ? DateTime.Parse(searchText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+                        : type == typeof(DateTimeOffset) ? DateTimeOffset.Parse(searchText, CultureInfo.InvariantCulture)
+                        : type == typeof(TimeSpan) ? TimeSpan.Parse(searchText, CultureInfo.InvariantCulture)
+                        : Convert.ChangeType(searchText, type, CultureInfo.InvariantCulture);
+                }
+                catch (Exception ex) when (ex is FormatException or OverflowException)
+                { throw new ArgumentException($"Invalid search value for {searchColumn} ({type.Name}).", ex); }
+                filter = $" WHERE {column} = @search";
+            }
+            command.Parameters.Add(parameter);
+        }
         string order = keys.Count > 0 ? string.Join(",", keys.Select(Quote)) : "(SELECT NULL)";
+        command.CommandText = $"SELECT {(databaseType == "SQLSERVER" ? "COUNT_BIG(*)" : "COUNT(*)")} FROM {destination}{filter}";
+        long totalRows = Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
         command.CommandText = databaseType == "SQLSERVER"
-            ? $"SELECT * FROM {destination} ORDER BY {order} OFFSET {offset} ROWS FETCH NEXT {PageSize + 1} ROWS ONLY"
-            : $"SELECT * FROM {destination} ORDER BY {order} LIMIT {PageSize + 1} OFFSET {offset}";
+            ? $"SELECT * FROM {destination}{filter} ORDER BY {order} OFFSET {offset} ROWS FETCH NEXT {PageSize + 1} ROWS ONLY"
+            : $"SELECT * FROM {destination}{filter} ORDER BY {order} LIMIT {PageSize + 1} OFFSET {offset}";
         using var reader = command.ExecuteReader(CommandBehavior.KeyInfo);
         using var schema = reader.GetSchemaTable();
         var nextMetadata = new Dictionary<string, (string, bool, int)>();
@@ -116,6 +164,9 @@ public sealed class TableEditorSession
         metadata.Clear(); foreach (var entry in nextMetadata) metadata.Add(entry.Key, entry.Value);
         insertable.Clear(); insertable.UnionWith(nextInsertable);
         Page = page; HasNext = hasNext;
+        TotalRows = totalRows;
+        SearchColumn = string.IsNullOrEmpty(searchText) ? null : searchColumn;
+        SearchText = searchText;
     }
 
     public bool IsEditable(string column) => CanEdit && metadata.TryGetValue(column, out var info) && !info.ReadOnly;

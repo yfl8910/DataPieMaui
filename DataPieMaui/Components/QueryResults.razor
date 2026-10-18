@@ -14,8 +14,21 @@
         <div class="toolbar">
             <strong>@snapshot.RowCount.ToString("N0") rows · @snapshot.ColumnCount columns</strong>
             <button @onclick="() => CopyAsync(false)" disabled="@(selected is null)">Copy selected row</button>
-            <button @onclick="() => CopyAsync(true)" disabled="@(order.Length == 0)">Copy all preview rows</button>
+            <button @onclick="() => CopyAsync(true)" disabled="@(order.Length == 0)">@(filterColumn >= 0 ? "Copy matching rows" : "Copy all preview rows")</button>
         </div>
+        <form class="search-toolbar" @onsubmit="ApplySearch" @onsubmit:preventDefault>
+            <label>Column <select @bind="searchColumn">
+                <option value="-1">Select a column</option>
+                @for (int c = 0; c < snapshot.ColumnCount; c++)
+                {
+                    if (snapshot.GetColumnType(c) != typeof(byte[])) { <option value="@c">@snapshot.GetColumnName(c)</option> }
+                }
+            </select></label>
+            <label>Search <input type="search" @bind="searchText" @bind:event="oninput" placeholder="Contains text in loaded preview" /></label>
+            <button type="submit" disabled="@(searchColumn < 0)">Search</button>
+            <button type="button" @onclick="ClearSearch">Clear</button>
+            @if (filterColumn >= 0) { <span>Filtered by @snapshot.GetColumnName(filterColumn): @filterText</span> }
+        </form>
         @if (snapshot.Truncated)
         {
             <div class="notice">Showing the first 1,000 rows. Use export in the main window to retrieve the full result.</div>
@@ -46,11 +59,11 @@
                     }
                 </tbody>
             </table>
-            @if (order.Length == 0) { <div class="empty">The query returned no rows.</div> }
+            @if (order.Length == 0) { <div class="empty">@(filterColumn >= 0 ? "No matching records in the loaded preview." : "The query returned no rows.")</div> }
         </div>
         <footer>
             <span role="status">@message</span>
-            <div class="pagination"><button @onclick="Previous" disabled="@(page == 0)">Previous</button><span>Page @(page + 1) / @PageCount · @PageSize rows per page</span><button @onclick="Next" disabled="@(page + 1 >= PageCount)">Next</button></div>
+            <div class="pagination"><button @onclick="Previous" disabled="@(page == 0)">Previous</button><span>Page @(page + 1)/@PageCount · @order.Length.ToString("N0") rows</span><button @onclick="Next" disabled="@(page + 1 >= PageCount)">Next</button></div>
         </footer>
     }
 </main>
@@ -62,6 +75,8 @@
     private int[] order = [];
     private const int PageSize = 100;
     private int page, sortColumn = -1;
+    private int searchColumn = -1, filterColumn = -1;
+    private string searchText = "", filterText = "";
     private int? selected;
     private bool descending, disposed;
     private string message = "Click a column to sort. Select a row to copy it.";
@@ -74,14 +89,36 @@
         snapshot = Session.Current;
         order = Enumerable.Range(0, snapshot?.RowCount ?? 0).ToArray();
         page = 0; sortColumn = -1; selected = null; descending = false;
+        searchColumn = filterColumn = -1; searchText = filterText = "";
         message = "Click a column to sort. Select a row to copy it.";
     }
-    private void Sort(int column)
+    public void ApplySearch() => Search(searchColumn, searchText);
+    public void Search(int column, string text)
+    {
+        if (snapshot == null || column < 0 || column >= snapshot.ColumnCount || snapshot.GetColumnType(column) == typeof(byte[])) return;
+        filterColumn = string.IsNullOrEmpty(text) ? -1 : column;
+        filterText = text;
+        RebuildOrder();
+        message = "Search covers loaded preview rows only. Matches displayed text, ignoring case.";
+    }
+    public void ClearSearch()
+    {
+        searchColumn = filterColumn = -1; searchText = filterText = "";
+        RebuildOrder(); message = "Search cleared.";
+    }
+    private void RebuildOrder()
+    {
+        if (snapshot == null) return;
+        var indices = sortColumn >= 0 ? snapshot.Sort(sortColumn, descending) : Enumerable.Range(0, snapshot.RowCount).ToArray();
+        order = indices.Where(i => filterColumn < 0 || (!snapshot.IsNull(i, filterColumn)
+            && snapshot.FormatCell(i, filterColumn).Contains(filterText, StringComparison.OrdinalIgnoreCase))).ToArray();
+        page = 0; selected = null;
+    }
+    public void Sort(int column)
     {
         descending = sortColumn == column && !descending;
         sortColumn = column;
-        order = snapshot!.Sort(column, descending);
-        page = 0;
+        RebuildOrder();
     }
     private void Select(int index) => selected = index;
     private void SelectWithKey(KeyboardEventArgs e, int index) { if (e.Key is "Enter" or " ") Select(index); }

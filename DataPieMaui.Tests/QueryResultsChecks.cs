@@ -11,6 +11,27 @@ internal static class QueryResultsChecks
 {
     public static async Task Run(Func<string, Func<Task>, Task> test)
     {
+        await test("Query results search spans preview pages and preserves filtering when sorting and copying", async () =>
+        {
+            using var data = new DataTable(); data.Columns.Add("Name", typeof(string));
+            for (int i = 0; i < 205; i++) data.Rows.Add("row " + i);
+            data.Rows.Add("MATCH %_'"); data.Rows.Add("match other"); data.Rows.Add(DBNull.Value);
+            using var reader = data.CreateDataReader();
+            var snapshot = new QueryResultSnapshot(QueryPreviewResult.Read(reader, 1000), "Test");
+            var session = new QueryResultSession(); session.Set(snapshot);
+            var desktop = new Desktop();
+            using var component = new Harness { Session = session, Desktop = desktop }; component.Initialize();
+            component.Search(0, "match"); await component.CopyAsync(true);
+            Check(desktop.Text == snapshot.CopyText(new[] { 205, 206 }), "Search missed later pages or ignored case incorrectly");
+            component.Sort(0); await component.CopyAsync(true);
+            Check(desktop.Text == snapshot.CopyText(snapshot.Sort(0, false).Where(i => i is 205 or 206)), "Sort lost search filter");
+            component.Search(0, "%_'"); await component.CopyAsync(true);
+            Check(desktop.Text == snapshot.CopyText(new[] { 205 }), "Search did not treat special characters literally");
+            component.Search(0, "missing"); await component.CopyAsync(true);
+            Check(desktop.Text == snapshot.CopyText(Array.Empty<int>()), "Empty search retained old rows");
+            component.ClearSearch(); await component.CopyAsync(true);
+            Check(desktop.Text == snapshot.CopyText(snapshot.Sort(0, false)), "Clear lost rows or sorting");
+        });
         await test("Blazor results copy through desktop service and handle clipboard failure", async () =>
         {
             var session = new QueryResultSession();

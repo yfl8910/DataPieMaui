@@ -25,6 +25,37 @@ internal static class TableEditorChecks
         }
         Execute("CREATE TABLE Items(Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Notes TEXT); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1005) INSERT INTO Items SELECT x,'name '||x,NULL FROM n; CREATE TABLE NoKey(Name TEXT); INSERT INTO NoKey VALUES('read only'); CREATE TABLE Composite(A INTEGER NOT NULL,B INTEGER NOT NULL,Value TEXT, PRIMARY KEY(A,B)); INSERT INTO Composite VALUES(1,1,'first'),(1,2,'second');");
         Execute("CREATE TABLE InsertRows(Id INTEGER PRIMARY KEY AUTOINCREMENT,Name TEXT NOT NULL UNIQUE,Amount INTEGER NOT NULL,Note TEXT DEFAULT 'default note',Optional TEXT,UpperName TEXT GENERATED ALWAYS AS (upper(Name)) STORED); CREATE TABLE DefaultOnly(Id INTEGER PRIMARY KEY); CREATE TABLE ManualKey(Id INTEGER PRIMARY KEY,Name TEXT) WITHOUT ROWID;");
+        await test("Table editor searches across pages, preserves filters and treats wildcard input literally", () =>
+        {
+            Execute("CREATE TABLE SearchRows(Id INTEGER PRIMARY KEY,Name TEXT); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<205) INSERT INTO SearchRows SELECT x,'match '||x FROM n; INSERT INTO SearchRows VALUES(206,'100%_![quoted]''');");
+            var session = TableEditorSession.Open(cs, "SQLITE", "", "SearchRows");
+            Check(session.TotalRows == 206, "Initial total is not the full table count");
+            session.Search("Name", "match");
+            Check(session.TotalRows == 205, "Search total does not count all matches");
+            Check(session.Data.Rows.Count == 100 && session.HasNext, "Search was limited to visible rows");
+            session.LoadPage(2);
+            Check(session.TotalRows == 205, "Paging changed total count");
+            Check(session.Data.Rows.Count == 5 && !session.HasNext && session.SearchColumn == "Name", "Paging lost filter");
+            session.Search("Id", "205");
+            Check(session.Page == 0 && session.Data.Rows.Count == 1 && Convert.ToInt64(session.Data.Rows[0]["Id"]) == 205, "Typed search failed");
+            session.Save(session.Data.Rows[0], new Dictionary<string, object> { ["Name"] = "edited" });
+            session.LoadPage(0);
+            Check((string)session.Data.Rows[0]["Name"] == "edited", "Filtered edit failed");
+            try { session.Search("Id", "invalid"); throw new Exception("Expected invalid input"); }
+            catch (ArgumentException) { }
+            Check(session.SearchColumn == "Id" && session.Data.Rows.Count == 1, "Failed search changed active results");
+            session.Search("Name", "%_![quoted]'");
+            Check(session.Data.Rows.Count == 1, "Wildcards or quotes were not treated literally");
+            session.Delete(new[] { session.Data.Rows[0] }); session.LoadPage(0);
+            Check(session.TotalRows == 0, "Delete did not refresh filtered count");
+            Check(session.Data.Rows.Count == 0 && session.SearchColumn == "Name", "Filtered delete lost filter");
+            session.Search("Name", "missing");
+            Check(session.Data.Rows.Count == 0 && session.IsSearchable("Name"), "Empty results lost schema");
+            session.Search(null, "");
+            Check(session.TotalRows == 205, "Clear did not restore full table count");
+            Check(session.SearchColumn == null && session.Data.Rows.Count == 100 && session.HasNext, "Clear did not restore table");
+            session.Data.Dispose(); return Task.CompletedTask;
+        });
         await test("Table editor inserts into empty tables using generated keys, defaults and computed columns", () =>
         {
             var session = TableEditorSession.Open(cs, "SQLITE", "", "InsertRows");

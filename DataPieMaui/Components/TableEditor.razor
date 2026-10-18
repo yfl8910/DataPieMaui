@@ -12,10 +12,24 @@
         <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">Delete selected</button>
         <button @onclick="() => LoadAsync(Session.Page)" disabled="@(Session.IsBusy || DialogOpen)">Refresh</button>
     </div>
+    <form class="search-toolbar" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <label>Column <select @bind="searchColumn" disabled="@(Session.IsBusy || DialogOpen)">
+            <option value="">Select a column</option>
+            @foreach (DataColumn column in Session.Data.Columns)
+            {
+                if (Session.IsSearchable(column.ColumnName)) { <option value="@column.ColumnName">@column.ColumnName</option> }
+            }
+        </select></label>
+        <label>Search <input type="search" @bind="searchText" @bind:event="oninput" placeholder="Text contains; other types match exactly" disabled="@(Session.IsBusy || DialogOpen)" /></label>
+        <button type="submit" disabled="@(Session.IsBusy || DialogOpen || string.IsNullOrEmpty(searchColumn))">Search</button>
+        <button type="button" @onclick="ClearSearchAsync" disabled="@(Session.IsBusy || DialogOpen)">Clear</button>
+        @if (Session.SearchColumn != null) { <span>Filtered by @Session.SearchColumn: @Session.SearchText</span> }
+    </form>
     @if (!Session.CanEdit) { <p class="notice">@Session.ReadOnlyReason</p> }
     <div class="table-scroll" tabindex="0" aria-label="Table data">
         <table><thead><tr><th><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> Select all</label></th>@foreach (DataColumn column in Session.Data.Columns) { <th>@column.ColumnName</th> }</tr></thead>
         <tbody>
+            @if (Session.Data.Rows.Count == 0) { <tr><td colspan="@(Session.Data.Columns.Count + 1)" class="empty">@(Session.SearchColumn != null ? "No matching records." : "No records.")</td></tr> }
             @foreach (DataRow row in Session.Data.Rows)
             {
                 <tr class="@(selected.Contains(row) ? "selected" : "")">
@@ -30,7 +44,7 @@
     </div>
     <footer><span role="status" style="white-space:pre-wrap">@message</span><div class="pagination">
         <button @onclick="() => LoadAsync(Session.Page - 1)" disabled="@(Session.Page == 0 || Session.IsBusy || DialogOpen)">Previous</button>
-        <span>Page @(Session.Page + 1) · @Session.Data.Rows.Count records · @TableEditorSession.PageSize per page</span>
+        <span>Page @(Session.Page + 1)/@(Math.Max(1L, Session.TotalRows / TableEditorSession.PageSize + (Session.TotalRows % TableEditorSession.PageSize > 0 ? 1 : 0))) · @Session.TotalRows.ToString("N0") rows</span>
         <button @onclick="() => LoadAsync(Session.Page + 1)" disabled="@(!Session.HasNext || Session.IsBusy || DialogOpen)">Next</button>
     </div></footer>
 </main>
@@ -114,6 +128,23 @@
     }
     private readonly HashSet<string> touched = [];
     private string dialogError = "";
+    private string searchColumn = "", searchText = "";
+    public Task SearchAsync() => ApplySearchAsync(false);
+    public Task ClearSearchAsync() => ApplySearchAsync(true);
+    private async Task ApplySearchAsync(bool clear)
+    {
+        if (Session.IsBusy || DialogOpen) return;
+        Session.IsBusy = true;
+        try
+        {
+            await Task.Run(() => Session.Search(clear ? null : searchColumn, clear ? "" : searchText));
+            selected.Clear();
+            if (clear) { searchText = ""; searchColumn = ""; }
+            message = Session.SearchColumn == null ? "Search cleared." : "Search applied to the entire table. Dates: yyyy-MM-dd; boolean: true/false. Text case matching follows database rules.";
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { Session.IsBusy = false; }
+    }
     private string message = "Select one record to edit, or select records to delete. All table records are available through paging.";
     private static string Format(object value) => value switch
     {

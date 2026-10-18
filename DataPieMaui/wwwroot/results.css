@@ -27,3 +27,9 @@ tbody tr.selected { background: #d4ebe4; }
 footer { font-size: 13px; color: #68778c; }
 #blazor-error-ui { display: none; position: fixed; bottom: 0; background: #fff3d8; width: 100%; padding: 16px; z-index: 10; }
 .reload { margin-left: 12px; }
+.search-toolbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.search-toolbar label { display: grid; gap: 4px; }
+.search-toolbar input, .search-toolbar select { font: inherit; padding: 8px 10px; border: 1px solid #cbd5df; border-radius: 6px; background: white; color: #233043; max-width: 100%; }
+.search-toolbar input { width: 320px; }
+.search-toolbar span { align-self: center; overflow-wrap: anywhere; }
+.search-toolbar input:focus-visible, .search-toolbar select:focus-visible { outline: 2px solid #176b64; }
