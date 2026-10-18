@@ -21,7 +21,10 @@ window.tableEditorModal = (() => {
         if (!movable()) return;
         const area = viewport();
         if (!normalBounds) {
-            const width = Math.min(760, area.width), height = Math.min(640, area.height);
+            const wide = current.dataset.wide === 'true';
+            // Allow three 320px fields, gaps, body padding and a scrollbar by default.
+            const width = Math.min(wide ? Math.max(1080, window.innerWidth * 0.85) : 760, area.width);
+            const height = Math.min(wide ? window.innerHeight * 0.85 : 640, area.height);
             normalBounds = { width, height, left: (window.innerWidth - width) / 2, top: (window.innerHeight - height) / 2 };
         }
         normalBounds = clamp(normalBounds);
@@ -110,6 +113,7 @@ window.tableEditorModal = (() => {
                 opener = document.activeElement;
                 current = dialog;
                 gesture = null;
+                normalBounds = null; maximized = false;
                 applyBounds();
                 // Focus the dialog heading area, never the destructive action.
                 current.focus();

@@ -3,7 +3,7 @@
 .dialog-header, .dialog-actions { display: flex; align-items: center; gap: 12px; padding: 16px 20px; flex-shrink: 0; }
 .dialog-header { border-bottom: 1px solid #d8e0e9; justify-content: space-between; }
 .dialog-header h2 { font-size: 20px; margin: 0; }
-.dialog-body { overflow: auto; padding: 20px; min-height: 0; }
+.dialog-body { overflow: auto; padding: 20px; min-height: 0; container-type: inline-size; }
 .editor-dialog[data-movable=true] { position: fixed; max-height: none; max-width: none; }
 .editor-dialog[data-movable=true] .dialog-body { flex: 1; }
 .editor-dialog[data-movable=true] .dialog-header { cursor: move; touch-action: none; user-select: none; }
@@ -17,6 +17,18 @@
 .dialog-body > p { margin-bottom: 16px; }
 .dialog-actions { border-top: 1px solid #d8e0e9; justify-content: flex-end; }
 .edit-fields { display: grid; gap: 16px; }
+.edit-field { min-width: 0; }
+.editor-dialog[data-wide=true] .edit-fields { gap: 12px 20px; }
+.editor-dialog[data-wide=true] .edit-field textarea { min-height: 44px; }
+.editor-dialog[data-wide=true] .edit-field-long { grid-column: 1 / -1; }
+.editor-dialog[data-wide=true] .edit-field-long textarea { min-height: 96px; }
+@container (min-width: 660px) {
+    .editor-dialog[data-wide=true] .edit-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (min-width: 1000px) {
+    .editor-dialog[data-wide=true] .edit-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.editor-dialog[data-wide=true][data-maximized=true] .edit-fields { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
 .edit-field > label:first-child { display: grid; gap: 6px; font-weight: 600; overflow-wrap: anywhere; }
 .edit-field input:not([type=checkbox]), .edit-field textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #cbd5df; border-radius: 6px; font: inherit; }
 .edit-field textarea { min-height: 64px; resize: vertical; }
