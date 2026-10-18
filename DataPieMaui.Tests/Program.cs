@@ -29,6 +29,18 @@ long Count(string path, string table)
 }
 try
 {
+    await Test("Import targets distinguish SQL Server schemas and quote qualified names", () =>
+    {
+        var dbo = new TableStruct { Name = "Items", TableSchemaName = "dbo" };
+        var archive = new TableStruct { Name = "Items", TableSchemaName = "arch]ive" };
+        var candidates = new[] { dbo, archive };
+        string key = DataPieMaui.Services.Shared.TableSelection.Key(archive, "SQLSERVER");
+        Check(key == "[arch]]ive].[Items]" && ReferenceEquals(DataPieMaui.Services.Shared.TableSelection.Resolve(candidates, key, "SQLSERVER"), archive), "Schema-qualified selection failed");
+        Check(DataPieMaui.Services.Shared.TableSelection.SelectAll(archive, "SQLSERVER") == "SELECT * FROM [arch]]ive].[Items]", "Template query did not qualify the target");
+        try { DataPieMaui.Services.Shared.TableSelection.Resolve(candidates, "Items", "SQLSERVER"); throw new Exception("Expected ambiguous target rejection"); }
+        catch (InvalidOperationException) { }
+        return Task.CompletedTask;
+    });
     await Test("Schema display formats SQL Server lengths, precision and scale without altering SQLite types", () =>
     {
         Check(new Column { Type = "nvarchar", MaxLength = 100 }.DisplayType("SQLSERVER") == "nvarchar(50)", "Unicode byte length shown as character count");
@@ -206,6 +218,21 @@ try
         return Task.CompletedTask;
     });
     var csv = Path.Combine(root, "items.csv"); var excel = Path.Combine(root, "items.xlsx");
+    await Test("File import keeps source worksheet and table names independent of destination names", () =>
+    {
+        string workbook = Path.Combine(root, "source-mapping.xlsx");
+        using (var source = operations.OpenAccess()) ExcelIO.ExportSheetsWithMiniExcel(new[] { "Items", "Blobs" }, workbook, source, "SQLITE");
+        string destination = Path.Combine(root, "mapped-import.db"); SQLiteConnection.CreateFile(destination);
+        Sql(destination, "CREATE TABLE Destination(Id INTEGER, Name TEXT)");
+        using var target = DbAccessFactory.Create(Connection(destination), "SQLITE");
+        DatabaseOperations.Import(workbook, "Destination", target, sourceTableName: "Items");
+        Check(Count(destination, "Destination") == 2, "MiniExcel used destination name as source worksheet");
+        ExcelIO.ExcelDataReaderImport(workbook, "Destination", target, worksheetName: "Items");
+        Check(Count(destination, "Destination") == 4, "ExcelDataReader used destination name as source worksheet");
+        DatabaseOperations.Import(path, "Destination", target, sourceTableName: "Items");
+        Check(Count(destination, "Destination") == 6, "SQLite source table mapping failed");
+        return Task.CompletedTask;
+    });
     await Test("Full CSV export is independent of preview limit", () =>
     {
         using var access = operations.OpenAccess(); using var reader = access.GetDataReader("SELECT * FROM Items ORDER BY Id");

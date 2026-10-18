@@ -29,6 +29,7 @@
             <h2>@selected.DisplayName</h2><p>@selected.Kind</p>
             @if (selected.Kind == "Table")
             {
+                <button @onclick="EditSelectedTableAsync">EDIT</button>
                 <div class="schema-columns"><table><thead><tr><th>Column</th><th>Type</th><th>Primary key</th><th>Auto-generated ID</th><th>Nullable</th><th>Computed</th><th>Default</th></tr></thead>
                     <tbody>@foreach (var column in columns)
                     {
@@ -55,6 +56,13 @@
     private IEnumerable<DefinitionObject> Objects => (Database.Schema?.Tables.Select(t => new DefinitionObject("Table", Type == "SQLSERVER" ? t.TableSchemaName : "main", t.Name)) ?? [])
         .Concat(Definitions).Where(o => (kind == "All" || o.Kind == kind) && o.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase));
     private static string YesNo(bool value) => value ? "Yes" : "No";
+    public Task EditSelectedTableAsync() => RunAsync("Open table editor", async watch =>
+    {
+        if (selected is not { Kind: "Table" } item) return;
+        var table = Database.Schema!.Tables.SingleOrDefault(t => t.Name == item.Name && (Type != "SQLSERVER" || t.TableSchemaName == item.Schema))
+            ?? throw new InvalidOperationException("The table is no longer available. Refresh the schema.");
+        await OpenTableEditorAsync(table, watch);
+    });
     public Task SelectAsync(DefinitionObject item) => RunAsync("Read schema details", async watch =>
     {
         watch.Start();

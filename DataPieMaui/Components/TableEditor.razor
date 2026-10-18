@@ -14,7 +14,7 @@
     </div>
     @if (!Session.CanEdit) { <p class="notice">@Session.ReadOnlyReason</p> }
     <div class="table-scroll" tabindex="0" aria-label="Table data">
-        <table><thead><tr><th><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> Select all on this page</label></th>@foreach (DataColumn column in Session.Data.Columns) { <th>@column.ColumnName</th> }</tr></thead>
+        <table><thead><tr><th><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> Select all</label></th>@foreach (DataColumn column in Session.Data.Columns) { <th>@column.ColumnName</th> }</tr></thead>
         <tbody>
             @foreach (DataRow row in Session.Data.Rows)
             {

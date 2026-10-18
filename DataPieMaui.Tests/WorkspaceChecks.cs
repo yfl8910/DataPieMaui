@@ -183,13 +183,16 @@ internal static class WorkspaceChecks
             Check(ReferenceEquals(connections, workspace.Context.Connections), "Recreated page reloaded connection configuration");
             Check(workspace.Context.State.Status == status && !workspace.IsOperationRunning, "Recreated page changed operation status");
         });
-        await test("Import and export object previews share results without changing page inputs or selection", async () =>
+        await test("Import opens table editor and export previews preserve page inputs and selection", async () =>
         {
             string sql = workspace.Context.Form.Sql;
             workspace.Navigate("Import");
-            await importPage.PreviewImportTableAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Check(workspace.Context.Results.Current?.Source == "Table · Items" && workspace.Context.Results.Current.RowCount == 2, "Wrong import target preview");
-            Check(workspace.Context.Section == "Import" && workspace.Context.Form.Sql == sql, "Preview changed navigation or SQL editor");
+            var previousResult = workspace.Context.Results.Current;
+            await importPage.EditImportTableAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(desktop.TableEditor?.TableName == "Items" && desktop.TableEditor.Data.Rows.Count == 2, "Wrong import target editor");
+            Check(ReferenceEquals(workspace.Context.Results.Current, previousResult), "Import edit replaced query preview");
+            desktop.TableEditor!.Data.Dispose();
+            Check(workspace.Context.Section == "Import" && workspace.Context.Form.Sql == sql, "Edit changed navigation or SQL editor");
             workspace.Navigate("Export");
             var view = workspace.Context.Exports.Single(x => x.Name == "ItemNames"); view.Selected = true;
             await exportPage.PreviewObjectAsync(view.Name).WaitAsync(TimeSpan.FromSeconds(10));
@@ -394,7 +397,7 @@ internal static class WorkspaceChecks
             workspace.Context.Form.Sql = "SELECT '<script>alert(1)</script>'";
             var pages = new[]
             {
-                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("TableDesign", "Excel worksheet"), ("TableEdit", "Table Edit"), ("TableDesign", "Table to delete"), ("DatabaseSchema", "Database schema"), ("Import", "Source folder"),
+                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("TableDesign", "Excel worksheet"), ("TableDesign", "Table to delete"), ("DatabaseSchema", "Database schema"), ("Import", "Source folder"),
                 ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("Migration", "Choose destination and generate script"), ("About", "Blazor Hybrid")
             };
             // Render the conversion page without connecting to an external SQL Server.
@@ -420,7 +423,8 @@ internal static class WorkspaceChecks
                 }
                 if (section == "Import") Check(!html.Contains("Drop table"), "Deletion remains on import page" );
                 if (section == "TableDesign") Check(html.Contains("Generate SQL") == (expected == "Excel worksheet"), "Table design tabs show the wrong form" );
-                if (section is "Import" or "Export") Check(html.Contains("Query data"), "Object query button missing in " + section);
+                if (section == "Import") Check(html.Contains(">EDIT</button>") && !html.Contains("Query data"), "Import edit button missing or old preview button retained");
+                if (section == "Export") Check(html.Contains("Query data"), "Object query button missing in " + section);
                 if (section == "Procedures") Check(!html.Contains("object-preview"), "Procedures incorrectly offer table preview");
                 if (section == "Export") Check(html.Contains("View definition") && !html.Contains("SQL definition"), "Definition action missing or SQL eagerly shown");
                 Check(!html.Contains("<script>alert(1)</script>"), "SQL rendered as markup");
@@ -526,15 +530,13 @@ internal static class WorkspaceChecks
             workspace.Context.Form.ImportTable = originalImport; workspace.Context.Form.QueryTable = originalQuery;
             importPage.ChangeTab("File");
         });
-        await test("Table Edit opens a bound editor without dropping the selected table", async () =>
+        await test("Schema table details open the editor without a standalone Table Edit menu", async () =>
         {
-            workspace.Navigate("TableEdit");
-            Check(workspace.Context.Section == "TableEdit", "Edit menu not selected");
-            var editPage = new TableEditPage { Workspace = workspace };
-            var table = workspace.Context.Database.Schema!.Tables.First(t => t.Name == "Items");
-            workspace.Context.Form.EditTable = System.Text.Json.JsonSerializer.Serialize(new[] { table.TableSchemaName, table.Name });
-            await editPage.EditTableAsync();
-            Check(desktop.TableEditor?.TableName == "Items" && desktop.TableEditor.Data.Rows.Count > 0, "Table editor did not receive selected table");
+            workspace.Navigate("DatabaseSchema");
+            var page = new DatabaseSchemaView { Workspace = workspace };
+            await page.SelectAsync(new DBUtil.DefinitionObject("Table", "main", "Items"));
+            await page.EditSelectedTableAsync();
+            Check(desktop.TableEditor?.TableName == "Items" && desktop.TableEditor.Data.Rows.Count > 0, "Schema editor did not receive selected table");
             Check(workspace.Context.Tables.Contains("Items"), "Edit removed table");
             desktop.TableEditor!.Data.Dispose();
         });

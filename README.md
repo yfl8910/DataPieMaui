@@ -19,7 +19,7 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 - Preview query results in a separate, resizable Blazor window with dynamic columns, typed sorting, pagination, and copying.
 - Export queries and tables to Excel or CSV; export multiple tables or views to worksheets or separate CSV files.
 - Import Excel, CSV, or a matching table from a SQLite database through Import a file; use Batch import for CSV/XLSX folders. Optional single-file and automatic batch length validation report SQL Server field-length problems.
-- Design tables from Excel worksheets, review CREATE TABLE SQL, and open a separate table data editor from the Table Edit menu.
+- Design tables from Excel worksheets, review CREATE TABLE SQL, and open a separate table data editor from Import data or Database schema.
 - Add, edit, and delete table records in independent editor windows, with full-table paging, current-page selection, modal dialogs, and conflict checks; drop entire tables separately through Table design.
 - Run selected procedures without parameters, or run SQL Server procedures individually with typed parameter inputs, review, OUTPUT values, and RETURN codes.
 - View and edit supported SQL Server and SQLite view/procedure definitions with diff review and explicit save confirmation.
@@ -90,7 +90,6 @@ The sidebar follows this order. Database operations become available after conne
 | Stored procedures | Run procedures and inspect/edit supported definitions |
 | Database migration | Convert SQL Server to SQLite or generate SQL Server scripts from SQLite |
 | Table design | Create table structure from Excel or drop an entire table |
-| Table Edit | Open independent windows to add, edit, or delete table records |
 | About | Application information |
 
 1. Open **Database connection** and connect to SQL Server or SQLite. In the **SQLite** tab, **Create blank database and connect** opens a save picker, creates a valid empty `.db` file and connects without saving its connection configuration. Existing files are never overwritten; choose a new filename. Canceling the picker preserves the current connection. Use **Table design** afterward to create tables.
@@ -99,9 +98,9 @@ The sidebar follows this order. Database operations become available after conne
 4. Use the export buttons for the full query result, or **Batch export** for selected tables and views.
 5. Use **Import data** for its **Import a file** and **Batch import** tabs; **Clear data** empties the target table while keeping its structure.
 6. Use **Stored procedures** to run procedures or inspect definitions, and **Database migration** to export a SQL Server database.
-7. Open **Table design**, immediately after **Database migration**, and choose **Create table** or **Drop table**. **Table Edit** follows **Table design**, while **Database schema** follows **Database connection**. Creation defaults to the Excel sheet name; **Table Edit → select a table → Edit** opens a separate editor window.
+7. Open **Table design**, immediately after **Database migration**, and choose **Create table** or **Drop table**. **Database schema** follows **Database connection**. Creation defaults to the Excel sheet name; open a table editor from **Import data → Target table → EDIT** or **Database schema → select a table → EDIT**.
 
-On **Import data**, select a **Target table** and click **Query data** to inspect it. On **Batch export**, each table/view has its own **Query data** button, independent of the export checkboxes. These actions reuse the results window, show the object name, and preserve your SQL editor and selections. Object previews have the same 1,000-row limit, sorting, paging, and copying as SQL previews.
+On **Import data**, select a **Target table** and click **EDIT** to open an independent Table editor, with add/edit/delete dialogs and full-table paging. The import inputs and existing query preview are preserved. Tables without usable primary keys remain read-only; SQL Server target choices display schema-qualified names, so same-named tables in different schemas can be selected independently. On **Batch export**, each table/view retains its own **Query data** button, independent of the export checkboxes. Export object previews reuse the results window and have the same 1,000-row limit, sorting, paging, and copying as SQL previews.
 
 **Saved connections** retains its connection selector, **Connect**, and **Delete** buttons. **Connection details** shows a read-only, selectable connection string; it does not offer manual name/type/string editing, Test, Save as new, or Update selected. Removing a saved connection removes its configuration, not the database.
 
@@ -109,7 +108,7 @@ Successful exports append the output file's full path to the bottom status messa
 
 ### Import data layout and validation
 
-The top card contains **Target table**, **Query data**, **Export template**, and **Clear data**. Below it, **Import a file** and **Batch import** switch the content inside one shared white card. The target table and file/folder paths remain available when switching tabs or navigating away.
+The top card contains **Target table**, **EDIT**, **Export template**, and **Clear data**. The selected SQL Server schema/table identity is used consistently for editing, file/folder import, template export and clearing data. Excel worksheets and SQLite source tables still match the original unqualified table name. Below it, **Import a file** and **Batch import** switch the content inside one shared white card. The target table and file/folder paths remain available when switching tabs or navigating away.
 
 **Import a file** supports XLSX, XLS, CSV, and a SQLite database containing the matching source table. SQL Server import normalizes blank strings and whitespace to NULL for numeric, date/time, and bit destination columns in both normal and length-validation modes; text columns retain their contents. NOT NULL constraints without a usable default can still reject missing values. SQLite import resets parameter types for each row. Blank strings and whitespace in numeric/date destination columns become NULL; text columns retain empty strings and whitespace. NOT NULL constraints still apply. A failed SQLite file import is rolled back, and its errors identify the target table and data-row number. **Validate lengths and import** additionally checks SQL Server destination field lengths. **Batch import** appends supported CSV/XLSX files sequentially and enables length validation. A failed batch retains data already imported; the status identifies the failing file. **Export template** writes the selected table's columns to an empty Excel workbook. **Clear data** requires confirmation and retains the table structure.
 
@@ -137,7 +136,7 @@ Objects are grouped into **Tables**, **Views**, and **Stored procedures**, with 
 
 Select a table to inspect column names, types, primary keys, auto-generated IDs, nullability, computed fields, and defaults. SQL Server character lengths, decimal precision/scale, and temporal scale are formatted from metadata; spatial columns are included. SQLite defaults, generated columns, and rowid identity details load only when a table is selected. Indexes, unique/check constraints, and foreign key details are explicitly marked as not loaded, rather than absent.
 
-Table structure is read-only here: column renaming, type changes, and constraint editing are not implemented. Use **Table Edit** to change table records. **View definition** loads one view or procedure definition into a read-only dialog on request; opening this page does not load SQL bodies. For supported definition editing, use the definition actions on **Batch export** or **Stored procedures**. SQLite procedure parameter metadata is shown as not loaded. **Refresh schema** reloads the cached object list and clears the selected details.
+Table structure is read-only here: column renaming, type changes, and constraint editing are not implemented. Select a table and click **EDIT** to open its data editor; this is also available from Import data. **View definition** loads one view or procedure definition into a read-only dialog on request; opening this page does not load SQL bodies. For supported definition editing, use the definition actions on **Batch export** or **Stored procedures**. SQLite procedure parameter metadata is shown as not loaded. **Refresh schema** reloads the cached object list and clears the selected details.
 
 ### Table design: Create table
 
@@ -149,11 +148,11 @@ SQLite automatically creates the internal `sqlite_sequence` table when an AUTOIN
 
 ### Table design: Drop table
 
-**Table design → Drop table** retains its separate table selection and **Drop table** button. Confirm before permanently deleting the table structure and all data. Cancel leaves it intact. SQLite incoming foreign keys block deletion; SQL Server enforces database dependencies. Successful deletion refreshes the table lists and clears stale selections and query previews. The Table Edit window remains a separate feature for editing records.
+**Table design → Drop table** retains its separate table selection and **Drop table** button. Confirm before permanently deleting the table structure and all data. Cancel leaves it intact. SQLite incoming foreign keys block deletion; SQL Server enforces database dependencies. Successful deletion refreshes the table lists and clears stale selections and query previews. The Table editor window remains a separate feature for editing records.
 
-### Table Edit
+### Table editor
 
-**Table Edit** is an independent sidebar page directly below **Table design**. Select a table and click **Edit** to open its **Table editor** window. SQL Server table choices include the schema. Each window stays bound to its original database and table, even if the main workspace changes connections.
+There is no standalone Table Edit menu. Open a **Table editor** window using **Import data → Target table → EDIT**, or select a table on **Database schema** and click **EDIT**. SQL Server table choices include the schema. Each window stays bound to its original database and table, even if the main workspace changes connections.
 
 The editor reads 100 records per page and can page through the entire table; it does not share the query preview's 1,000-row limit. Rows are ordered by the primary key when available. Tables without usable non-NULL primary keys, or with unsupported column types, remain read-only. Composite primary keys are supported. The editor does not offer arbitrary SQL or field filters.
 
@@ -295,7 +294,7 @@ These previews are render snapshots, not an interactive web version of the deskt
 - All business pages, including login and connection management, keep their markup and page-specific workflows together in a single `.razor` file using an `@code` block. The static About page needs no code block.
 - `WorkspaceController` composes shared services and coordinates navigation and native-window lifecycle. Pages use `WorkspacePageBase` to access shared state and the operation runner. The connection page initializes saved connections once per workspace; revisiting the page preserves loaded configuration and operation status.
 - `Services/Shared/WorkspaceContext` owns session state and the shared capabilities for one workspace. Shared services survive navigation; `WorkspaceForm` retains input values when page components are recreated. `DatabaseConversionService` owns conversion execution, progress, and cancellation so the status bar and native close handler do not depend on a page instance.
-- `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by main-workspace pages. Table-editor windows maintain their own busy and draft state. `QueryPreviewService` shares table/view and SQL result loading, `WorkspaceContext.RefreshSchemaAsync` refreshes table lists after creation/deletion, and `FileNames` shares export filename normalization. `ExcelTableSql` reads worksheets and generates provider-specific table definitions.
+- `Services/Shared/WorkspaceOperationRunner` provides the single operation gate, error handling, and timing contract used by main-workspace pages. Table-editor windows maintain their own busy and draft state. `QueryPreviewService` shares table/view and SQL result loading, `WorkspaceContext.RefreshSchemaAsync` refreshes table lists after creation/deletion, and `FileNames` shares export filename normalization. `TableSelection` carries schema-qualified import targets separately from source worksheet/table names, and `WorkspacePageBase.OpenTableEditorAsync` is shared by Import data and Database schema. `ExcelTableSql` reads worksheets and generates provider-specific table definitions.
 - `IDesktopServices` separates the workspace from Windows-specific operations. `WindowsDesktopServices` dispatches native work to the UI thread, binds file pickers to their owner, and manages result and table-editor windows.
 - `DataPieCore` remains the database/import/export engine. Razor components run locally; no web server is required.
 

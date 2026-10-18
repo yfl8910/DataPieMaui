@@ -47,10 +47,9 @@ public sealed class WorkspaceContext
         Exports.Clear();
         Exports.AddRange(Tables.Select(n => new SelectableObject(n, "Table") { Selected = selected.Contains((n, "Table")) }));
         Exports.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "View").Select(o => new SelectableObject(o.Name, o.Kind) { DefinitionObject = o, Selected = selected.Contains((o.Name, o.Kind)) }));
-        if (!Tables.Contains(Form.ImportTable)) Form.ImportTable = "";
+        if (!Database.Schema.Tables.Any(t => TableSelection.Key(t, Database.Connection!.DatabaseType) == Form.ImportTable)) Form.ImportTable = "";
         if (!Tables.Contains(Form.QueryTable)) Form.QueryTable = "";
         if (!Tables.Contains(Form.DropTable)) Form.DropTable = "";
-        if (!Database.Schema.Tables.Any(t => System.Text.Json.JsonSerializer.Serialize(new[] { t.TableSchemaName, t.Name }) == Form.EditTable)) Form.EditTable = "";
         Notify();
     }
 

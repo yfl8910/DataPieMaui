@@ -23,16 +23,16 @@ internal sealed class DatabaseOperations
         Schema = schema;
     }
 
-    public static void Import(string path, string table, IDbAccess access, bool validateFieldLengths = false)
+    public static void Import(string path, string table, IDbAccess access, bool validateFieldLengths = false, string sourceTableName = null)
     {
         switch (Path.GetExtension(path).ToLowerInvariant())
         {
-            case ".xlsx": ExcelIO.MiniExcelReaderImport(path, table, access, validateFieldLengths); break;
-            case ".xls": ExcelIO.ExcelDataReaderImport(path, table, access, validateFieldLengths); break;
+            case ".xlsx": ExcelIO.MiniExcelReaderImport(path, table, access, validateFieldLengths, sourceTableName); break;
+            case ".xls": ExcelIO.ExcelDataReaderImport(path, table, access, validateFieldLengths, sourceTableName); break;
             case ".csv": ExcelIO.CsvImport(path, table, access, validateFieldLengths); break;
             case ".db":
                 using (var source = DbAccessFactory.Create(new DBConfig { ProviderName = "SQLITE", DataBase = path }.GetConstring(), "SQLITE"))
-                using (var reader = source.GetDataReader(SqlQueryBuilder.BuildSelectAll(table, "SQLITE")))
+                using (var reader = source.GetDataReader(SqlQueryBuilder.BuildSelectAll(sourceTableName ?? table, "SQLITE")))
                     if (validateFieldLengths && access is SqlServerDbAccess sqlServer)
                         sqlServer.BulkInsert(table, reader, path);
                     else

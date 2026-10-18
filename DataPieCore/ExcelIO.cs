@@ -15,26 +15,26 @@ namespace DataPieCore
 {
     public static class ExcelIO
     {
-        public static void ExcelDataReaderImport(string filePath, string tableName, IDbAccess dbAccess, bool validateFieldLengths = false)
+        public static void ExcelDataReaderImport(string filePath, string tableName, IDbAccess dbAccess, bool validateFieldLengths = false, string worksheetName = null)
         {
             ArgumentNullException.ThrowIfNull(filePath);
             ArgumentNullException.ThrowIfNull(dbAccess);
             using var stream = OpenReadStream(filePath);
             using var reader = ExcelReaderFactory.CreateReader(stream);
-            SelectWorksheet(reader, tableName);
+            SelectWorksheet(reader, worksheetName ?? tableName);
             using var headerReader = new HeaderRowDataReader(reader);
             BulkInsertFile(dbAccess, tableName, headerReader, filePath, validateFieldLengths);
         }
 
-        public static void MiniExcelReaderImport(string filePath, string tableName, IDbAccess dbAccess, bool validateFieldLengths = false)
+        public static void MiniExcelReaderImport(string filePath, string tableName, IDbAccess dbAccess, bool validateFieldLengths = false, string worksheetName = null)
         {
             ArgumentNullException.ThrowIfNull(filePath);
             ArgumentNullException.ThrowIfNull(dbAccess);
             using var stream = OpenReadStream(filePath);
             var sheetNames = MiniExcel.GetSheetNames(stream);
-            string sheetName = sheetNames.Count == 1 ? sheetNames[0] : tableName;
+            string sheetName = sheetNames.Count == 1 ? sheetNames[0] : worksheetName ?? tableName;
             if (!sheetNames.Contains(sheetName))
-                throw new ArgumentException($"Worksheet '{tableName}' was not found in the workbook.", nameof(tableName));
+                throw new ArgumentException($"Worksheet '{sheetName}' was not found in the workbook.", nameof(tableName));
 
             stream.Position = 0;
             using var reader = MiniExcel.GetReader(stream, true, sheetName: sheetName);

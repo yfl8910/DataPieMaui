@@ -36,7 +36,6 @@
                                     case "Query": <QueryPage /> break;
                                     case "TableDesign": <TableDesignPage /> break;
                                     case "DatabaseSchema": <DatabaseSchemaView /> break;
-                                    case "TableEdit": <TableEditPage /> break;
                                     case "Import": <ImportPage /> break;
                                     case "Export": <ExportPage /> break;
                                     case "Procedures": <ProceduresPage /> break;
@@ -73,7 +72,6 @@
         ("Procedures", "Stored procedures", "▷", "Run selected procedures in sequence."),
         ("Migration", "Database migration", "⇄", "Convert SQL Server to SQLite or generate SQL Server scripts from SQLite."),
         ("TableDesign", "Table design", "", "Create table structure from Excel or drop a table."),
-        ("TableEdit", "Table Edit", "✎", "Select a table to open its data editor."),
         ("About", "About", "ⓘ", "A local workspace for your database tasks.")
     ];
     private string Title => navigation.First(x => x.Id == Controller.Context.Section).Label;

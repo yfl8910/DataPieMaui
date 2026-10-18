@@ -62,10 +62,10 @@
         await Database.ConnectAsync(Info(record));
         State.DatabaseType = Database.Connection!.DatabaseType;
         Tables = Database.Schema!.Tables.Select(t => t.Name).ToArray();
-        Form.QueryTable = Form.ImportTable = Tables.FirstOrDefault() ?? "";
+        Form.QueryTable = Tables.FirstOrDefault() ?? "";
+        Form.ImportTable = Database.Schema.Tables.FirstOrDefault() is { } first ? DataPieMaui.Services.Shared.TableSelection.Key(first, Type) : "";
         Form.Sql = Form.ImportPath = Form.ImportFolder = "";
         Form.CreateTableSql = "";
-        Form.EditTable = "";
         Form.DropTable = "";
         Results.Set(null);
         QuerySummary = "Run a preview to open the result table in a separate window.";

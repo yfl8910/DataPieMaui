@@ -5,7 +5,7 @@
 
 
     <section class="card">
-        <div class="actions align-end"><label class="grow">Target table<select @bind="Form.ImportTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label><button @onclick="PreviewImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">Query data</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Clear data</button></div>
+        <div class="actions align-end"><label class="grow">Target table<select @bind="Form.ImportTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label><button @onclick="EditImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">EDIT</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Clear data</button></div>
     </section>
 <section class="card">
 <div class="tabs" aria-label="Import methods">
@@ -34,7 +34,10 @@
         Form.ImportTab = tab;
         Notify();
     }
-    public Task PreviewImportTableAsync() => Context.Preview.PreviewObjectAsync(Form.ImportTable);
+    public Task EditImportTableAsync() => RunAsync("Open table editor", async watch =>
+    {
+        await OpenTableEditorAsync(SelectedImportTable(), watch);
+    });
 
     public Task BrowseImportAsync(bool folder) => RunAsync(folder ? "Select folder" : "Select import file", async watch =>
     {
@@ -48,14 +51,16 @@
     public Task ImportFileWithLengthValidationAsync() => ImportFileAsync(true);
     private Task ImportFileAsync(bool validateFieldLengths) => RunAsync(validateFieldLengths ? "Validate lengths and import" : "Import file", async watch =>
     {
-        string table = Required(Form.ImportTable, "Select a table."), path = Form.ImportPath;
+        var table = SelectedImportTable();
+        string path = Form.ImportPath;
         if (!File.Exists(path)) throw new FileNotFoundException("Select an existing file.");
         watch.Start();
         await ImportIntoTableAsync(path, table, validateFieldLengths);
     });
     public Task ImportDirectoryAsync() => RunAsync("Batch import", async watch =>
     {
-        string table = Required(Form.ImportTable, "Select a table."), folder = Form.ImportFolder;
+        var table = SelectedImportTable();
+        string folder = Form.ImportFolder;
         if (!Directory.Exists(folder)) throw new DirectoryNotFoundException("Select an existing folder.");
         var files = ImportFiles.GetFiles(folder);
         if (files.Count == 0) throw new InvalidOperationException("The folder contains no CSV or XLSX files.");
@@ -79,36 +84,39 @@
     });
     public Task ExportTemplateAsync() => RunAsync("Export template", async watch =>
     {
-        string table = Required(Form.ImportTable, "Select a table."), type = Type;
-        var path = await Desktop.SaveAsync(table + "_template", ".xlsx");
+        var table = SelectedImportTable();
+        string type = Type;
+        var path = await Desktop.SaveAsync(table.Name + "_template", ".xlsx");
         if (path == null) return;
         watch.Start();
         await Task.Run(() =>
         {
             using var access = Database.OpenAccess();
-            using var reader = access.GetDataReader(SqlQueryBuilder.BuildSelectAll(table, type) + " where 1=2");
-            ExcelIO.SaveMiniExcel(path, reader, table);
+            using var reader = access.GetDataReader(TableSelection.SelectAll(table, type) + " where 1=2");
+            ExcelIO.SaveMiniExcel(path, reader, table.Name);
         });
         watch.Stop();
         State.Status = $"Export template completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}";
     });
     public Task ClearTableAsync() => RunAsync("Clear table", async watch =>
     {
-        string table = Required(Form.ImportTable, "Select a table.");
-        if (!await Dialogs.ConfirmAsync("Clear table", $"Delete all data in {table}? This action cannot be undone.", "Clear")) return;
+        var table = SelectedImportTable();
+        if (!await Dialogs.ConfirmAsync("Clear table", $"Delete all data in {TableSelection.Label(table, Type)}? This action cannot be undone.", "Clear")) return;
         watch.Start();
         await Task.Run(() =>
         {
             using var access = Database.OpenAccess();
-            access.TruncateTable(table);
+            access.TruncateTable(TableSelection.Key(table, Type));
         });
         Results.Set(null);
         QuerySummary = "Run a new preview after clearing the table.";
     });
 
-    private Task ImportIntoTableAsync(string path, string table, bool validateFieldLengths) => Task.Run(() =>
+    private DBUtil.TableStruct SelectedImportTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.ImportTable, "Select a table."), Type);
+
+    private Task ImportIntoTableAsync(string path, DBUtil.TableStruct table, bool validateFieldLengths) => Task.Run(() =>
     {
         using var access = Database.OpenAccess();
-        DatabaseOperations.Import(path, table, access, validateFieldLengths);
+        DatabaseOperations.Import(path, TableSelection.Key(table, Type), access, validateFieldLengths, table.Name);
     });
 }

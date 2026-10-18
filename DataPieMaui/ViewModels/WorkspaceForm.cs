@@ -5,7 +5,6 @@ public sealed class WorkspaceForm
 {
     public string TableDesignTab { get; set; } = "Create";
     public string ImportTab { get; set; } = "File";
-    public string EditTable { get; set; } = "";
     public string DropTable { get; set; } = "";
 
     public string CreateTablePath { get; set; } = "";

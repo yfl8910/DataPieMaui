@@ -30,6 +30,14 @@ public abstract class WorkspacePageBase : ComponentBase
 
     private protected void Notify() => Context.Notify();
     private protected Task RunAsync(string title, Func<Stopwatch, Task> action) => Context.Operations.RunAsync(title, action);
+    private protected async Task OpenTableEditorAsync(DBUtil.TableStruct table, Stopwatch watch)
+    {
+        var connection = Database.Connection!;
+        string label = State.Connection;
+        watch.Start();
+        var session = await Task.Run(() => DataPieCore.TableEditorSession.Open(connection.ConnectionString, connection.DatabaseType, table.TableSchemaName, table.Name));
+        await Desktop.ShowTableEditorAsync(session, label);
+    }
     private protected static string Required(string value, string message) =>
         string.IsNullOrWhiteSpace(value) ? throw new InvalidOperationException(message) : value;
 }
