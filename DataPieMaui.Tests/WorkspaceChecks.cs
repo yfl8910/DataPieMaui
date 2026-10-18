@@ -356,6 +356,35 @@ internal static class WorkspaceChecks
             finally { workspace.Context.Connections = previous; connectionsPage.SelectConnection(previousId); }
             return Task.CompletedTask;
         });
+        await test("Schema browser shows cached objects, reads table details and loads definitions only on request", async () =>
+        {
+            var services = new ServiceCollection().AddLogging();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                SchemaHarness? browser = null;
+                var component = await renderer.RenderComponentAsync<SchemaHarness>(ParameterView.FromDictionary(new Dictionary<string, object?>
+                {
+                    ["HostWorkspace"] = workspace, ["Capture"] = (Action<SchemaHarness>)(value => browser = value)
+                }));
+                Check(component.ToHtmlString().Contains("Search objects") && component.ToHtmlString().Contains("ItemNames"), "Objects or search missing");
+                int loadedDefinitions = workspace.Context.Database.Schema!.ViewDefinitions.Count;
+                await browser!.SelectAsync(new DBUtil.DefinitionObject("Table", "main", "Items")); browser.Render();
+                var html = component.ToHtmlString();
+                Check(html.Contains("Primary key") && html.Contains("Computed") && html.Contains("not loaded in this view"), "Column metadata or unloaded detail notice missing");
+                Check(workspace.Context.Database.Schema.ViewDefinitions.Count == loadedDefinitions, "Selecting table eagerly loaded SQL definitions");
+                var view = workspace.Context.Database.Schema.DefinitionObjects.First(o => o.Kind == "View");
+                await browser.SelectAsync(view); browser.Render();
+                Check(component.ToHtmlString().Contains("View definition"), "Definition action missing");
+                var pending = browser.ShowDefinitionAsync();
+                for (int i = 0; i < 200 && workspace.Context.Dialogs.Current == null; i++) await Task.Delay(10);
+                Check(!string.IsNullOrEmpty(workspace.Context.Dialogs.Current?.Sql), "Definition not read on demand");
+                workspace.Context.Dialogs.Complete(true); await pending;
+                await browser.RefreshAsync(); browser.Render();
+                Check(component.ToHtmlString().Contains("Select a table, view or procedure"), "Refresh retained stale selection");
+            });
+        });
         await test("Blazor pages render, encode input and show accessible confirmations", async () =>
         {
             var services = new ServiceCollection().AddLogging();
@@ -365,7 +394,7 @@ internal static class WorkspaceChecks
             workspace.Context.Form.Sql = "SELECT '<script>alert(1)</script>'";
             var pages = new[]
             {
-                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("TableDesign", "Excel worksheet"), ("TableEdit", "Table Edit"), ("TableDesign", "Table to delete"), ("Import", "Source folder"),
+                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("TableDesign", "Excel worksheet"), ("TableEdit", "Table Edit"), ("TableDesign", "Table to delete"), ("DatabaseSchema", "Database schema"), ("Import", "Source folder"),
                 ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("Migration", "Choose destination and generate script"), ("About", "Blazor Hybrid")
             };
             // Render the conversion page without connecting to an external SQL Server.
@@ -581,6 +610,13 @@ internal static class WorkspaceChecks
         using var command = new SQLiteCommand("SELECT COUNT(*) FROM Items", access); return (long)command.ExecuteScalar();
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+    public sealed class SchemaHarness : DatabaseSchemaView
+    {
+        [Parameter] public WorkspaceController HostWorkspace { get; set; } = default!;
+        [Parameter] public Action<SchemaHarness>? Capture { get; set; }
+        protected override void OnInitialized() { Workspace = HostWorkspace; Capture?.Invoke(this); }
+        public void Render() => StateHasChanged();
+    }
     private sealed class FakeDesktop : IDesktopServices
     {
         public int ResultWindows { get; private set; }

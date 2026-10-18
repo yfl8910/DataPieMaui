@@ -149,6 +149,32 @@ namespace DBUtil
             return columns.AsEnumerable().Select(ReadColumn).ToList();
         }
 
+        public List<Column> ReadSchemaColumns(string tableName)
+        {
+            string quoted = DataPieCore.SqlQueryBuilder.QuoteIdentifier(tableName, "SQLITE");
+            var columns = new List<Column>();
+            using (var reader = GetDataReader("PRAGMA main.table_xinfo(" + quoted + ")"))
+                while (reader.Read())
+                    columns.Add(new Column
+                    {
+                        Name = reader.GetString(1), Type = reader.GetString(2),
+                        IsNullable = Convert.ToInt32(reader.GetValue(3)) == 0,
+                        Default = reader.IsDBNull(4) ? "" : reader.GetValue(4).ToString(), DefaultLoaded = true,
+                        IsPrimaryKey = Convert.ToInt32(reader.GetValue(5)) > 0,
+                        IsComputed = Convert.ToInt32(reader.GetValue(6)) is 2 or 3
+                    });
+            bool primaryIndex = false;
+            using (var reader = GetDataReader("PRAGMA main.index_list(" + quoted + ")"))
+                while (reader.Read()) if (reader.GetString(3) == "pk") primaryIndex = true;
+            var keys = columns.Where(c => c.IsPrimaryKey).ToList();
+            if (!primaryIndex && keys.Count == 1 && keys[0].Type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase))
+            {
+                keys[0].IsIdentity = true;
+                keys[0].IsNullable = false;
+            }
+            return columns;
+        }
+
         private static Column ReadColumn(DataRow row) => new Column
         {
             Name = row["COLUMN_NAME"].ToString(),

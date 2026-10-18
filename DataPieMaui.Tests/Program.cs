@@ -29,6 +29,27 @@ long Count(string path, string table)
 }
 try
 {
+    await Test("Schema display formats SQL Server lengths, precision and scale without altering SQLite types", () =>
+    {
+        Check(new Column { Type = "nvarchar", MaxLength = 100 }.DisplayType("SQLSERVER") == "nvarchar(50)", "Unicode byte length shown as character count");
+        Check(new Column { Type = "nvarchar", MaxLength = -1 }.DisplayType("SQLSERVER") == "nvarchar(max)", "MAX length failed");
+        Check(new Column { Type = "decimal", MaxLength = 17, Precision = 18, Scale = 4 }.DisplayType("SQLSERVER") == "decimal(18,4)", "Precision/scale ignored");
+        Check(new Column { Type = "datetime2", MaxLength = 8, Scale = 3 }.DisplayType("SQLSERVER") == "datetime2(3)", "Temporal scale ignored");
+        Check(new Column { Type = "NUMERIC(12,2)" }.DisplayType("SQLITE") == "NUMERIC(12,2)", "SQLite declared type changed");
+        return Task.CompletedTask;
+    });
+    await Test("SQLite schema details read defaults, generated fields and rowid identity on demand", () =>
+    {
+        string schemaPath = Path.Combine(root, "schema-details.db"); SQLiteConnection.CreateFile(schemaPath);
+        using var access = (SQLiteDbAccess)DbAccessFactory.Create(Connection(schemaPath), "SQLITE");
+        access.ExecuteSql("CREATE TABLE Details(Id INTEGER PRIMARY KEY, Label TEXT DEFAULT 'hello', Amount NUMERIC(12,2), Computed TEXT GENERATED ALWAYS AS (upper(Label)) STORED)");
+        var columns = access.ReadSchemaColumns("Details");
+        Check(columns.Count == 4 && columns.Single(c => c.Name == "Computed").IsComputed == true, "Generated column missing");
+        Check(columns[0].IsIdentity && columns[0].IsPrimaryKey && !columns[0].IsNullable, "Rowid identity flags incorrect");
+        Check(columns[1].DefaultLoaded && columns[1].Default == "'hello'", "Default was not loaded");
+        Check(columns[2].DisplayType("SQLITE").Equals("NUMERIC(12,2)", StringComparison.OrdinalIgnoreCase), "Declared type lost precision");
+        return Task.CompletedTask;
+    });
     await Test("Streaming SQL Server schema preserves table identity and column metadata", () =>
     {
         using var tables = new DataTable();
@@ -38,15 +59,17 @@ try
         columns.Columns.Add("TableId", typeof(int)); columns.Columns.Add("Name", typeof(string)); columns.Columns.Add("Type", typeof(string));
         columns.Columns.Add("Length", typeof(short)); columns.Columns.Add("Default", typeof(string));
         columns.Columns.Add("Nullable", typeof(bool)); columns.Columns.Add("Identity", typeof(bool)); columns.Columns.Add("PrimaryKey", typeof(int));
-        columns.Rows.Add(10, "Id", "int", (short)4, DBNull.Value, false, true, 1);
-        columns.Rows.Add(10, "Name", "nvarchar", (short)100, "(N'')", true, false, 0);
-        columns.Rows.Add(20, "Notes", "nvarchar", (short)-1, DBNull.Value, true, false, 0);
+        columns.Columns.Add("Precision", typeof(byte)); columns.Columns.Add("Scale", typeof(byte)); columns.Columns.Add("Computed", typeof(bool));
+        columns.Rows.Add(10, "Id", "int", (short)4, DBNull.Value, false, true, 1, (byte)10, (byte)0, false);
+        columns.Rows.Add(10, "Name", "nvarchar", (short)100, "(N'')", true, false, 0, (byte)0, (byte)0, false);
+        columns.Rows.Add(20, "Notes", "nvarchar", (short)-1, DBNull.Value, true, false, 0, (byte)0, (byte)0, true);
         using var reader = new DataTableReader(new[] { tables, columns });
         var result = SqlServerDbAccess.ReadTableSchema(reader);
         Check(result.Count == 3 && result[0].Columns.Count == 2 && result[1].Columns.Count == 1
             && result[2].Columns.Count == 0 && result[1].TableSchemaName == "archive", "Table/schema grouping changed");
         var id = result[0].Columns[0]; var name = result[0].Columns[1];
         Check(id.Name == "Id" && id.IsIdentity && id.IsPrimaryKey && !id.IsNullable && id.Default == "", "Key metadata changed");
+        Check(id.Precision == 10 && id.Scale == 0 && id.DefaultLoaded && result[1].Columns[0].IsComputed == true, "Detailed column metadata not loaded");
         Check(name.Name == "Name" && name.Type == "nvarchar" && name.MaxLength == 100 && name.Default == "(N'')"
             && name.IsNullable && !name.IsIdentity && !name.IsPrimaryKey && result[1].Columns[0].MaxLength == -1, "Column order, length or default changed");
         using var emptyTables = tables.Clone(); using var emptyColumns = columns.Clone();

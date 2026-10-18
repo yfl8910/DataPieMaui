@@ -81,7 +81,7 @@ Each successful script save atomically replaces the file and retains the origina
 4. Use the export buttons for the full query result, or **Batch export** for selected tables and views.
 5. Use **Import data** for its **Import a file** and **Batch import** tabs; **Clear data** empties the target table while keeping its structure.
 6. Use **Stored procedures** to run procedures or inspect definitions, and **Database migration** to export a SQL Server database.
-7. Open **Table design**, immediately after **Database migration**, and choose **Create table** or **Drop table**. The separate **Table Edit** menu is directly below **Table design**. Creation defaults to the Excel sheet name; **Table Edit → select a table → Edit** opens a separate editor window.
+7. Open **Table design**, immediately after **Database migration**, and choose **Create table** or **Drop table**. **Table Edit** follows **Table design**, while **Database schema** follows **Database connection**. Creation defaults to the Excel sheet name; **Table Edit → select a table → Edit** opens a separate editor window.
 
 On **Import data**, select a **Target table** and click **Query data** to inspect it. On **Batch export**, each table/view has its own **Query data** button, independent of the export checkboxes. These actions reuse the results window, show the object name, and preserve your SQL editor and selections. Object previews have the same 1,000-row limit, sorting, paging, and copying as SQL previews.
 
@@ -115,7 +115,7 @@ SQLite automatically creates the internal `sqlite_sequence` table when an AUTOIN
 
 ### Table Edit
 
-**Table design** has separate **Create table** and **Drop table** tabs. **Table Edit** is a separate sidebar entry directly below **Table design**. Switching tabs preserves the Excel selection and SQL draft. Import file/folder inputs remain on **Import data**.
+**Table design** has separate **Create table** and **Drop table** tabs. **Database schema** is a separate sidebar entry immediately below **Database connection**. **Table Edit** follows **Table design**. Switching tabs preserves the Excel selection and SQL draft. Import file/folder inputs remain on **Import data**.
 
 **Table Edit** uses a separate table selection, including schema names for SQL Server. Select a table and click **Edit**. The editor is bound to that database and table even if the main window changes connections. Browse the entire table using 100-row pages; the query preview's 1,000-row limit does not apply. Select one record and click **EDIT** to open an edit dialog, then choose **Save** or **Cancel** in that dialog. Fields scroll while the action buttons remain visible. Failed saves preserve the draft and show the error in the dialog; closing a modified draft asks whether to discard it. Primary keys, generated fields and binary fields are read-only. Tables without usable primary keys or with unsupported column types remain read-only. The editor does not show a Set to NULL checkbox. Untouched NULL values remain NULL, while entering text replaces NULL with that value. Clearing existing text saves an empty string; dates use yyyy-MM-dd and decimals use a dot.
 
@@ -248,3 +248,8 @@ Use **Add record** in the table editor to open a new-record dialog. Generated id
 ### Table design: Drop table
 
 **Table design → Drop table** retains its separate table selection and **Drop table** button. Confirm before permanently deleting the table structure and all data. Cancel leaves it intact. SQLite incoming foreign keys block deletion; SQL Server enforces database dependencies. Successful deletion refreshes the table lists and clears stale selections and query previews. The Table Edit window remains a separate feature for editing records.
+
+
+### Database schema
+
+Open **Database schema** in the sidebar immediately below **Database connection** to browse cached tables, views and procedures grouped by schema. Search by object name or schema and filter by object type. Selecting a table displays its columns, correctly formatted types, primary key, identity, nullable, computed and default metadata. SQL Server precision and scale are collected with the existing column query; SQLite detailed metadata is read only when a table is selected, including generated columns. SQL Server spatial columns are included in the schema list. Indexes, unique/check constraints and foreign key details are explicitly marked as not loaded rather than absent. **View definition** reads a single view or procedure definition on request in a read-only dialog; opening the browser does not load all SQL bodies. **Refresh schema** reloads the object list and clears the selected details. SQLite procedure parameter metadata is shown as not loaded.

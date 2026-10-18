@@ -1,0 +1,81 @@
+@using DBUtil
+@inherits WorkspacePageBase
+
+<section class="card">
+    <div class="actions"><h2>Database schema · @Database.Schema?.Name</h2><button @onclick="RefreshAsync">Refresh schema</button></div>
+    <p>@Database.Schema?.Tables.Count tables · @Definitions.Count(o => o.Kind == "View") views · @Definitions.Count(o => o.Kind == "Procedure") procedures</p>
+    <div class="actions align-end">
+        <label class="grow">Search objects<input @bind="search" @bind:event="oninput" placeholder="Name or schema" /></label>
+        <label>Object type<select @bind="kind"><option>All</option><option>Table</option><option>View</option><option>Procedure</option></select></label>
+    </div>
+</section>
+<section class="card schema-browser">
+    <div class="schema-object-list" aria-label="Database objects">
+        @foreach (var group in Objects.GroupBy(o => o.Schema).OrderBy(g => g.Key))
+        {
+            <h3>@(string.IsNullOrEmpty(group.Key) ? "Scripts" : group.Key)</h3>
+            @foreach (var item in group.OrderBy(o => o.Name))
+            {
+                <button class="@(selected == item ? "primary" : "")" @onclick="() => SelectAsync(item)">@item.Kind · @item.Name</button>
+            }
+        }
+        @if (!Objects.Any()) { <p>No matching objects.</p> }
+    </div>
+    <div class="schema-details">
+        @if (selected is null) { <p>Select a table, view or procedure to inspect it.</p> }
+        else
+        {
+            <h2>@selected.DisplayName</h2><p>@selected.Kind</p>
+            @if (selected.Kind == "Table")
+            {
+                <div class="schema-columns"><table><thead><tr><th>Column</th><th>Type</th><th>Primary key</th><th>Auto-generated ID</th><th>Nullable</th><th>Computed</th><th>Default</th></tr></thead>
+                    <tbody>@foreach (var column in columns)
+                    {
+                        <tr><td>@column.Name</td><td>@column.DisplayType(Type)</td><td>@YesNo(column.IsPrimaryKey)</td><td>@YesNo(column.IsIdentity)</td><td>@YesNo(column.IsNullable)</td><td>@(column.IsComputed.HasValue ? YesNo(column.IsComputed.Value) : "Not loaded")</td><td>@(column.DefaultLoaded ? string.IsNullOrEmpty(column.Default) ? "None" : column.Default : "Not loaded")</td></tr>
+                    }</tbody>
+                </table></div>
+                <p class="muted">Indexes, unique/check constraints and foreign key details are not loaded in this view.</p>
+            }
+            else
+            {
+                @if (selected.Kind == "Procedure") { <p>Has parameters: @(Type == "SQLSERVER" ? YesNo(selected.HasParameters) : "Not loaded")</p> }
+                <p class="muted">The SQL definition is loaded only when requested.</p>
+                <button @onclick="ShowDefinitionAsync">View definition</button>
+            }
+        }
+    </div>
+</section>
+
+@code {
+    private string search = "", kind = "All";
+    private DefinitionObject? selected;
+    private IReadOnlyList<Column> columns = [];
+    private IReadOnlyList<DefinitionObject> Definitions => Database.Schema?.DefinitionObjects ?? [];
+    private IEnumerable<DefinitionObject> Objects => (Database.Schema?.Tables.Select(t => new DefinitionObject("Table", Type == "SQLSERVER" ? t.TableSchemaName : "main", t.Name)) ?? [])
+        .Concat(Definitions).Where(o => (kind == "All" || o.Kind == kind) && o.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase));
+    private static string YesNo(bool value) => value ? "Yes" : "No";
+    public Task SelectAsync(DefinitionObject item) => RunAsync("Read schema details", async watch =>
+    {
+        watch.Start();
+        IReadOnlyList<Column> loaded = [];
+        if (item.Kind == "Table")
+        {
+            var table = Database.Schema!.Tables.Single(t => t.Name == item.Name && (Type != "SQLSERVER" || t.TableSchemaName == item.Schema));
+            if (Type == "SQLITE") loaded = await Task.Run(() => { using var access = (SQLiteDbAccess)Database.OpenAccess(); return access.ReadSchemaColumns(item.Name); });
+            else loaded = table.Columns;
+        }
+        selected = item; columns = loaded;
+    });
+    public Task ShowDefinitionAsync() => RunAsync("Read definition", async watch =>
+    {
+        if (selected is not { Kind: "View" or "Procedure" } item || !Definitions.Contains(item)) return;
+        watch.Start();
+        var definition = await Task.Run(() => { using var access = Database.OpenAccess(); return ((IDefinitionReader)access).ReadDefinition(item); });
+        watch.Stop();
+        await Dialogs.ShowDefinitionAsync(item.DisplayName, definition.Sql, definition.Notice);
+    });
+    public Task RefreshAsync() => RunAsync("Refresh schema", async watch =>
+    {
+        watch.Start(); await Context.RefreshSchemaAsync(); selected = null; columns = [];
+    });
+}

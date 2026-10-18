@@ -30,10 +30,25 @@ namespace DBUtil
 
 
         public List<ForeignKeySchema> ForeignKeys { get; set; } = new();
+        public bool ForeignKeysLoaded { get; set; }
     }
 
     public class Column
     {
+        public int? Precision { get; set; }
+        public int? Scale { get; set; }
+        public bool? IsComputed { get; set; }
+        public bool DefaultLoaded { get; set; }
+        public string DisplayType(string databaseType)
+        {
+            if (databaseType != "SQLSERVER" || string.IsNullOrEmpty(Type) || Type.Contains("(")) return Type ?? "";
+            string type = Type.ToLowerInvariant();
+            if (type is "nvarchar" or "nchar" or "varchar" or "char" or "varbinary" or "binary")
+                return Type + "(" + (MaxLength == -1 ? "max" : (type is "nvarchar" or "nchar" ? MaxLength / 2 : MaxLength).ToString()) + ")";
+            if (type is "decimal" or "numeric" && Precision.HasValue && Scale.HasValue) return $"{Type}({Precision},{Scale})";
+            if (type is "datetime2" or "datetimeoffset" or "time" && Scale.HasValue) return $"{Type}({Scale})";
+            return Type;
+        }
         public string Name { set; get; }
         public string Type { set; get; }
 

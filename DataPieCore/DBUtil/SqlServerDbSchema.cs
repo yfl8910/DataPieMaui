@@ -137,12 +137,11 @@ WITH PrimaryKeyColumns AS (
 )
 SELECT c.object_id, c.name, ty.name, c.max_length,
 OBJECT_DEFINITION(c.default_object_id), c.is_nullable, c.is_identity,
-CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END
+CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END, c.precision, c.scale, c.is_computed
 FROM sys.tables t
 JOIN sys.columns c ON c.object_id = t.object_id
 JOIN sys.types ty ON ty.user_type_id = CASE WHEN c.system_type_id = 240 THEN c.user_type_id ELSE c.system_type_id END
 LEFT JOIN PrimaryKeyColumns pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id
-WHERE ty.name NOT IN ('geometry', 'geography')
 ORDER BY c.object_id, c.column_id";
             using var reader = GetDataReader(sql);
             return ReadTableSchema(reader);
@@ -179,7 +178,11 @@ ORDER BY c.object_id, c.column_id";
                     Default = reader.IsDBNull(4) ? "" : reader.GetString(4),
                     IsNullable = reader.GetBoolean(5),
                     IsIdentity = reader.GetBoolean(6),
-                    IsPrimaryKey = reader.GetInt32(7) == 1
+                    IsPrimaryKey = reader.GetInt32(7) == 1,
+                    DefaultLoaded = true,
+                    Precision = reader.FieldCount > 8 ? Convert.ToInt32(reader.GetValue(8)) : null,
+                    Scale = reader.FieldCount > 9 ? Convert.ToInt32(reader.GetValue(9)) : null,
+                    IsComputed = reader.FieldCount > 10 ? reader.GetBoolean(10) : null
                 });
             }
             return tables;
@@ -223,7 +226,10 @@ ORDER BY fk.object_id, fc.constraint_column_id";
 
             var byTable = keys.ToLookup(item => (item.Schema, item.Table), item => item.Key);
             foreach (var table in tables)
+            {
                 table.ForeignKeys = byTable[(table.TableSchemaName, table.Name)].ToList();
+                table.ForeignKeysLoaded = true;
+            }
         }
 
         public List<string> ShowViews()
