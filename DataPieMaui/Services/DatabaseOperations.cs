@@ -44,7 +44,7 @@ internal sealed class DatabaseOperations
 
     public Task DropTableAsync(string table) => Task.Run(() =>
     {
-        if (Schema == null || !Schema.Tables.Any(t => t.Name == table)) throw new InvalidOperationException("Select a table in the current database.");
+        if (Schema == null || !Schema.Tables.Any(t => Shared.TableSelection.Key(t, Connection!.DatabaseType) == table)) throw new InvalidOperationException("Select a table in the current database.");
         using var access = OpenAccess();
         if (Connection!.DatabaseType == "SQLITE")
         {

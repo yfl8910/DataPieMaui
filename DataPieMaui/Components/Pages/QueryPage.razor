@@ -3,7 +3,7 @@
 @inherits WorkspacePageBase
 <section class="card">
     <div class="actions align-end"><label class="grow">Table<select @bind="Model.Form.QueryTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label>
-        <button @onclick="EditQueryTableAsync" disabled="@(string.IsNullOrEmpty(Form.QueryTable))">EDIT</button>
+        <button @onclick="EditQueryTableAsync" disabled="@(string.IsNullOrEmpty(Form.QueryTable))">Query&amp;Edit</button>
         @foreach (var kind in new[] { "SELECT", "UPDATE", "DELETE" }) { <button @onclick="() => GenerateAsync(kind)">@kind</button> }
     </div>
     <label>SQL editor<textarea class="sql-editor" @bind="Model.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="Enter SQL. Preview shows up to 1,000 rows."></textarea></label>
@@ -56,7 +56,7 @@
         watch.Stop();
         State.Status = $"SQL completed in {watch.Elapsed.TotalSeconds:F1} s: {count:N0} rows affected";
     });
-    public Task ExportQueryAsync(bool csv, bool wholeTable) => RunAsync("Export data", async watch =>
+    public Task ExportQueryAsync(bool csv, bool wholeTable) => wholeTable && !csv ? Context.TableActions.ExportExcelAsync(SelectedQueryTable()) : RunAsync("Export data", async watch =>
     {
         var table = wholeTable ? SelectedQueryTable() : null;
         string name = table?.Name ?? "Query";

@@ -16,6 +16,10 @@
         {
             <ProcedureExecutionView Session="procedure" OnClose="() => Dialogs.Complete(true)" />
         }
+        else if (dialog.TableImport is { } tableImport)
+        {
+            <TableImportView Options="tableImport" OnComplete="Dialogs.Complete" />
+        }
         else
         {
             @if (!string.IsNullOrEmpty(dialog.Sql)) { <SqlDefinitionView Sql="@dialog.Sql" /> }

@@ -30,31 +30,8 @@
     private EventCallback<SelectableObject> ParameterAction => ParameterizedTab
         ? EventCallback.Factory.Create<SelectableObject>(this, RunWithParametersAsync) : default;
 
-    public Task RunWithParametersAsync(SelectableObject item) => RunAsync("Load procedure parameters", async watch =>
-    {
-        var connection = Database.Connection;
-        if (connection?.DatabaseType != "SQLSERVER" || !Procedures.Contains(item) || item.DefinitionObject is not { HasParameters: true } target) return;
-        var parameters = await Task.Run(() =>
-        {
-            using var access = (SqlServerDbAccess)DbAccessFactory.Create(connection.ConnectionString, "SQLSERVER");
-            return access.ReadProcedureParameters(target);
-        });
-        var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connection.ConnectionString);
-        var session = new ProcedureExecutionSession(builder.DataSource + " / " + builder.InitialCatalog, target, parameters, async values =>
-        {
-            if (!ReferenceEquals(connection, Database.Connection)) throw new InvalidOperationException("Connection changed. Reopen this window.");
-            State.Status = $"Running procedure {target.DisplayName}…";
-            return await Task.Run(() =>
-            {
-                using var access = (SqlServerDbAccess)DbAccessFactory.Create(connection.ConnectionString, "SQLSERVER");
-                return access.ExecuteProcedure(target, parameters, values);
-            });
-        });
-        await Dialogs.ShowProcedureAsync(session);
-        State.Status = session.Result != null ? $"Procedure {target.DisplayName} completed in {session.ElapsedSeconds:F1} s."
-            : session.Error.Length > 0 ? $"Procedure {target.DisplayName} was not completed. Check the database before retrying." : "Procedure execution canceled.";
-    });
-
+    public Task RunWithParametersAsync(SelectableObject item) => Procedures.Contains(item) && item.DefinitionObject is { } target
+        ? Context.ProcedureActions.RunWithParametersAsync(target) : Task.CompletedTask;
     public void ClearSelection()
     {
         if (IsOperationRunning) return;
@@ -62,31 +39,7 @@
         Notify();
     }
 
-    public Task RunProceduresAsync() => RunAsync("Run stored procedures", async watch =>
-    {
-        if (ParameterizedTab) return;
-        var selected = Procedures.Where(x => x.Selected && (!IsSqlServer || x.DefinitionObject?.HasParameters != true)).ToArray();
-        var names = selected.Select(x => Database.Connection?.DatabaseType == "SQLSERVER" ? SqlServerDbAccess.QualifiedProcedureName(x.DefinitionObject ?? throw new InvalidOperationException("Procedure metadata is missing. Reconnect.")) : x.Name).ToArray();
-        if (names.Length == 0) throw new InvalidOperationException("Select stored procedures.");
-        if (!await Dialogs.ConfirmAsync("Run stored procedures", $"Run {names.Length} procedures in sequence? They may modify data.", "Run")) return;
-        watch.Start();
-        var warnings = await Task.Run(() =>
-        {
-            using var access = Database.OpenAccess(); var messages = new List<string>();
-            var scripts = access is SQLiteDbAccess ? access.GetProcs() : new List<Proc>();
-            foreach (var name in names)
-            {
-                access.RunProcedure(name);
-                var warning = scripts.FirstOrDefault(p => p.Name == name)?.ScriptWarning;
-                if (!string.IsNullOrEmpty(warning)) messages.Add(name + ": " + warning);
-            }
-            return messages;
-        });
-        watch.Stop();
-        if (warnings.Count > 0)
-        {
-            State.Status = $"Procedures completed in {watch.Elapsed.TotalSeconds:F1} s with skipped SQL statements.";
-            await Dialogs.AlertAsync("Partial execution warning", string.Join(Environment.NewLine, warnings));
-        }
-    });
+    public Task RunProceduresAsync() => ParameterizedTab ? Task.CompletedTask : Context.ProcedureActions.RunProceduresAsync(
+        Procedures.Where(x => x.Selected && (!IsSqlServer || x.DefinitionObject?.HasParameters != true))
+            .Select(x => x.DefinitionObject ?? throw new InvalidOperationException("Procedure metadata is missing. Reconnect.")).ToArray());
 }

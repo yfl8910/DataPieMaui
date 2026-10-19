@@ -1,0 +1,15 @@
+<div class="actions" aria-label="Table actions">
+    <button @onclick="OnImport">Import file</button>
+    <button @onclick="OnExport">Export Excel</button>
+    <button @onclick="OnEdit">Query&amp;Edit</button>
+    <button class="danger" @onclick="OnClear">Clear Data</button>
+    <button class="danger" @onclick="OnDrop">DROP TABLE</button>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnImport { get; set; }
+    [Parameter] public EventCallback OnExport { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnClear { get; set; }
+    [Parameter] public EventCallback OnDrop { get; set; }
+}

@@ -19,6 +19,8 @@ public sealed class WorkspaceContext
     public WorkspaceOperationRunner Operations { get; }
     public QueryPreviewService Preview { get; }
     public DefinitionService Definitions { get; }
+    public TableActionService TableActions { get; }
+    public ProcedureActionService ProcedureActions { get; }
     public string Section { get; internal set; } = "Connections";
     public string QuerySummary { get; internal set; } = "Run a preview to open the result table in a separate window.";
     public IReadOnlyList<Dbinfo> Connections { get; internal set; } = [];
@@ -35,6 +37,8 @@ public sealed class WorkspaceContext
         Operations = new WorkspaceOperationRunner(State, Dialogs);
         Preview = new QueryPreviewService(this);
         Definitions = new DefinitionService(this);
+        TableActions = new TableActionService(this);
+        ProcedureActions = new ProcedureActionService(this);
         State.PropertyChanged += (_, _) => Notify();
         Dialogs.Changed += Notify;
     }
@@ -49,7 +53,7 @@ public sealed class WorkspaceContext
         Exports.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "View").Select(o => new SelectableObject(o.Name, o.Kind) { DefinitionObject = o, Selected = selected.Contains((o.Name, o.Kind)) }));
         if (!Database.Schema.Tables.Any(t => TableSelection.Key(t, Database.Connection!.DatabaseType) == Form.ImportTable)) Form.ImportTable = "";
         if (!Database.Schema.Tables.Any(t => TableSelection.Key(t, Database.Connection!.DatabaseType) == Form.QueryTable)) Form.QueryTable = "";
-        if (!Tables.Contains(Form.DropTable)) Form.DropTable = "";
+        if (!Database.Schema.Tables.Any(t => TableSelection.Key(t, Database.Connection!.DatabaseType) == Form.DropTable)) Form.DropTable = "";
         Notify();
     }
 

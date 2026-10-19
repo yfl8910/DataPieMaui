@@ -12,7 +12,7 @@
         <span class="muted">Selected across both tabs: @Model.Exports.Count(x => x.Selected && x.Kind == "Table") tables, @Model.Exports.Count(x => x.Selected && x.Kind == "View") views</span>
         <div class="actions"><button @onclick="() => SelectAll(true)">Select all</button><button @onclick="() => SelectAll(false)">Clear selection</button></div>
     </div>
-    <ObjectSelection Items="VisibleItems" Label="@(Model.Form.ExportTab == "Table" ? "Tables" : "Views")" OnPreview="PreviewObjectAsync" OnDefinition="Context.Definitions.ShowAsync" OnSelectionChanged="SelectionChanged" />
+    <ObjectSelection Items="VisibleItems" Label="@(Model.Form.ExportTab == "Table" ? "Tables" : "Views")" OnPreviewItem="PreviewItemAsync" OnDefinition="Context.Definitions.ShowAsync" OnSelectionChanged="SelectionChanged" />
     <div class="actions"><button class="primary" @onclick='() => ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => ExportBatchAsync("epplus")'>Excel (EPPlus)</button><button @onclick='() => ExportBatchAsync("csv")'>CSV folder</button></div>
 </section>
 
@@ -33,6 +33,8 @@
     }
 
     public Task PreviewObjectAsync(string name) => Context.Preview.PreviewObjectAsync(name);
+    public Task PreviewItemAsync(SelectableObject item) => item.DefinitionObject is { Kind: "View" } target
+        ? Context.Preview.PreviewObjectAsync(target) : Context.Preview.PreviewObjectAsync(item.Name);
 
     public Task ExportBatchAsync(string mode) => RunAsync("Batch export", async watch =>
     {

@@ -8,7 +8,11 @@
             {
                 <button aria-label="@($"View definition: {item.DisplayName}")" @onclick="() => OnDefinition.InvokeAsync(item)">View definition</button>
             }
-            @if (OnPreview.HasDelegate)
+            @if (OnPreviewItem.HasDelegate)
+            {
+                <button class="object-preview" aria-label="@($"Query data: {item.DisplayName}")" @onclick="() => OnPreviewItem.InvokeAsync(item)">Query data</button>
+            }
+            else if (OnPreview.HasDelegate)
             {
                 <button class="object-preview" aria-label="@($"Query data: {item.Name}")" @onclick="() => OnPreview.InvokeAsync(item.Name)">Query data</button>
             }
@@ -26,6 +30,7 @@
     [Parameter] public EventCallback OnSelectionChanged { get; set; }
     private Task NotifySelectionChanged() => OnSelectionChanged.InvokeAsync();
     [Parameter] public EventCallback<string> OnPreview { get; set; }
+    [Parameter] public EventCallback<SelectableObject> OnPreviewItem { get; set; }
     [Parameter] public EventCallback<SelectableObject> OnDefinition { get; set; }
     [Parameter] public EventCallback<SelectableObject> OnRunParameters { get; set; }
 }

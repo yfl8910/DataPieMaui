@@ -5,7 +5,7 @@
 
 
     <section class="card">
-        <div class="actions align-end"><label class="grow">Target table<select @bind="Form.ImportTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label><button @onclick="EditImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">EDIT</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Clear data</button></div>
+        <div class="actions align-end"><label class="grow">Target table<select @bind="Form.ImportTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label><button @onclick="EditImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">Query&amp;Edit</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Clear data</button></div>
     </section>
 <section class="card">
 <div class="tabs" aria-label="Import methods">
@@ -57,31 +57,7 @@
         watch.Start();
         await ImportIntoTableAsync(path, table, validateFieldLengths);
     });
-    public Task ImportDirectoryAsync() => RunAsync("Batch import", async watch =>
-    {
-        var table = SelectedImportTable();
-        string folder = Form.ImportFolder;
-        if (!Directory.Exists(folder)) throw new DirectoryNotFoundException("Select an existing folder.");
-        var files = ImportFiles.GetFiles(folder);
-        if (files.Count == 0) throw new InvalidOperationException("The folder contains no CSV or XLSX files.");
-        watch.Start();
-        // Await each file so progress cannot arrive after the completion message.
-        for (int i = 0; i < files.Count; i++)
-        {
-            var file = files[i];
-            State.Status = $"Importing {i + 1}/{files.Count}: {file.Name}";
-            try
-            {
-                await ImportIntoTableAsync(file.FullName, table, true);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Import failed for {file.Name}. Previously imported data has been kept: {ex.Message}", ex);
-            }
-        }
-        watch.Stop();
-        State.Status = $"Batch import completed in {watch.Elapsed.TotalSeconds:F1} s.";
-    });
+    public Task ImportDirectoryAsync() => Context.TableActions.ImportDirectoryAsync(Form.ImportFolder, SelectedImportTable(), true);
     public Task ExportTemplateAsync() => RunAsync("Export template", async watch =>
     {
         var table = SelectedImportTable();
@@ -98,25 +74,10 @@
         watch.Stop();
         State.Status = $"Export template completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}";
     });
-    public Task ClearTableAsync() => RunAsync("Clear table", async watch =>
-    {
-        var table = SelectedImportTable();
-        if (!await Dialogs.ConfirmAsync("Clear table", $"Delete all data in {TableSelection.Label(table, Type)}? This action cannot be undone.", "Clear")) return;
-        watch.Start();
-        await Task.Run(() =>
-        {
-            using var access = Database.OpenAccess();
-            access.TruncateTable(TableSelection.Key(table, Type));
-        });
-        Results.Set(null);
-        QuerySummary = "Run a new preview after clearing the table.";
-    });
+    public Task ClearTableAsync() => Context.TableActions.ClearAsync(SelectedImportTable());
 
     private DBUtil.TableStruct SelectedImportTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.ImportTable, "Select a table."), Type);
 
-    private Task ImportIntoTableAsync(string path, DBUtil.TableStruct table, bool validateFieldLengths) => Task.Run(() =>
-    {
-        using var access = Database.OpenAccess();
-        DatabaseOperations.Import(path, TableSelection.Key(table, Type), access, validateFieldLengths, table.Name);
-    });
+    private Task ImportIntoTableAsync(string path, DBUtil.TableStruct table, bool validateFieldLengths)
+        => Context.TableActions.ImportIntoAsync(path, table, validateFieldLengths);
 }

@@ -2,6 +2,7 @@ using System.Data.SQLite;
 using DataPieMaui.Components;
 using DataPieMaui.Components.Pages;
 using DataPieMaui.Services;
+using DataPieMaui.ViewModels;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -436,8 +437,8 @@ internal static class WorkspaceChecks
                 }
                 if (section == "Import") Check(!html.Contains("Drop table"), "Deletion remains on import page" );
                 if (section == "TableDesign") Check(html.Contains("Generate SQL") == (expected == "Excel worksheet"), "Table design tabs show the wrong form" );
-                if (section == "Import") Check(html.Contains(">EDIT</button>") && !html.Contains("Query data"), "Import edit button missing or old preview button retained");
-                if (section == "Query") Check(html.Contains(">EDIT</button>"), "SQL query edit button missing");
+                if (section == "Import") Check(html.Contains(">Query&amp;Edit</button>") && !html.Contains("Query data"), "Import edit button missing or old preview button retained");
+                if (section == "Query") Check(html.Contains(">Query&amp;Edit</button>"), "SQL query edit button missing");
                 if (section == "Export") Check(html.Contains("Query data"), "Object query button missing in " + section);
                 if (section == "Procedures") Check(!html.Contains("object-preview"), "Procedures incorrectly offer table preview");
                 if (section == "Export") Check(html.Contains("View definition") && !html.Contains("SQL definition"), "Definition action missing or SQL eagerly shown");
@@ -544,6 +545,16 @@ internal static class WorkspaceChecks
             workspace.Context.Form.ImportTable = originalImport; workspace.Context.Form.QueryTable = originalQuery;
             importPage.ChangeTab("File");
         });
+        await test("Schema view Query data shares the preview window and row limit", async () =>
+        {
+            var page = new DatabaseSchemaView { Workspace = workspace };
+            var view = workspace.Context.Database.Schema!.DefinitionObjects.Single(o => o.Kind == "View" && o.Name == "ManyRows");
+            await page.SelectAsync(view);
+            int before = desktop.ResultWindows;
+            await page.QuerySelectedViewAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(desktop.ResultWindows == before + 1 && workspace.Context.Results.Current is { RowCount: 1000, Truncated: true }, "Schema view did not use the limited shared preview");
+            Check(workspace.Context.Results.Current!.Source.Contains(view.DisplayName), "Preview source lost view identity");
+        });
         await test("Schema table details open the editor without a standalone Table Edit menu", async () =>
         {
             workspace.Navigate("DatabaseSchema");
@@ -553,6 +564,66 @@ internal static class WorkspaceChecks
             Check(desktop.TableEditor?.TableName == "Items" && desktop.TableEditor.Data.Rows.Count > 0, "Schema editor did not receive selected table");
             Check(workspace.Context.Tables.Contains("Items"), "Edit removed table");
             desktop.TableEditor!.Data.Dispose();
+        });
+        await test("Schema table actions import without length validation by default, export all rows and confirm deletion", async () =>
+        {
+            using (var db = new SQLiteConnection(connection))
+            {
+                db.Open(); using var create = new SQLiteCommand("CREATE TABLE SchemaActions(Id INTEGER, Name TEXT)", db); create.ExecuteNonQuery();
+            }
+            await workspace.Context.RefreshSchemaAsync();
+            var page = new DatabaseSchemaView { Workspace = workspace };
+            await page.SelectAsync(new DBUtil.DefinitionObject("Table", "main", "SchemaActions"));
+            string input = Path.Combine(root, "schema-import.csv");
+            File.WriteAllText(input, "Id,Name\n1,imported\n2,second\n");
+            var pending = page.ImportSelectedTableAsync();
+            var options = workspace.Context.Dialogs.Current?.TableImport;
+            Check(options != null && options.Table == "SchemaActions" && !options.ValidateLengths, "Wrong target or length validation enabled by default");
+            workspace.Context.Dialogs.Complete(false); await pending;
+            pending = page.ImportSelectedTableAsync();
+            workspace.Context.Dialogs.Current!.TableImport!.Path = input;
+            workspace.Context.Dialogs.Complete(true); await pending.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Context.Dialogs.Current == null, "Schema import failed");
+            string output = Path.Combine(root, "schema-export.xlsx");
+            var previousSave = desktop.Save;
+            try
+            {
+                desktop.Save = () => Task.FromResult<string?>(output);
+                await page.ExportSelectedTableAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                Check(File.Exists(output) && workspace.Context.State.Status.Contains(output), "Schema export or output path missing");
+                using var exported = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true);
+                Check(exported.Rows.Count == 2 && Convert.ToString(exported.Rows[0]["Name"]) == "imported", "Schema export did not contain imported rows");
+            }
+            finally { desktop.Save = previousSave; }
+            string batchFolder = Path.Combine(root, "schema-batch-import");
+            Directory.CreateDirectory(batchFolder);
+            File.Copy(input, Path.Combine(batchFolder, "rows.csv"));
+            pending = page.ImportSelectedTableAsync();
+            var batchOptions = workspace.Context.Dialogs.Current!.TableImport!;
+            batchOptions.Path = input;
+            batchOptions.Batch = true;
+            var previousFolder = desktop.Folder;
+            try
+            {
+                desktop.Folder = batchFolder;
+                await batchOptions.BrowseAsync();
+                Check(batchOptions.Folder == batchFolder && batchOptions.Path == input && !batchOptions.ValidateLengths, "Batch switch lost paths or enabled length validation");
+            }
+            finally { desktop.Folder = previousFolder; }
+            workspace.Context.Dialogs.Complete(true);
+            await pending.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(workspace.Context.State.Status.StartsWith("Batch import completed"), "Schema batch import did not use shared completion status");
+            using (var db = new SQLiteConnection(connection))
+            {
+                db.Open(); using var count = new SQLiteCommand("SELECT COUNT(*) FROM SchemaActions", db);
+                Check(Convert.ToInt64(count.ExecuteScalar()) == 4, "Schema batch import appended to the wrong table");
+            }
+            pending = page.DropSelectedTableAsync();
+            Check(workspace.Context.Dialogs.Current?.Title == "Drop table", "Drop skipped confirmation");
+            workspace.Context.Dialogs.Complete(false); await pending;
+            Check(workspace.Context.Tables.Contains("SchemaActions"), "Cancel deleted the table");
+            pending = page.DropSelectedTableAsync(); workspace.Context.Dialogs.Complete(true); await pending.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(!workspace.Context.Database.Schema!.Tables.Any(t => t.Name == "SchemaActions"), "Dropped table remained in schema");
         });
         await test("SQLite Drop table rejects foreign-key references without deleting data", async () =>
         {
@@ -611,6 +682,25 @@ internal static class WorkspaceChecks
             Check(Count(convertedConnection) == 0, "Canceled procedure changed data");
             running = proceduresPage.RunProceduresAsync(); workspace.Context.Dialogs.Complete(true); await running.WaitAsync(TimeSpan.FromSeconds(10));
             Check(Count(convertedConnection) == 1, "Confirmed procedure did not execute");
+            using (var db = new SQLiteConnection(convertedConnection))
+            {
+                db.Open(); using var clear = new SQLiteCommand("DELETE FROM Items", db); clear.ExecuteNonQuery();
+            }
+            var schemaPage = new DatabaseSchemaView { Workspace = workspace };
+            await schemaPage.SelectAsync(procedureItem.DefinitionObject!);
+            var other = new SelectableObject("Other checked procedure", "Procedure") { Selected = true };
+            workspace.Context.Procedures.Add(other);
+            try
+            {
+                running = schemaPage.RunSelectedProcedureAsync();
+                Check(workspace.Context.Dialogs.Current?.Message.Contains(procedureItem.DefinitionObject!.DisplayName) == true && Count(convertedConnection) == 0, "Schema procedure ran before confirmation or target missing");
+                workspace.Context.Dialogs.Complete(false); await running;
+                Check(Count(convertedConnection) == 0, "Canceled schema procedure ran");
+                running = schemaPage.RunSelectedProcedureAsync();
+                workspace.Context.Dialogs.Complete(true); await running.WaitAsync(TimeSpan.FromSeconds(10));
+                Check(Count(convertedConnection) == 1 && other.Selected && procedureItem.Selected, "Schema Run changed batch selection or ran the wrong procedure");
+            }
+            finally { workspace.Context.Procedures.Remove(other); }
         });
     }
 

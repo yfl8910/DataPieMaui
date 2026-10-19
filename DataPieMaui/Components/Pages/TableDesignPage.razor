@@ -30,7 +30,7 @@ else
 {
     <div class="table-design-panel"><h2>Drop table</h2>
         <p class="callout danger">Permanently delete the table structure and all its data from @State.Connection. This cannot be undone.</p>
-        <div class="actions align-end"><label class="grow">Table to delete<select @bind="Form.DropTable"><option value="">Select a table</option>@foreach (var name in Model.Tables) { <option value="@name">@name</option> }</select></label><button class="danger" @onclick="DropTableAsync" disabled="@(string.IsNullOrEmpty(Form.DropTable))">Drop table</button></div>
+        <div class="actions align-end"><label class="grow">Table to delete<select @bind="Form.DropTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@DataPieMaui.Services.Shared.TableSelection.Key(table, Type)">@DataPieMaui.Services.Shared.TableSelection.Label(table, Type)</option> }</select></label><button class="danger" @onclick="DropTableAsync" disabled="@(string.IsNullOrEmpty(Form.DropTable))">Drop table</button></div>
     </div>
 }
 </section>
@@ -41,31 +41,7 @@ else
         Form.TableDesignTab = tab;
         Notify();
     }
-    public Task DropTableAsync() => RunAsync("Drop table", async watch =>
-    {
-        var table = Required(Form.DropTable, "Select a table to delete.");
-        if (!Tables.Contains(table)) throw new InvalidOperationException("The table is not in the current database. Reconnect to refresh the list.");
-        if (!await Dialogs.ConfirmAsync("Drop table", $"Permanently delete table {table} and ALL its data from {State.Connection}? This cannot be undone.", "Drop table")) return;
-        watch.Start();
-        await Database.DropTableAsync(table);
-        watch.Stop();
-        Form.DropTable = "";
-        if (Form.ImportTable == table) Form.ImportTable = "";
-        if (Form.QueryTable == table) Form.QueryTable = "";
-        Results.Set(null);
-        QuerySummary = "Run a new preview after deleting the table.";
-        Tables = Tables.Where(n => n != table).ToArray();
-        Exports.RemoveAll(x => x.Kind == "Table" && x.Name == table);
-        State.Status = $"Table {table} deleted in {watch.Elapsed.TotalSeconds:F1} s.";
-        Notify();
-        try { await Context.RefreshSchemaAsync(); }
-        catch (Exception ex)
-        {
-            await Dialogs.AlertAsync("Table deleted", "The table was deleted, but refreshing the schema failed. Reconnect to reload the table list. " + ex.Message);
-        }
-    });
-
-
+    public Task DropTableAsync() => Context.TableActions.DropAsync(Form.DropTable);
     public Task BrowseAsync() => RunAsync("Read Excel worksheets", async watch =>
     {
         var path = await Desktop.OpenAsync(".xlsx", ".xls");

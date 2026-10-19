@@ -1,6 +1,6 @@
 namespace DataPieMaui.Services;
 
-public sealed record WorkspaceDialog(string Title, string Message, string Accept, bool CanCancel, string? Sql = null, Shared.DefinitionEditorSession? Editor = null, Shared.ProcedureExecutionSession? Procedure = null);
+public sealed record WorkspaceDialog(string Title, string Message, string Accept, bool CanCancel, string? Sql = null, Shared.DefinitionEditorSession? Editor = null, Shared.ProcedureExecutionSession? Procedure = null, Shared.TableImportOptions? TableImport = null);
 
 public sealed class WorkspaceDialogs
 {
@@ -10,6 +10,7 @@ public sealed class WorkspaceDialogs
     public event Action? Changed;
 
     public Task<bool> ConfirmAsync(string title, string message, string accept) => ShowAsync(new(title, message, accept, true));
+    public Task<bool> ShowTableImportAsync(Shared.TableImportOptions options) => ShowAsync(new("Import file", "", "Import file", true, TableImport: options));
     public Task<bool> AlertAsync(string title, string message) => ShowAsync(new(title, message, "OK", false));
     public Task<bool> ShowProcedureAsync(Shared.ProcedureExecutionSession session) => ShowAsync(new("Run with parameters", "", "Close", false, Procedure: session));
 

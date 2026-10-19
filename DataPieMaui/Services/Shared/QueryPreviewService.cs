@@ -1,10 +1,19 @@
 using System.Diagnostics;
 using DataPieCore;
+using DBUtil;
 
 namespace DataPieMaui.Services.Shared;
 
 public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePageActions(context)
 {
+    public Task PreviewObjectAsync(DefinitionObject target) => RunAsync("Query data", async watch =>
+    {
+        if (target.Kind != "View" || !Database.Schema!.DefinitionObjects.Any(o => o.Kind == target.Kind && o.Schema == target.Schema && o.Name == target.Name))
+            throw new InvalidOperationException("The view is no longer available. Refresh the schema.");
+        string name = Type == "SQLSERVER" ? SqlQueryBuilder.QuoteIdentifier(target.Schema, Type) + "." + SqlQueryBuilder.QuoteIdentifier(target.Name, Type)
+            : SqlQueryBuilder.QuoteIdentifier(target.Name, Type);
+        await LoadAsync("SELECT * FROM " + name, "View · " + target.DisplayName, watch);
+    });
     public Task PreviewObjectAsync(string name) => RunAsync("Query data", async watch =>
     {
         Required(name, "Select a table or view.");

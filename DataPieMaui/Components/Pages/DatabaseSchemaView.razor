@@ -29,7 +29,7 @@
             <h2>@selected.DisplayName</h2><p>@selected.Kind</p>
             @if (selected.Kind == "Table")
             {
-                <button @onclick="EditSelectedTableAsync">EDIT</button>
+                <TableActionBar OnImport="ImportSelectedTableAsync" OnExport="ExportSelectedTableAsync" OnEdit="EditSelectedTableAsync" OnClear="ClearSelectedTableAsync" OnDrop="DropSelectedTableAsync" />
                 <div class="schema-columns"><table><thead><tr><th>Column</th><th>Type</th><th>Primary key</th><th>Auto-generated ID</th><th>Nullable</th><th>Computed</th><th>Default</th></tr></thead>
                     <tbody>@foreach (var column in columns)
                     {
@@ -42,7 +42,11 @@
             {
                 @if (selected.Kind == "Procedure") { <p>Has parameters: @(Type == "SQLSERVER" ? YesNo(selected.HasParameters) : "Not loaded")</p> }
                 <p class="muted">The SQL definition is loaded only when requested.</p>
-                <button @onclick="ShowDefinitionAsync">View definition</button>
+                <div class="actions">
+                    @if (selected.Kind == "View") { <button @onclick="QuerySelectedViewAsync">Query data</button> }
+                    @if (selected.Kind == "Procedure") { <button @onclick="RunSelectedProcedureAsync">Run</button> }
+                    <button @onclick="ShowDefinitionAsync">View definition</button>
+                </div>
             }
         }
     </div>
@@ -56,6 +60,24 @@
     private IEnumerable<DefinitionObject> Objects => (Database.Schema?.Tables.Select(t => new DefinitionObject("Table", Type == "SQLSERVER" ? t.TableSchemaName : "main", t.Name)) ?? [])
         .Concat(Definitions).Where(o => (kind == "All" || o.Kind == kind) && o.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase));
     private static string YesNo(bool value) => value ? "Yes" : "No";
+    public Task QuerySelectedViewAsync() => selected is { Kind: "View" } item ? Context.Preview.PreviewObjectAsync(item) : Task.CompletedTask;
+    public Task RunSelectedProcedureAsync() => selected is { Kind: "Procedure" } item ? Context.ProcedureActions.RunSingleAsync(item) : Task.CompletedTask;
+    private TableStruct SelectedTable()
+    {
+        if (selected is not { Kind: "Table" } item) throw new InvalidOperationException("Select a table.");
+        return Database.Schema!.Tables.SingleOrDefault(t => t.Name == item.Name && (Type != "SQLSERVER" || t.TableSchemaName == item.Schema))
+            ?? throw new InvalidOperationException("The table is no longer available. Refresh the schema.");
+    }
+    public Task ImportSelectedTableAsync() => Context.TableActions.ImportAsync(SelectedTable());
+    public Task ExportSelectedTableAsync() => Context.TableActions.ExportExcelAsync(SelectedTable());
+    public Task ClearSelectedTableAsync() => Context.TableActions.ClearAsync(SelectedTable());
+    public async Task DropSelectedTableAsync()
+    {
+        var table = SelectedTable();
+        await Context.TableActions.DropAsync(table);
+        if (!Database.Schema!.Tables.Any(t => t.Name == table.Name && (Type != "SQLSERVER" || t.TableSchemaName == table.TableSchemaName)))
+        { selected = null; columns = []; }
+    }
     public Task EditSelectedTableAsync() => RunAsync("Open table editor", async watch =>
     {
         if (selected is not { Kind: "Table" } item) return;
