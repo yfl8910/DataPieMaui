@@ -1,0 +1,74 @@
+@using DataPieCore
+@using DataPieMaui.Services.Shared
+<div class="modal-overlay">
+    <section class="editor-dialog analysis-calculation-dialog" role="dialog" aria-modal="true" aria-labelledby="calculation-dialog-title" tabindex="-1">
+        <div class="dialog-header"><h2 id="calculation-dialog-title">Calculations</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close calculation settings">×</button></div>
+        <div class="dialog-body">
+            <label><input type="checkbox" @bind="includeCount" /> Record count</label>
+            <h3>Aggregates</h3><p>Add numeric aggregates and optionally give each a name.</p>
+            @foreach (var item in aggregates)
+            {
+                <div class="analysis-calculation-row" @key="item.Id">
+                    <label>Field<select @bind="item.Column">@foreach (var column in Source.NumericColumns) { <option value="@column">@column</option> }</select></label>
+                    <label>Calculation<select @bind="item.Operation"><option value="SUM">Sum</option><option value="AVG">Average</option><option value="MIN">Min</option><option value="MAX">Max</option></select></label>
+                    <label>Result name<input @bind="item.Name" @bind:event="oninput" maxlength="110" placeholder="@item.ToCalculation().DisplayName" /></label>
+                    <button @onclick="() => aggregates.Remove(item)" aria-label="Remove aggregate">×</button>
+                </div>
+            }
+            <button @onclick="AddAggregate" disabled="@(Source.NumericColumns.Count == 0)">Add aggregate</button>
+            <h3>Aggregate formulas</h3><p>Example: Total revenue ÷ Total quantity. Formulas use the group totals, not individual-row prices. Division by zero or NULL returns NULL.</p>
+            @foreach (var formula in formulas)
+            {
+                <div class="analysis-formula-row" @key="formula">
+                    <label>Result name<input @bind="formula.Name" @bind:event="oninput" maxlength="110" placeholder="Average price" /></label>
+                    <label>Left aggregate<select @bind="formula.Left"><option value="">Select aggregate</option>@foreach (var item in aggregates) { <option value="@item.Id">@item.ToCalculation().DisplayName</option> }</select></label>
+                    <label>Operator<select @bind="formula.Operation"><option value="+">＋</option><option value="-">－</option><option value="*">×</option><option value="/">÷</option></select></label>
+                    <label>Right value<select @bind="formula.UseConstant"><option value="false">Aggregate</option><option value="true">Constant</option></select></label>
+                    @if (formula.UseConstant) { <label>Constant<input type="number" step="any" @bind="formula.Constant" /></label> }
+                    else { <label>Right aggregate<select @bind="formula.Right"><option value="">Select aggregate</option>@foreach (var item in aggregates) { <option value="@item.Id">@item.ToCalculation().DisplayName</option> }</select></label> }
+                    <button @onclick="() => formulas.Remove(formula)" aria-label="Remove formula">×</button>
+                </div>
+            }
+            <button @onclick="AddFormula" disabled="@(aggregates.Count == 0)">Add formula</button>
+            @if (error.Length > 0) { <div class="dialog-error" role="alert">@error</div> }
+        </div>
+        <div class="dialog-actions"><button @onclick="OnCancel">Cancel</button><button class="primary" @onclick="ApplyAsync">Apply</button></div>
+    </section>
+</div>
+@code {
+    [Parameter, EditorRequired] public TableAnalysis Source { get; set; } = default!;
+    [Parameter, EditorRequired] public AnalysisRequest Settings { get; set; } = default!;
+    [Parameter] public EventCallback<AnalysisCalculationSettings> OnApply { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    private readonly List<AnalysisCalculationDraft> aggregates = [];
+    private readonly List<AnalysisFormulaDraft> formulas = [];
+    private bool includeCount;
+    private string error = "";
+    protected override void OnInitialized()
+    {
+        includeCount = Settings.IncludeCount;
+        aggregates.AddRange(Settings.Calculations.Select(c => new AnalysisCalculationDraft { Column = c.Column, Operation = c.Operation, Name = c.Name, Id = c.Key }));
+        formulas.AddRange((Settings.Formulas ?? []).Select(f => new AnalysisFormulaDraft { Name = f.Name, Left = f.Left, Operation = f.Operation, Right = f.Right, UseConstant = f.Constant.HasValue, Constant = f.Constant }));
+    }
+    public void AddAggregate()
+    {
+        var choices = Source.NumericColumns.SelectMany(c => new[] { "SUM", "AVG", "MIN", "MAX" }.Select(o => (Column: c, Operation: o)));
+        var next = choices.FirstOrDefault(c => !aggregates.Any(a => a.Column == c.Column && a.Operation == c.Operation));
+        if (next.Column != null) aggregates.Add(new() { Column = next.Column, Operation = next.Operation });
+    }
+    public void AddFormula()
+    {
+        if (aggregates.Count > 0) formulas.Add(new() { Name = "Formula " + (formulas.Count + 1), Left = aggregates[0].Id, Right = aggregates.Last().Id });
+    }
+    public async Task ApplyAsync()
+    {
+        try
+        {
+            if (formulas.Any(f => f.UseConstant && !f.Constant.HasValue)) throw new ArgumentException("Enter a numeric constant.");
+            var result = new AnalysisCalculationSettings(aggregates.Select(a => a.ToCalculation()).ToArray(), includeCount, formulas.Select(f => f.ToFormula()).ToArray());
+            Source.ValidateRequest(Settings with { Calculations = result.Calculations, IncludeCount = result.IncludeCount, Formulas = result.Formulas });
+            await OnApply.InvokeAsync(result);
+        }
+        catch (ArgumentException ex) { error = ex.Message; }
+    }
+}

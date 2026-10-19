@@ -23,7 +23,7 @@ public partial class App : Application
                 args.Cancel = true;
                 if (page.HasPendingTableEdits)
                 {
-                    page.Workspace.Context.State.Status = "Save or cancel table editor drafts and wait for table operations to finish before closing the application.";
+                    page.Workspace.Context.State.Status = "Save or cancel table editor drafts and wait for table or analysis operations to finish before closing the application.";
                     return;
                 }
                 page.Workspace.NotifyCloseBlocked();

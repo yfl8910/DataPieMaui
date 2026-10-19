@@ -29,7 +29,7 @@
             <h2>@selected.DisplayName</h2><p>@selected.Kind</p>
             @if (selected.Kind == "Table")
             {
-                <TableActionBar OnImport="ImportSelectedTableAsync" OnExport="ExportSelectedTableAsync" OnEdit="EditSelectedTableAsync" OnClear="ClearSelectedTableAsync" OnDrop="DropSelectedTableAsync" />
+                <TableActionBar OnImport="ImportSelectedTableAsync" OnExport="ExportSelectedTableAsync" OnEdit="EditSelectedTableAsync" OnAnalyze="AnalyzeSelectedTableAsync" OnClear="ClearSelectedTableAsync" OnDrop="DropSelectedTableAsync" />
                 <div class="schema-columns"><table><thead><tr><th>Column</th><th>Type</th><th>Primary key</th><th>Auto-generated ID</th><th>Nullable</th><th>Computed</th><th>Default</th></tr></thead>
                     <tbody>@foreach (var column in columns)
                     {
@@ -71,6 +71,7 @@
     public Task ImportSelectedTableAsync() => Context.TableActions.ImportAsync(SelectedTable());
     public Task ExportSelectedTableAsync() => Context.TableActions.ExportExcelAsync(SelectedTable());
     public Task ClearSelectedTableAsync() => Context.TableActions.ClearAsync(SelectedTable());
+    public Task AnalyzeSelectedTableAsync() => Context.TableActions.AnalyzeAsync(SelectedTable());
     public async Task DropSelectedTableAsync()
     {
         var table = SelectedTable();

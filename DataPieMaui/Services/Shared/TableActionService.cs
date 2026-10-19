@@ -86,6 +86,18 @@ public sealed class TableActionService(WorkspaceContext context)
         context.State.Status = $"Export data completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}";
     });
 
+    public Task AnalyzeAsync(TableStruct table) => context.Operations.RunAsync("Open data analysis", async watch =>
+    {
+        table = Resolve(table);
+        var connection = context.Database.Connection!;
+        string label = context.State.Connection;
+        watch.Start();
+        var source = await Task.Run(() => TableAnalysis.Open(connection.ConnectionString, connection.DatabaseType, table.TableSchemaName, table.Name));
+        var session = new DataAnalysisSession(source, label, new AnalysisTemplateStore(context.StorePath));
+        await session.RefreshTemplatesAsync();
+        await context.Desktop.ShowDataAnalysisAsync(session);
+    });
+
     public Task ClearAsync(TableStruct table) => context.Operations.RunAsync("Clear table", async watch =>
     {
         table = Resolve(table);

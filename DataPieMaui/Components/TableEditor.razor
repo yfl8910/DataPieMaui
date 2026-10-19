@@ -18,28 +18,17 @@
         <div class="toolbar">
             <strong>@previewSnapshot.RowCount.ToString("N0") rows · @previewSnapshot.ColumnCount columns</strong>
             <button @onclick="() => CopyAsync(false)" disabled="@(previewSelected is null)">Copy selected row</button>
-            <button @onclick="() => CopyAsync(true)" disabled="@(previewOrder.Length == 0)">@(previewFilterColumn >= 0 ? "Copy matching rows" : "Copy all preview rows")</button>
+            <button @onclick="() => CopyAsync(true)" disabled="@(previewOrder.Length == 0)">@(previewConditions.Count > 0 ? "Copy matching rows" : "Copy all preview rows")</button>
         </div>
-        <form class="search-toolbar" @onsubmit="ApplySearch" @onsubmit:preventDefault>
-            <label>Column <select @bind="previewSearchColumn">
-                <option value="-1">Select a column</option>
-                @for (int c = 0; c < previewSnapshot.ColumnCount; c++)
-                {
-                    if (previewSnapshot.GetColumnType(c) != typeof(byte[])) { <option value="@c">@previewSnapshot.GetColumnName(c)</option> }
-                }
-            </select></label>
-            <label>Search <input type="search" @bind="previewSearchText" @bind:event="oninput" placeholder="Contains text in loaded preview" /></label>
-            <button type="submit" disabled="@(previewSearchColumn < 0)">Search</button>
-            <button type="button" @onclick="ClearSearch">Clear</button>
-            @if (previewFilterColumn >= 0) { <span>Filtered by @previewSnapshot.GetColumnName(previewFilterColumn): @previewFilterText</span> }
-        </form>
+        <ConditionSearch Fields="PreviewSearchFields" Value="previewDraftConditions" ValueChanged="SetPreviewConditions" OnSearch="ApplyPreviewConditionsAsync" OnClear="ClearSearch"
+                         Notice="All conditions must match within the loaded preview only. Matching uses displayed text, ignoring case." />
         @if (previewSnapshot.Truncated)
         {
             <div class="notice">Showing the first 1,000 rows. Use export in the main window to retrieve the full result.</div>
         }
         <TableDataGrid TRow="int" Rows="@previewOrder.Skip(previewPage * PreviewPageSize).Take(PreviewPageSize)" ColumnCount="previewSnapshot.ColumnCount"
                        CellText="previewSnapshot.FormatCell" CellIsNull="previewSnapshot.IsNull" IsSelected="PreviewIsSelected" SelectRows="true" OnSelect="Select"
-                       SortState="PreviewSortState" EmptyText="@(previewFilterColumn >= 0 ? "No matching records in the loaded preview." : "The query returned no rows.")">
+                       SortState="PreviewSortState" EmptyText="@(previewConditions.Count > 0 ? "No matching records in the loaded preview." : "The query returned no rows.")">
             <LeadingHeader>#</LeadingHeader>
             <ColumnHeader Context="column"><button @onclick="() => Sort(column)" disabled="@(previewSnapshot.GetColumnType(column) == typeof(byte[]))">@previewSnapshot.GetColumnName(column) @(previewSortColumn == column ? (previewDescending ? "▼" : "▲") : "")</button></ColumnHeader>
             <LeadingCell Context="index">@(index + 1)</LeadingCell>
@@ -61,20 +50,11 @@ else
         <button @onclick="BeginEdit" disabled="@(Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit)">EDIT</button>
         <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">Delete selected</button>
         <button @onclick="() => LoadAsync(Session.Page)" disabled="@(Session.IsBusy || DialogOpen)">Refresh</button>
+        <button @onclick="ExportExcelAsync" disabled="@(Session.IsBusy || DialogOpen)" title="Export all rows matching the applied search, across all pages">Export Excel</button>
     </div>
-    <form class="search-toolbar" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-        <label>Column <select @bind="searchColumn" disabled="@(Session.IsBusy || DialogOpen)">
-            <option value="">Select a column</option>
-            @foreach (DataColumn column in Session.Data.Columns)
-            {
-                if (Session.IsSearchable(column.ColumnName)) { <option value="@column.ColumnName">@column.ColumnName</option> }
-            }
-        </select></label>
-        <label>Search <input type="search" @bind="searchText" @bind:event="oninput" placeholder="Text contains; other types match exactly" disabled="@(Session.IsBusy || DialogOpen)" /></label>
-        <button type="submit" disabled="@(Session.IsBusy || DialogOpen || string.IsNullOrEmpty(searchColumn))">Search</button>
-        <button type="button" @onclick="ClearSearchAsync" disabled="@(Session.IsBusy || DialogOpen)">Clear</button>
-        @if (Session.SearchColumn != null) { <span>Filtered by @Session.SearchColumn: @Session.SearchText</span> }
-    </form>
+    <ConditionSearch Fields="EditorSearchFields" Value="editorConditions" ValueChanged="SetEditorConditions" OnSearch="ApplyEditorConditionsAsync" OnClear="ClearSearchAsync" Disabled="@(Session.IsBusy || DialogOpen)"
+                     Notice="All conditions must match across the full table. Text contains; numbers/booleans match exactly; dates use yyyy-MM-dd." />
+    @if (Session.Conditions.Count > 0) { <p>Active conditions: @string.Join(" AND ", Session.Conditions.Select(c => c.Column + ": " + c.Text))</p> }
     @if (!Session.CanEdit) { <p class="notice">@Session.ReadOnlyReason</p> }
     <TableDataGrid TRow="DataRow" Rows="@(Session.Data.Rows.Cast<DataRow>())" ColumnCount="Session.Data.Columns.Count"
                    CellText="EditorCellText" CellIsNull="EditorCellIsNull" IsSelected="selected.Contains"
@@ -170,24 +150,42 @@ else
     }
     private readonly HashSet<string> touched = [];
     private string dialogError = "";
-    private string searchColumn = "", searchText = "";
-    public Task SearchAsync() => ApplySearchAsync(false);
-    public Task ClearSearchAsync() => ApplySearchAsync(true);
-    private async Task ApplySearchAsync(bool clear)
+    private IReadOnlyList<SearchCondition> editorConditions = [];
+    private IReadOnlyList<SearchField> EditorSearchFields => Session.Data.Columns.Cast<DataColumn>().Where(c => Session.IsSearchable(c.ColumnName))
+        .Select(c => new SearchField(c.ColumnName, c.ColumnName, c.DataType == typeof(string) ? "Contains text" : c.DataType == typeof(DateTime) ? "yyyy-MM-dd or exact date/time" : "Exact value")).ToArray();
+    private void SetEditorConditions(IReadOnlyList<SearchCondition> value) => editorConditions = value;
+    public Task SearchAsync() => ApplyEditorConditionsAsync(editorConditions);
+    public Task ClearSearchAsync() => ApplyEditorConditionsAsync(Array.Empty<SearchCondition>());
+    private async Task ApplyEditorConditionsAsync(IReadOnlyList<SearchCondition> value)
     {
         if (Preview != null || Session.IsBusy || DialogOpen) return;
         Session.IsBusy = true;
         try
         {
-            await Task.Run(() => Session.Search(clear ? null : searchColumn, clear ? "" : searchText));
-            selected.Clear();
-            if (clear) { searchText = ""; searchColumn = ""; }
-            message = Session.SearchColumn == null ? "Search cleared." : "Search applied to the entire table. Dates: yyyy-MM-dd; boolean: true/false. Text case matching follows database rules.";
+            var snapshot = value.ToArray();
+            await Task.Run(() => Session.Search(snapshot));
+            editorConditions = snapshot; selected.Clear();
+            message = Session.Conditions.Count == 0 ? "Search cleared." : "AND search applied to the entire table. Text matching follows database rules.";
         }
         catch (Exception ex) { message = ex.Message; }
         finally { Session.IsBusy = false; }
     }
     private string message = "Select one record to edit, or select records to delete. All table records are available through paging.";
+    public async Task ExportExcelAsync()
+    {
+        if (Preview != null || Session.IsBusy || DialogOpen) return;
+        Session.IsBusy = true;
+        try
+        {
+            var path = await Desktop.SaveAsync(Session.TableName, ".xlsx");
+            if (path == null) return;
+            message = "Exporting all rows matching the applied search…";
+            await Task.Run(() => Session.ExportExcel(path));
+            message = "Export completed · File: " + System.IO.Path.GetFullPath(path);
+        }
+        catch (Exception ex) { message = "Export failed: " + ex.ToString(); }
+        finally { Session.IsBusy = false; }
+    }
     private static string Format(object value) => value switch
     {
         DBNull => "NULL", byte[] bytes => Convert.ToHexString(bytes),
@@ -307,43 +305,50 @@ else
     private int[] previewOrder = [];
     private const int PreviewPageSize = 100;
     private int previewPage, previewSortColumn = -1;
-    private int previewSearchColumn = -1, previewFilterColumn = -1;
-    private string previewSearchText = "", previewFilterText = "";
+    private IReadOnlyList<SearchCondition> previewDraftConditions = [], previewConditions = [];
+    private IReadOnlyList<SearchField> PreviewSearchFields => previewSnapshot == null ? [] : Enumerable.Range(0, previewSnapshot.ColumnCount)
+        .Where(c => previewSnapshot.GetColumnType(c) != typeof(byte[])).Select(c => new SearchField(c.ToString(CultureInfo.InvariantCulture), previewSnapshot.GetColumnName(c), "Contains displayed text")).ToArray();
+    private void SetPreviewConditions(IReadOnlyList<SearchCondition> value) => previewDraftConditions = value;
     private int? previewSelected;
     private bool previewDescending, previewDisposed;
     private string previewMessage = "Click a column to sort. Select a row to copy it.";
     private int PreviewPageCount => Math.Max(1, (previewOrder.Length + PreviewPageSize - 1) / PreviewPageSize);
 
-    protected override void OnInitialized() { if (Preview != null) { Preview.Changed += RefreshPreview; LoadPreview(); } }
+    protected override void OnInitialized() { if (Preview != null) { Preview.Changed += RefreshPreview; LoadPreview(); } else editorConditions = Session.Conditions.ToArray(); }
     private void RefreshPreview() => _ = InvokeAsync(() => { if (!previewDisposed) { LoadPreview(); StateHasChanged(); } });
     private void LoadPreview()
     {
         previewSnapshot = Preview?.Current;
         previewOrder = Enumerable.Range(0, previewSnapshot?.RowCount ?? 0).ToArray();
         previewPage = 0; previewSortColumn = -1; previewSelected = null; previewDescending = false;
-        previewSearchColumn = previewFilterColumn = -1; previewSearchText = previewFilterText = "";
+        previewDraftConditions = previewConditions = Array.Empty<SearchCondition>();
         previewMessage = "Click a column to sort. Select a row to copy it.";
     }
-    public void ApplySearch() => Search(previewSearchColumn, previewSearchText);
-    public void Search(int column, string text)
+    public void ApplySearch() => ApplyPreviewConditions(previewDraftConditions);
+    public Task ApplyPreviewConditionsAsync(IReadOnlyList<SearchCondition> value) { ApplyPreviewConditions(value); return Task.CompletedTask; }
+    public void Search(int column, string text) => ApplyPreviewConditions(new[] { new SearchCondition(column.ToString(CultureInfo.InvariantCulture), text) });
+    private void ApplyPreviewConditions(IReadOnlyList<SearchCondition> value)
     {
-        if (previewSnapshot == null || column < 0 || column >= previewSnapshot.ColumnCount || previewSnapshot.GetColumnType(column) == typeof(byte[])) return;
-        previewFilterColumn = string.IsNullOrEmpty(text) ? -1 : column;
-        previewFilterText = text;
-        RebuildOrder();
-        previewMessage = "Search covers loaded preview rows only. Matches displayed text, ignoring case.";
+        if (previewSnapshot == null) return;
+        var active = value.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray();
+        if (active.Any(c => !int.TryParse(c.Column, out int index) || index < 0 || index >= previewSnapshot.ColumnCount || previewSnapshot.GetColumnType(index) == typeof(byte[]))) return;
+        previewDraftConditions = previewConditions = active;
+        RebuildOrder(); previewMessage = "AND search covers loaded preview rows only. Matches displayed text, ignoring case.";
     }
     public void ClearSearch()
     {
-        previewSearchColumn = previewFilterColumn = -1; previewSearchText = previewFilterText = "";
+        previewDraftConditions = previewConditions = Array.Empty<SearchCondition>();
         RebuildOrder(); previewMessage = "Search cleared.";
     }
     private void RebuildOrder()
     {
         if (previewSnapshot == null) return;
         var indices = previewSortColumn >= 0 ? previewSnapshot.Sort(previewSortColumn, previewDescending) : Enumerable.Range(0, previewSnapshot.RowCount).ToArray();
-        previewOrder = indices.Where(i => previewFilterColumn < 0 || (!previewSnapshot.IsNull(i, previewFilterColumn)
-            && previewSnapshot.FormatCell(i, previewFilterColumn).Contains(previewFilterText, StringComparison.OrdinalIgnoreCase))).ToArray();
+        previewOrder = indices.Where(i => previewConditions.All(c =>
+        {
+            int column = int.Parse(c.Column, CultureInfo.InvariantCulture);
+            return !previewSnapshot.IsNull(i, column) && previewSnapshot.FormatCell(i, column).Contains(c.Text, StringComparison.OrdinalIgnoreCase);
+        })).ToArray();
         previewPage = 0; previewSelected = null;
     }
     public void Sort(int column)

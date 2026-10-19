@@ -564,6 +564,8 @@ internal static class WorkspaceChecks
             Check(desktop.TableEditor?.TableName == "Items" && desktop.TableEditor.Data.Rows.Count > 0, "Schema editor did not receive selected table");
             Check(workspace.Context.Tables.Contains("Items"), "Edit removed table");
             desktop.TableEditor!.Data.Dispose();
+            await page.AnalyzeSelectedTableAsync();
+            Check(desktop.Analysis?.Source.TableName == "Items" && desktop.Analysis.Result == null && desktop.Analysis.Source.TextColumns.Contains("Name"), "Schema analysis opened the wrong source or ran before Analyze");
         });
         await test("Schema table actions import without length validation by default, export all rows and confirm deletion", async () =>
         {
@@ -727,6 +729,8 @@ internal static class WorkspaceChecks
     {
         public int ResultWindows { get; private set; }
         public DataPieCore.TableEditorSession? TableEditor { get; private set; }
+        public DataPieMaui.Services.Shared.DataAnalysisSession? Analysis { get; private set; }
+        public Task ShowDataAnalysisAsync(DataPieMaui.Services.Shared.DataAnalysisSession session) { Analysis = session; return Task.CompletedTask; }
         public Task ShowTableEditorAsync(DataPieCore.TableEditorSession session, string connectionLabel) { TableEditor = session; return Task.CompletedTask; }
         public Func<Task<string?>> Save { get; set; } = () => Task.FromResult<string?>(null);
         public Func<Task<string?>> NewSave { get; set; } = () => Task.FromResult<string?>(null);

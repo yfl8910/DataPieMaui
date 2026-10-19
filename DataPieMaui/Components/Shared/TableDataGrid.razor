@@ -22,6 +22,7 @@
             }
             @if (!Rows.Any()) { <tr><td colspan="@(ColumnCount + 1)" class="empty">@EmptyText</td></tr> }
         </tbody>
+        @if (ShowFooter && Footer != null) { <tfoot>@Footer</tfoot> }
     </table>
 </div>
 
@@ -38,6 +39,8 @@
     [Parameter] public bool SelectRows { get; set; }
     [Parameter] public EventCallback<TRow> OnSelect { get; set; }
     [Parameter] public string EmptyText { get; set; } = "No records.";
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public bool ShowFooter { get; set; } = true;
     private Task SelectAsync(TRow row) => SelectRows ? OnSelect.InvokeAsync(row) : Task.CompletedTask;
     private Task SelectWithKeyAsync(KeyboardEventArgs e, TRow row) => e.Key is "Enter" or " " ? SelectAsync(row) : Task.CompletedTask;
 }

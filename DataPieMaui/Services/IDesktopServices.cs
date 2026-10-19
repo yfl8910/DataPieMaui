@@ -11,4 +11,5 @@ public interface IDesktopServices
     Task CopyTextAsync(string text);
     Task ShowTablePreviewAsync(QueryResultSession session);
     Task ShowTableEditorAsync(DataPieCore.TableEditorSession session, string connectionLabel);
+    Task ShowDataAnalysisAsync(Shared.DataAnalysisSession session);
 }

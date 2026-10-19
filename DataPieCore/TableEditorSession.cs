@@ -24,6 +24,7 @@ public sealed class TableEditorSession
     public long TotalRows { get; private set; }
     public string? SearchColumn { get; private set; }
     public string SearchText { get; private set; } = "";
+    public IReadOnlyList<SearchCondition> Conditions { get; private set; } = Array.Empty<SearchCondition>();
     public bool IsSearchable(string column) => Data.Columns.Contains(column)
         && Comparable(Data.Columns[column].DataType) && Data.Columns[column].DataType != typeof(byte[]);
     public bool HasDraft { get; set; }
@@ -54,11 +55,43 @@ public sealed class TableEditorSession
     }
 
     public void LoadPage(int page)
-        => LoadPage(page, SearchColumn, SearchText);
+        => LoadPage(page, Conditions);
 
-    public void Search(string? column, string text) => LoadPage(0, string.IsNullOrEmpty(text) ? null : column, text);
+    public void Search(string? column, string text) => Search(string.IsNullOrEmpty(text) ? Array.Empty<SearchCondition>() : new[] { new SearchCondition(column, text) });
+    public void Search(IReadOnlyList<SearchCondition> conditions) => LoadPage(0, conditions.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray());
 
-    private void LoadPage(int page, string? searchColumn, string searchText)
+    private SearchPredicate BuildPredicate(IReadOnlyList<SearchCondition> conditions) => SearchConditions.BuildAnd(conditions, databaseType, name =>
+    {
+        if (string.IsNullOrEmpty(name) || !IsSearchable(name)) throw new ArgumentException("Select a searchable column: " + name);
+        return new SearchColumn(name, Data.Columns[name].DataType, Quote(name));
+    });
+
+    // Export every row matching the applied search, independently of the current page.
+    public void ExportExcel(string path)
+    {
+        var predicate = BuildPredicate(Conditions);
+        path = System.IO.Path.GetFullPath(path);
+        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".xlsx";
+        try
+        {
+            using (var access = DbAccessFactory.Create(connectionString, databaseType))
+            {
+                access.conn.Open();
+                using var command = access.conn.CreateCommand();
+                command.CommandTimeout = 300;
+                SearchConditions.Bind(command, predicate.Parameters);
+                string filter = predicate.Sql.Length == 0 ? "" : " WHERE " + predicate.Sql;
+                string order = keys.Count > 0 ? " ORDER BY " + string.Join(",", keys.Select(Quote)) : "";
+                command.CommandText = $"SELECT * FROM {destination}{filter}{order}";
+                using var reader = command.ExecuteReader();
+                ExcelIO.SaveMiniExcel(temporary, reader, "Data");
+            }
+            System.IO.File.Move(temporary, path, true);
+        }
+        finally { if (System.IO.File.Exists(temporary)) System.IO.File.Delete(temporary); }
+    }
+
+    private void LoadPage(int page, IReadOnlyList<SearchCondition> conditions)
     {
         if (page < 0) throw new ArgumentOutOfRangeException(nameof(page));
         long offset = checked((long)page * PageSize);
@@ -66,42 +99,9 @@ public sealed class TableEditorSession
         access.conn.Open();
         using var command = access.conn.CreateCommand();
         command.CommandTimeout = 30;
-        string filter = "";
-        if (!string.IsNullOrEmpty(searchText))
-        {
-            if (searchColumn == null || !IsSearchable(searchColumn)) throw new ArgumentException("Select a searchable column.");
-            var type = Data.Columns[searchColumn].DataType;
-            string column = Quote(searchColumn);
-            var parameter = command.CreateParameter(); parameter.ParameterName = "@search";
-            if (type == typeof(string))
-            {
-                string literal = searchText.Replace("!", "!!").Replace("%", "!%").Replace("_", "!_");
-                if (databaseType == "SQLSERVER") literal = literal.Replace("[", "![");
-                parameter.Value = "%" + literal + "%";
-                filter = $" WHERE {column} LIKE @search ESCAPE '!'";
-            }
-            else if (type == typeof(DateTime) && DateTime.TryParseExact(searchText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
-            {
-                parameter.Value = day;
-                var end = command.CreateParameter(); end.ParameterName = "@searchEnd"; end.Value = day.AddDays(1); command.Parameters.Add(end);
-                filter = $" WHERE {column} >= @search AND {column} < @searchEnd";
-            }
-            else
-            {
-                try
-                {
-                    parameter.Value = type == typeof(Guid) ? Guid.Parse(searchText)
-                        : type == typeof(DateTime) ? DateTime.Parse(searchText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
-                        : type == typeof(DateTimeOffset) ? DateTimeOffset.Parse(searchText, CultureInfo.InvariantCulture)
-                        : type == typeof(TimeSpan) ? TimeSpan.Parse(searchText, CultureInfo.InvariantCulture)
-                        : Convert.ChangeType(searchText, type, CultureInfo.InvariantCulture);
-                }
-                catch (Exception ex) when (ex is FormatException or OverflowException)
-                { throw new ArgumentException($"Invalid search value for {searchColumn} ({type.Name}).", ex); }
-                filter = $" WHERE {column} = @search";
-            }
-            command.Parameters.Add(parameter);
-        }
+        var predicate = BuildPredicate(conditions);
+        SearchConditions.Bind(command, predicate.Parameters);
+        string filter = predicate.Sql.Length == 0 ? "" : " WHERE " + predicate.Sql;
         string order = keys.Count > 0 ? string.Join(",", keys.Select(Quote)) : "(SELECT NULL)";
         command.CommandText = $"SELECT {(databaseType == "SQLSERVER" ? "COUNT_BIG(*)" : "COUNT(*)")} FROM {destination}{filter}";
         long totalRows = Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
@@ -165,8 +165,9 @@ public sealed class TableEditorSession
         insertable.Clear(); insertable.UnionWith(nextInsertable);
         Page = page; HasNext = hasNext;
         TotalRows = totalRows;
-        SearchColumn = string.IsNullOrEmpty(searchText) ? null : searchColumn;
-        SearchText = searchText;
+        Conditions = conditions.ToArray();
+        SearchColumn = Conditions.FirstOrDefault()?.Column;
+        SearchText = Conditions.FirstOrDefault()?.Text ?? "";
     }
 
     public bool IsEditable(string column) => CanEdit && metadata.TryGetValue(column, out var info) && !info.ReadOnly;

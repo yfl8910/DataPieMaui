@@ -1,0 +1,9 @@
+.condition-search { flex-shrink: 0; max-width: 100%; }
+.condition-search fieldset { margin: 0; padding: 8px 12px; min-width: 0; border: 1px solid #d8e0e9; border-radius: 6px; }
+.condition-search-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.condition-search-row + .condition-search-row { margin-top: 6px; }
+.condition-search-row > span { color: #68778c; font-size: 12px; }
+.condition-search-row input, .condition-search-row select { flex: 1 1 160px; width: auto; min-width: 140px; max-width: 320px; font: inherit; padding: 8px; border: 1px solid #cbd5df; border-radius: 6px; background: white; }
+.condition-search-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.condition-search p { font-size: 12px; margin: 6px 0 0; }
+.condition-search { max-height: 30vh; overflow: auto; }

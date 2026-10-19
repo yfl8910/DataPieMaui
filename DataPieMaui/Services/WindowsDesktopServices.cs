@@ -4,7 +4,8 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
 {
     private Window? resultWindow;
     private readonly Dictionary<Window, DataPieCore.TableEditorSession> editorWindows = [];
-    public bool HasPendingTableEdits => editorWindows.Values.Any(s => s.HasDraft || s.IsBusy);
+    private readonly Dictionary<Window, Shared.DataAnalysisSession> analysisWindows = [];
+    public bool HasPendingTableEdits => editorWindows.Values.Any(s => s.HasDraft || s.IsBusy) || analysisWindows.Values.Any(s => s.Busy);
     private Window Owner => owner() ?? throw new InvalidOperationException("The application window is not ready.");
     public Task<string?> OpenAsync(params string[] extensions) => MainThread.InvokeOnMainThreadAsync(() => WindowsFiles.OpenAsync(Owner, extensions));
     public Task<string?> SaveAsync(string name, string extension) => MainThread.InvokeOnMainThreadAsync(() => WindowsFiles.SaveAsync(Owner, name, extension));
@@ -65,8 +66,24 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
         try { Application.Current!.OpenWindow(window); }
         catch { editorWindows.Remove(window); page.Release(); session.Data.Dispose(); throw; }
     });
+    public Task ShowDataAnalysisAsync(Shared.DataAnalysisSession session) => MainThread.InvokeOnMainThreadAsync(() =>
+    {
+        var page = new Controls.DataAnalysisHostPage(session, this);
+        var window = new Window(page) { Title = "DataPieMaui · Data analysis · " + session.Source.TableName, Width = 1200, Height = 850, MinimumWidth = 640, MinimumHeight = 500 };
+        window.Created += (_, _) =>
+        {
+            if (window.Handler?.PlatformView is Microsoft.UI.Xaml.Window native)
+                native.AppWindow.Closing += (_, args) => { if (session.Busy) args.Cancel = true; };
+        };
+        window.Destroying += (_, _) => { analysisWindows.Remove(window); page.Release(); };
+        analysisWindows.Add(window, session);
+        try { Application.Current!.OpenWindow(window); }
+        catch { analysisWindows.Remove(window); page.Release(); throw; }
+    });
+
     public void CloseResults()
     {
+        foreach (var analysis in analysisWindows.Keys.ToArray()) Application.Current!.CloseWindow(analysis);
         foreach (var editor in editorWindows.Keys.ToArray()) Application.Current!.CloseWindow(editor);
         if (resultWindow is not { } window) return;
         resultWindow = null;

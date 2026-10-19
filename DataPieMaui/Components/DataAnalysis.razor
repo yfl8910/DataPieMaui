@@ -1,0 +1,184 @@
+@using DataPieCore
+@using DataPieMaui.Services.Shared
+@inject IJSRuntime JS
+<main class="analysis-page" inert="@(settingsDialog.Length > 0)">
+    <header><div><h1>Data analysis</h1><p>@Session.ConnectionLabel · @Session.Source.TableName</p></div><span class="badge">@(Session.Busy ? "Working…" : "Read-only")</span></header>
+    <fieldset class="analysis-settings" disabled="@Session.Busy">
+        @if (Session.TemplatesEnabled)
+        {
+            <div class="analysis-template-bar">
+                <label>Template<select @bind="selectedTemplateId" @bind:after="TemplateSelectionChanged"><option value="0">Select a template</option>@foreach (var template in Session.Templates) { <option value="@template.Id">@template.Name</option> }</select></label>
+                <button @onclick="ApplyTemplateAsync" disabled="@(selectedTemplateId == 0)">Apply template</button>
+                <label>Template name<input @bind="templateName" @bind:event="oninput" maxlength="100" placeholder="Name these grouping and calculation settings" /></label>
+                <button @onclick="SaveTemplateAsync" disabled="@string.IsNullOrWhiteSpace(templateName)" title="The same table and template name replaces the existing template">Save template</button>
+                <button class="danger" @onclick="RequestDeleteTemplate" disabled="@(selectedTemplateId == 0)">Delete template</button>
+                <button @onclick="RefreshTemplatesAsync">Refresh templates</button>
+            </div>
+            <p>Templates match this table name across databases. Saving the same name replaces that template. Search conditions are not saved.</p>
+        }
+        <div class="analysis-config-bar">
+            <button @onclick="OpenGroupSettings">Group by (@groups.Count)</button>
+            <span title="@string.Join(", ", groups)">@(groups.Count == 0 ? "Total (no grouping)" : string.Join(", ", groups))</span>
+            <button @onclick="OpenCalculationSettings">Calculations (@(calculations.Count + formulas.Count + (includeCount ? 1 : 0)))</button>
+            <span title="@CalculationSummary">@CalculationSummary</span>
+        </div>
+        <ConditionSearch Fields="AnalysisSearchFields" Value="conditions" ValueChanged="SetConditions" OnSearch="AnalyzeConditionsAsync" OnClear="ClearConditionsAsync" AllowAllText="true" SearchLabel="Analyze" Disabled="Session.Busy"
+                         Notice="All conditions must match source rows before grouping. Empty values are ignored.">
+            <Actions><button type="button" @onclick="Reset">Reset</button><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">Export Excel</button></Actions>
+        </ConditionSearch>
+        <p>Analysis includes all matching source rows. NULL values are ignored by numeric calculations. Export reruns the same analysis against the current source data.</p>
+        @if (Session.Source.Provider == "SQLITE") { <p>SQLite uses native numeric precision; nonnumeric values in calculation fields are rejected.</p> }
+    </fieldset>
+    @if (Session.Result is { } result)
+    {
+        @if (!Session.Matches(Request)) { <p class="notice">Settings changed. Analyze again to update these results.</p> }
+        @if (result.Truncated) { <p class="notice">Showing the first 1,000 groups. Calculations include the full matching source. Export Excel retrieves all groups.</p> }
+        <TableDataGrid TRow="int" Rows="@order.Skip(page * 100).Take(100)" ColumnCount="result.ColumnCount" CellText="result.FormatGroupedCell" CellIsNull="result.IsNull"
+                       IsSelected="IsSelected" SelectRows="true" OnSelect="Select" SortState="SortState" ShowFooter="@(Session.Totals != null && Session.Matches(Request))">
+            <LeadingHeader>#</LeadingHeader>
+            <ColumnHeader Context="column"><button @onclick="() => Sort(column)">@result.GetColumnName(column) @(sortColumn == column ? (descending ? "▼" : "▲") : "")</button></ColumnHeader>
+            <LeadingCell Context="index">@(index + 1)</LeadingCell>
+            <Footer>
+                @if (Session.Totals is { } totals && Session.LastRequest is { } analyzed)
+                {
+                    <tr class="analysis-total-row"><th scope="row" title="Overall totals for all matching source rows, including groups outside this preview">Total</th>
+                        @for (int column = 0; column < result.ColumnCount; column++)
+                        {
+                            if (column < analyzed.Groups.Count) { <td></td> }
+                            else
+                            {
+                                int totalColumn = column - analyzed.Groups.Count;
+                                <td class="@(totals.IsNull(0, totalColumn) ? "null" : "")" title="@totals.FormatGroupedCell(0, totalColumn)">@totals.FormatGroupedCell(0, totalColumn)</td>
+                            }
+                        }
+                    </tr>
+                }
+            </Footer>
+        </TableDataGrid>
+        <div class="toolbar"><button @onclick="() => CopyAsync(false)" disabled="@(selected == null)">Copy selected row</button><button @onclick="() => CopyAsync(true)">Copy preview rows</button>
+            <div class="pagination"><button @onclick="() => page--" disabled="@(page == 0)">Previous</button><span>Page @(page + 1)/@PageCount · @result.RowCount groups</span><button @onclick="() => page++" disabled="@(page + 1 >= PageCount)">Next</button></div>
+        </div>
+    }
+    else { <div class="empty">Choose fields and click Analyze to view grouped results.</div> }
+    <footer><span role="status" style="white-space:pre-wrap">@(clipboardMessage.Length > 0 ? clipboardMessage : Session.Status)</span></footer>
+</main>
+@if (settingsDialog == "groups")
+{
+    <AnalysisGroupDialog Source="Session.Source" Selected="groups" OnApply="ApplyGroups" OnCancel="CloseSettings" />
+}
+else if (settingsDialog == "calculations")
+{
+    <AnalysisCalculationDialog Source="Session.Source" Settings="Request" OnApply="ApplyCalculations" OnCancel="CloseSettings" />
+}
+else if (settingsDialog == "delete-template")
+{
+    <div class="modal-overlay"><section class="editor-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-template-title" tabindex="-1">
+        <div class="dialog-header"><h2 id="delete-template-title">Delete template</h2><button data-dialog-close @onclick="CloseSettings" disabled="@Session.Busy" aria-label="Cancel template deletion">×</button></div>
+        <div class="dialog-body"><p>Delete template '@Session.Templates.FirstOrDefault(t => t.Id == selectedTemplateId)?.Name' for @Session.Source.TemplateTableName? Table data and current analysis settings are kept.</p></div>
+        <div class="dialog-actions"><button @onclick="CloseSettings" disabled="@Session.Busy">Cancel</button><button class="danger" @onclick="DeleteTemplateAsync" disabled="@Session.Busy">Delete template</button></div>
+    </section></div>
+}
+
+@code {
+    [Parameter, EditorRequired] public DataAnalysisSession Session { get; set; } = default!;
+    [Parameter, EditorRequired] public IDesktopServices Desktop { get; set; } = default!;
+    private List<string> groups = [];
+    private List<AnalysisCalculation> calculations = [];
+    private List<AnalysisFormula> formulas = [];
+    private string settingsDialog = "";
+    private long selectedTemplateId;
+    private string templateName = "";
+    private void TemplateSelectionChanged() => templateName = Session.Templates.FirstOrDefault(t => t.Id == selectedTemplateId)?.Name ?? "";
+    private async Task RefreshTemplatesAsync()
+    {
+        clipboardMessage = "";
+        await Session.RefreshTemplatesAsync();
+        if (!Session.Templates.Any(t => t.Id == selectedTemplateId)) { selectedTemplateId = 0; templateName = ""; }
+    }
+    private async Task SaveTemplateAsync()
+    {
+        clipboardMessage = "";
+        if (await Session.SaveTemplateAsync(templateName, Request) is { } id) { selectedTemplateId = id; TemplateSelectionChanged(); }
+    }
+    private async Task ApplyTemplateAsync()
+    {
+        clipboardMessage = "";
+        var request = await Session.LoadTemplateAsync(selectedTemplateId);
+        if (request == null) return;
+        groups = request.Groups.ToList(); calculations = request.Calculations.ToList(); formulas = (request.Formulas ?? []).ToList(); includeCount = request.IncludeCount;
+        conditions = [];
+        displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
+        TemplateSelectionChanged();
+    }
+    private void RequestDeleteTemplate() { if (!Session.Busy && selectedTemplateId > 0) settingsDialog = "delete-template"; }
+    private async Task DeleteTemplateAsync()
+    {
+        clipboardMessage = "";
+        if (await Session.DeleteTemplateAsync(selectedTemplateId)) { selectedTemplateId = 0; templateName = ""; }
+        CloseSettings();
+    }
+    private string CalculationSummary => string.Join(", ", calculations.Select(c => c.DisplayName).Concat(includeCount ? new[] { "Record count" } : []).Concat(formulas.Select(f => f.Name)));
+    public void OpenGroupSettings() { if (!Session.Busy) settingsDialog = "groups"; }
+    public void OpenCalculationSettings() { if (!Session.Busy) settingsDialog = "calculations"; }
+    public void CloseSettings() => settingsDialog = "";
+    public void ApplyGroups(IReadOnlyList<string> value) { groups = value.ToList(); CloseSettings(); }
+    public void ApplyCalculations(AnalysisCalculationSettings value)
+    {
+        calculations = value.Calculations.ToList(); formulas = value.Formulas.ToList(); includeCount = value.IncludeCount; CloseSettings();
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("tableEditorModal.sync"); }
+        catch (JSDisconnectedException) { }
+    }
+    private bool includeCount = true, descending;
+    private IReadOnlyList<SearchCondition> conditions = [];
+    private string clipboardMessage = "";
+    private IReadOnlyList<SearchField> AnalysisSearchFields => Session.Source.TextColumns.Select(n => new SearchField(n, n)).ToArray();
+    private void SetConditions(IReadOnlyList<SearchCondition> value) => conditions = value;
+    private async Task AnalyzeConditionsAsync(IReadOnlyList<SearchCondition> value) { conditions = value; await AnalyzeAsync(); }
+    private async Task ClearConditionsAsync() { conditions = []; await AnalyzeAsync(); }
+    private int[] order = [];
+    private int page, sortColumn = -1;
+    private int? selected;
+    private QueryResultSnapshot? displayedResult;
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(displayedResult, Session.Result)) return;
+        displayedResult = Session.Result;
+        order = Enumerable.Range(0, Session.Result?.RowCount ?? 0).ToArray(); page = 0; sortColumn = -1; selected = null;
+    }
+    private int PageCount => Math.Max(1, (order.Length + 99) / 100);
+    private AnalysisRequest Request => new(groups.ToArray(), calculations.ToArray(), includeCount, Formulas: formulas.ToArray(), Conditions: conditions.ToArray());
+    public async Task AnalyzeAsync()
+    {
+        if (Session.Busy) return;
+        clipboardMessage = "";
+        await Session.AnalyzeAsync(Request);
+        displayedResult = Session.Result;
+        order = Enumerable.Range(0, Session.Result?.RowCount ?? 0).ToArray(); page = 0; sortColumn = -1; selected = null;
+    }
+    private async Task ExportAsync() { clipboardMessage = ""; await Session.ExportAsync(Desktop); }
+    private void Reset()
+    {
+        if (Session.Busy) return;
+        groups.Clear(); calculations.Clear(); formulas.Clear(); includeCount = true; conditions = []; clipboardMessage = "";
+        selectedTemplateId = 0; templateName = "";
+        Session.Reset(); displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
+    }
+    private bool IsSelected(int index) => selected == index;
+    private void Select(int index) => selected = index;
+    private string SortState(int column) => sortColumn == column ? (descending ? "descending" : "ascending") : "none";
+    private void Sort(int column)
+    {
+        if (Session.Result == null) return;
+        descending = sortColumn == column && !descending; sortColumn = column;
+        order = Session.Result.Sort(column, descending); page = 0; selected = null;
+    }
+    private async Task CopyAsync(bool all)
+    {
+        if (Session.Result == null || (!all && selected == null)) return;
+        try { await Desktop.CopyTextAsync(Session.Result.CopyText(all ? order : new[] { selected!.Value })); clipboardMessage = "Copied analysis rows."; }
+        catch (Exception ex) { clipboardMessage = ex.ToString(); }
+    }
+}

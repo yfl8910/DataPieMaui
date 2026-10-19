@@ -1,0 +1,57 @@
+@using DataPieCore
+<form class="condition-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+    <fieldset disabled="@Disabled" aria-label="Search conditions (AND)">
+        @for (int index = 0; index < DisplayConditions.Count; index++)
+        {
+            int position = index;
+            var condition = DisplayConditions[index];
+            <div class="condition-search-row">
+                @if (index > 0) { <span>AND</span> }
+                <select aria-label="Search field" value="@condition.Column" @onchange="e => ChangeColumnAsync(position, e.Value?.ToString() ?? string.Empty)">
+                    @if (AllowAllText) { <option value="">All text fields</option> }
+                    @foreach (var field in Fields) { <option value="@field.Key">@field.Name</option> }
+                </select>
+                <input aria-label="Search value" type="search" value="@condition.Text" @oninput="e => ChangeTextAsync(position, e.Value?.ToString() ?? string.Empty)" placeholder="@(Fields.FirstOrDefault(f => f.Key == condition.Column)?.Hint ?? "Contains text")" />
+                @if (DisplayConditions.Count > 1)
+                {
+                    <button type="button" @onclick="() => RemoveAsync(position)" aria-label="Remove search condition">×</button>
+                }
+                @if (index == 0)
+                {
+                    <div class="condition-search-actions">
+                        <button type="button" @onclick="AddAsync" disabled="@(Fields.Count == 0)">Add condition</button>
+                        <button type="submit" class="primary">@SearchLabel</button>
+                        <button type="button" @onclick="ClearAsync">Clear search</button>
+                        @Actions
+                    </div>
+                }
+            </div>
+        }
+        <p>@Notice</p>
+    </fieldset>
+</form>
+@code {
+    [Parameter] public IReadOnlyList<SearchField> Fields { get; set; } = [];
+    [Parameter] public IReadOnlyList<SearchCondition> Value { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<SearchCondition>> ValueChanged { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<SearchCondition>> OnSearch { get; set; }
+    [Parameter] public EventCallback OnClear { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool AllowAllText { get; set; }
+    [Parameter] public string SearchLabel { get; set; } = "Search";
+    [Parameter] public string Notice { get; set; } = "All conditions must match. Empty values are ignored.";
+    private IReadOnlyList<SearchCondition> DisplayConditions => Value.Count > 0 ? Value : new[] { new SearchCondition(Fields.FirstOrDefault()?.Key ?? "", "") };
+    public Task AddAsync() => Disabled || Fields.Count == 0 ? Task.CompletedTask : ValueChanged.InvokeAsync(DisplayConditions.Append(new SearchCondition(Fields[0].Key, "")).ToArray());
+    public Task ChangeAsync(int index, SearchCondition value) => Disabled ? Task.CompletedTask : ValueChanged.InvokeAsync(DisplayConditions.Select((c, i) => i == index ? value : c).ToArray());
+    private Task ChangeColumnAsync(int index, string value) => ChangeAsync(index, DisplayConditions[index] with { Column = value });
+    private Task ChangeTextAsync(int index, string value) => ChangeAsync(index, DisplayConditions[index] with { Text = value });
+    public Task RemoveAsync(int index) => Disabled || DisplayConditions.Count <= 1 ? Task.CompletedTask : ValueChanged.InvokeAsync(DisplayConditions.Where((_, i) => i != index).ToArray());
+    public Task SearchAsync() => Disabled ? Task.CompletedTask : OnSearch.InvokeAsync(Value.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray());
+    public async Task ClearAsync()
+    {
+        if (Disabled) return;
+        await ValueChanged.InvokeAsync(Array.Empty<SearchCondition>());
+        await OnClear.InvokeAsync();
+    }
+}
