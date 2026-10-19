@@ -9,6 +9,6 @@ public interface IDesktopServices
     Task<string?> SelectNewFilePathAsync(string name, string extension);
     Task<string?> FolderAsync();
     Task CopyTextAsync(string text);
-    Task ShowResultsAsync(QueryResultSession session);
+    Task ShowTablePreviewAsync(QueryResultSession session);
     Task ShowTableEditorAsync(DataPieCore.TableEditorSession session, string connectionLabel);
 }

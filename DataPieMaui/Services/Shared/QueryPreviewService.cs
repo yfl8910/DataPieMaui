@@ -34,7 +34,7 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
         watch.Stop();
         Results.Set(result);
         QuerySummary = $"{source} · {result.RowCount:N0} rows / {result.ColumnCount} columns" + (result.Truncated ? " · First 1,000 rows only. Export to retrieve the full result." : "");
-        await Desktop.ShowResultsAsync(Results);
+        await Desktop.ShowTablePreviewAsync(Results);
         State.Status = $"Query completed in {watch.Elapsed.TotalSeconds:F1} s: " + QuerySummary;
     }
 }

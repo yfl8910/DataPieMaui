@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Windows desktop workspace for querying, importing, exporting, designing tables, and converting SQL Server and SQLite data. Built with .NET 11 RC1 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace, a separate query-results window, and independent table-editor windows.
+A Windows desktop workspace for querying, importing, exporting, designing tables, and converting SQL Server and SQLite data. Built with .NET 11 RC1 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace, a unified Table editor page for read-only query previews and independent editable table windows.
 
 <img width="1262" height="937" alt="image" src="https://github.com/user-attachments/assets/b3ca694d-e905-4772-8ec2-1fb8b9aeb46b" />
 
@@ -95,7 +95,7 @@ The sidebar follows this order. Database operations become available after conne
 
 1. Open **Database connection** and connect to SQL Server or SQLite. In the **SQLite** tab, **Create blank database and connect** opens a save picker, creates a valid empty `.db` file and connects without saving its connection configuration. Existing files are never overwritten; choose a new filename. Canceling the picker preserves the current connection. Use **Table design** afterward to create tables.
 2. Open **SQL query**, select a table to generate SQL or enter your own statement, and click **Preview query**.
-3. View results in the separate window. Click column headers to sort, select a row to copy it, or copy all preview rows. Subsequent queries update the same window. Use **Open results** to reopen a closed result window without rerunning the query.
+3. View results in the separate window. Click column headers to sort, select a row to copy it, or copy all preview rows. Subsequent queries update the same window. Use **Open Table editor** to reopen the read-only preview without rerunning the query.
 4. Use the export buttons for the full query result, or **Batch export** for selected tables and views.
 5. Use **Import data** for its **Import a file** and **Batch import** tabs; **Clear data** empties the target table while keeping its structure.
 6. Use **Stored procedures** to run procedures or inspect definitions, and **Database migration** to export a SQL Server database.
@@ -143,7 +143,7 @@ Table structure is read-only here: column renaming, type changes, and constraint
 
 The table action bar shows **Import file → Export Excel → Query&Edit → Clear Data → DROP TABLE**. Import opens a dialog bound to the selected table and appends `.xlsx`, `.xls`, `.csv`, or `.db` data using the existing import pipeline; length validation is optional and off by default. SQLite source databases must contain a table with the same name. Export Excel exports all table rows using MiniExcel and reports the full output path in the status bar. Clear Data requires confirmation and removes all rows while keeping the table structure, using the same operation as Import data. DROP TABLE requires confirmation and removes both structure and data; SQL Server targets are schema-qualified, and SQLite tables referenced by foreign keys are rejected. Successful deletion clears the selected details and stale query results and refreshes the schema. Shared table actions and import/button components are reused by the existing import, query export and table-design deletion workflows.
 
-View details also provide **Query data**, reusing Query results with a 1,000-row preview limit and truncation notice. SQL Server views are addressed by schema and name, including from Batch export. Procedure details provide **Run** for the current procedure only: SQL Server procedures with parameters use the existing parameter input, review and confirmation dialog; other procedures require execution confirmation. SQLite conversion warnings are retained. These actions share the existing query and procedure execution services and operation gate; running a procedure here does not change the Stored procedures page's checked items. Parameters are loaded only when Run is clicked.
+View details also provide **Query data**, reusing Table editor in read-only mode with a 1,000-row preview limit and truncation notice. SQL Server views are addressed by schema and name, including from Batch export. Procedure details provide **Run** for the current procedure only: SQL Server procedures with parameters use the existing parameter input, review and confirmation dialog; other procedures require execution confirmation. SQLite conversion warnings are retained. These actions share the existing query and procedure execution services and operation gate; running a procedure here does not change the Stored procedures page's checked items. Parameters are loaded only when Run is clicked.
 
 The import dialog supports **Import a file** and **Batch import** tabs. Each source input and browse button share one row; switching tabs retains both paths and the target table. Batch import appends the folder's CSV and XLSX files using the same sequential importer, progress and partial-failure reporting as Import data. Length validation in this dialog remains optional and off by default for both modes; the existing Import data batch action retains its length validation.
 
@@ -160,6 +160,8 @@ SQLite automatically creates the internal `sqlite_sequence` table when an AUTOIN
 **Table design → Drop table** retains its separate table selection and **Drop table** button. Confirm before permanently deleting the table structure and all data. Cancel leaves it intact. SQLite incoming foreign keys block deletion; SQL Server enforces database dependencies. Successful deletion refreshes the table lists and clears stale selections and query previews. The Table editor window remains a separate feature for editing records.
 
 ### Table editor
+
+All query and table data windows use this page and host. SQL queries and Query data open read-only previews holding up to 1,000 rows (plus one reader probe to detect truncation), without loading table editing metadata or counting the full result. Sorting, searching and copying operate only on that snapshot; paging does not read more database rows. The preview window updates for subsequent queries and clears when the workspace clears its result. It has no add/edit/delete actions. Query&Edit opens a separate table session with full-table database paging, search, row counts and existing edit dialogs. Editing sessions remain bound to their original database and are not replaced by a new query preview.
 
 There is no standalone Table Edit menu. Open a **Table editor** window using **SQL query → Table → Query&Edit**, **Import data → Target table → Query&Edit**, or select a table on **Database schema** and click **Query&Edit**. SQL Server table choices include the schema. Each window stays bound to its original database and table, even if the main workspace changes connections.
 
@@ -317,7 +319,7 @@ These checks exercise dragging, resizing, viewport bounds, maximize/restore, bus
 
 - `Controls/TableEditorHostPage.cs` hosts each independent table-editor window; `Components/TableEditor.razor` provides paging, page selection, and add/edit/delete dialogs. `DataPieCore/TableEditorSession.cs` owns the bound connection/table, metadata, validation, parameterized writes, and conflict checks.
 - `Components/Pages/DatabaseSchemaView.razor` is the independent schema-browser page. It uses cached object lists, selected-table SQLite detail reads, and single-object definition loading; table-structure editing is not implemented.
-- `Controls/QueryResultsHostPage.cs` hosts the independent result window; `Components/QueryResults.razor` owns result rendering and interactions. Clipboard access is provided by `IDesktopServices.CopyTextAsync`, so the result component can be rendered and tested without MAUI.
+- `Controls/TableEditorHostPage.cs` and `Components/TableEditor.razor` host both read-only previews and editable table sessions. `Components/Shared/TableDataGrid.razor` shares grid rendering across both modes. The old Query results page and host are removed. `IDesktopServices.ShowTablePreviewAsync` reuses the preview window; `CopyTextAsync` supplies clipboard access.
 - `MainPage.cs` hosts the main `BlazorWebView` and provides a native fallback when WebView2 is missing.
 - `Components/Workspace.razor` provides navigation and the status bar; `Components/Pages/` contains the business pages, and `Components/Shared/` contains shared controls and dialogs.
 - All business pages, including login and connection management, keep their markup and page-specific workflows together in a single `.razor` file using an `@code` block. The static About page needs no code block.

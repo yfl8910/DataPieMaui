@@ -4,8 +4,58 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 
+@implements IDisposable
+@if (Preview != null)
+{
+<main>
+    <header><div><p>@previewSnapshot?.Connection</p><p>@previewSnapshot?.Source</p></div><span class="badge">Read-only preview</span></header>
+    @if (previewSnapshot is null)
+    {
+        <div class="empty">Run a query in the main window to view results.</div>
+    }
+    else
+    {
+        <div class="toolbar">
+            <strong>@previewSnapshot.RowCount.ToString("N0") rows · @previewSnapshot.ColumnCount columns</strong>
+            <button @onclick="() => CopyAsync(false)" disabled="@(previewSelected is null)">Copy selected row</button>
+            <button @onclick="() => CopyAsync(true)" disabled="@(previewOrder.Length == 0)">@(previewFilterColumn >= 0 ? "Copy matching rows" : "Copy all preview rows")</button>
+        </div>
+        <form class="search-toolbar" @onsubmit="ApplySearch" @onsubmit:preventDefault>
+            <label>Column <select @bind="previewSearchColumn">
+                <option value="-1">Select a column</option>
+                @for (int c = 0; c < previewSnapshot.ColumnCount; c++)
+                {
+                    if (previewSnapshot.GetColumnType(c) != typeof(byte[])) { <option value="@c">@previewSnapshot.GetColumnName(c)</option> }
+                }
+            </select></label>
+            <label>Search <input type="search" @bind="previewSearchText" @bind:event="oninput" placeholder="Contains text in loaded preview" /></label>
+            <button type="submit" disabled="@(previewSearchColumn < 0)">Search</button>
+            <button type="button" @onclick="ClearSearch">Clear</button>
+            @if (previewFilterColumn >= 0) { <span>Filtered by @previewSnapshot.GetColumnName(previewFilterColumn): @previewFilterText</span> }
+        </form>
+        @if (previewSnapshot.Truncated)
+        {
+            <div class="notice">Showing the first 1,000 rows. Use export in the main window to retrieve the full result.</div>
+        }
+        <TableDataGrid TRow="int" Rows="@previewOrder.Skip(previewPage * PreviewPageSize).Take(PreviewPageSize)" ColumnCount="previewSnapshot.ColumnCount"
+                       CellText="previewSnapshot.FormatCell" CellIsNull="previewSnapshot.IsNull" IsSelected="PreviewIsSelected" SelectRows="true" OnSelect="Select"
+                       SortState="PreviewSortState" EmptyText="@(previewFilterColumn >= 0 ? "No matching records in the loaded preview." : "The query returned no rows.")">
+            <LeadingHeader>#</LeadingHeader>
+            <ColumnHeader Context="column"><button @onclick="() => Sort(column)" disabled="@(previewSnapshot.GetColumnType(column) == typeof(byte[]))">@previewSnapshot.GetColumnName(column) @(previewSortColumn == column ? (previewDescending ? "▼" : "▲") : "")</button></ColumnHeader>
+            <LeadingCell Context="index">@(index + 1)</LeadingCell>
+        </TableDataGrid>
+        <footer>
+            <span role="status">@previewMessage</span>
+            <div class="pagination"><button @onclick="Previous" disabled="@(previewPage == 0)">Previous</button><span>Page @(previewPage + 1)/@PreviewPageCount · @previewOrder.Length.ToString("N0") rows</span><button @onclick="Next" disabled="@(previewPage + 1 >= PreviewPageCount)">Next</button></div>
+        </footer>
+    }
+</main>
+
+}
+else
+{
 <main inert="@DialogOpen">
-    <header><div><h1>Table editor</h1><p>@ConnectionLabel</p><p>@Session.TableName</p></div><span class="badge">@(Session.CanEdit ? "Table data" : "Read-only")</span></header>
+    <header><div><p>@ConnectionLabel</p><p>@Session.TableName</p></div><span class="badge">@(Session.CanEdit ? "Table data" : "Read-only")</span></header>
     <div class="toolbar">
         <button @onclick="BeginAdd" disabled="@(Session.IsBusy || DialogOpen || !Session.CanInsert)">Add record</button>
         <button @onclick="BeginEdit" disabled="@(Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit)">EDIT</button>
@@ -26,22 +76,13 @@
         @if (Session.SearchColumn != null) { <span>Filtered by @Session.SearchColumn: @Session.SearchText</span> }
     </form>
     @if (!Session.CanEdit) { <p class="notice">@Session.ReadOnlyReason</p> }
-    <div class="table-scroll" tabindex="0" aria-label="Table data">
-        <table><thead><tr><th><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> Select all</label></th>@foreach (DataColumn column in Session.Data.Columns) { <th>@column.ColumnName</th> }</tr></thead>
-        <tbody>
-            @if (Session.Data.Rows.Count == 0) { <tr><td colspan="@(Session.Data.Columns.Count + 1)" class="empty">@(Session.SearchColumn != null ? "No matching records." : "No records.")</td></tr> }
-            @foreach (DataRow row in Session.Data.Rows)
-            {
-                <tr class="@(selected.Contains(row) ? "selected" : "")">
-                    <td><input type="checkbox" aria-label="Select record" checked="@selected.Contains(row)" @onchange="e => Select(row, e.Value is true)" disabled="@(Session.IsBusy || DialogOpen)" /></td>
-                    @foreach (DataColumn column in Session.Data.Columns)
-                    {
-                        <td class="@(row.IsNull(column) ? "null" : "")">@(DataPieCore.NumericDisplay.Format(row[column], CultureInfo.CurrentCulture) ?? Format(row[column]))</td>
-                    }
-                </tr>
-            }
-        </tbody></table>
-    </div>
+    <TableDataGrid TRow="DataRow" Rows="@(Session.Data.Rows.Cast<DataRow>())" ColumnCount="Session.Data.Columns.Count"
+                   CellText="EditorCellText" CellIsNull="EditorCellIsNull" IsSelected="selected.Contains"
+                   EmptyText="@(Session.SearchColumn != null ? "No matching records." : "No records.")">
+        <LeadingHeader><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> Select all</label></LeadingHeader>
+        <ColumnHeader Context="column">@Session.Data.Columns[column].ColumnName</ColumnHeader>
+        <LeadingCell Context="row"><input type="checkbox" aria-label="Select record" checked="@selected.Contains(row)" @onchange="e => Select(row, e.Value is true)" disabled="@(Session.IsBusy || DialogOpen)" /></LeadingCell>
+    </TableDataGrid>
     <footer><span role="status" style="white-space:pre-wrap">@message</span><div class="pagination">
         <button @onclick="() => LoadAsync(Session.Page - 1)" disabled="@(Session.Page == 0 || Session.IsBusy || DialogOpen)">Previous</button>
         <span>Page @(Session.Page + 1)/@(Math.Max(1L, Session.TotalRows / TableEditorSession.PageSize + (Session.TotalRows % TableEditorSession.PageSize > 0 ? 1 : 0))) · @Session.TotalRows.ToString("N0") rows</span>
@@ -111,8 +152,9 @@
     </div>
 }
 
+}
 @code {
-    [Parameter, EditorRequired] public TableEditorSession Session { get; set; } = default!;
+    [Parameter] public TableEditorSession Session { get; set; } = default!;
     [Parameter] public string ConnectionLabel { get; set; } = "";
     private readonly HashSet<DataRow> selected = [];
     private readonly Dictionary<string, string> draft = new();
@@ -133,7 +175,7 @@
     public Task ClearSearchAsync() => ApplySearchAsync(true);
     private async Task ApplySearchAsync(bool clear)
     {
-        if (Session.IsBusy || DialogOpen) return;
+        if (Preview != null || Session.IsBusy || DialogOpen) return;
         Session.IsBusy = true;
         try
         {
@@ -154,22 +196,24 @@
         _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? ""
     };
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("tableEditorModal.sync");
-    public void Select(DataRow row, bool value) { if (Session.IsBusy || DialogOpen) return; if (value) selected.Add(row); else selected.Remove(row); }
+    public void Select(DataRow row, bool value) { if (Preview != null || Session.IsBusy || DialogOpen) return; if (value) selected.Add(row); else selected.Remove(row); }
+    private static string EditorCellText(DataRow row, int column) => NumericDisplay.Format(row[column], CultureInfo.CurrentCulture) ?? Format(row[column]);
+    private static bool EditorCellIsNull(DataRow row, int column) => row.IsNull(column);
     private bool AllPageSelected => Session.Data.Rows.Count > 0 && Session.Data.Rows.Cast<DataRow>().All(selected.Contains);
     public void SelectPage(bool value)
     {
-        if (Session.IsBusy || DialogOpen) return;
+        if (Preview != null || Session.IsBusy || DialogOpen) return;
         selected.Clear();
         if (value) foreach (DataRow row in Session.Data.Rows) selected.Add(row);
     }
-    public void SetDraft(string name, string value) { if (Session.IsBusy || (!adding && editing == null) || !draft.ContainsKey(name)) return; draft[name] = value; DraftChanged(name); }
+    public void SetDraft(string name, string value) { if (Preview != null || Session.IsBusy || (!adding && editing == null) || !draft.ContainsKey(name)) return; draft[name] = value; DraftChanged(name); }
     private void DraftChanged(string name) { if (adding) touched.Add(name); UpdateDirty(); }
     private bool Dirty => adding ? touched.Count > 0 : editing != null && draft.Any(x => x.Value != (editing.IsNull(x.Key) ? "" : Format(editing[x.Key])));
     private void UpdateDirty() { Session.HasDraft = Dirty; confirmDiscard = false; }
     private string RecordKey(DataRow row) => string.Join(", ", Session.Data.Columns.Cast<DataColumn>().Where(c => Session.IsPrimaryKey(c.ColumnName)).Select(c => c.ColumnName + "=" + Format(row[c])));
     public void BeginEdit()
     {
-        if (Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit) return;
+        if (Preview != null || Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit) return;
         editing = selected.Single(); draft.Clear();
         foreach (DataColumn column in Session.Data.Columns)
             if (Session.IsEditable(column.ColumnName))
@@ -180,7 +224,7 @@
     }
     public void BeginAdd()
     {
-        if (Session.IsBusy || DialogOpen || !Session.CanInsert) return;
+        if (Preview != null || Session.IsBusy || DialogOpen || !Session.CanInsert) return;
         adding = true; draft.Clear(); touched.Clear();
         foreach (DataColumn column in Session.Data.Columns)
             if (Session.IsInsertable(column.ColumnName)) draft[column.ColumnName] = "";
@@ -189,16 +233,16 @@
     private void Cancel() { editing = null; adding = false; draft.Clear(); touched.Clear(); Session.HasDraft = false; message = "Draft discarded."; }
     public void RequestClose()
     {
-        if (Session.IsBusy) return;
+        if (Preview != null || Session.IsBusy) return;
         if (confirmDelete) { confirmDelete = false; dialogError = ""; return; }
         if (Dirty) { confirmDiscard = true; return; }
         Cancel();
     }
-    public void DiscardDraft() { if (Session.IsBusy) return; confirmDiscard = false; dialogError = ""; Cancel(); }
-    public void RequestDelete() { if (!Session.IsBusy && !DialogOpen && selected.Count > 0 && Session.CanEdit) { dialogError = ""; confirmDelete = true; } }
+    public void DiscardDraft() { if (Preview != null || Session.IsBusy) return; confirmDiscard = false; dialogError = ""; Cancel(); }
+    public void RequestDelete() { if (Preview == null && !Session.IsBusy && !DialogOpen && selected.Count > 0 && Session.CanEdit) { dialogError = ""; confirmDelete = true; } }
     private async Task LoadAsync(int page)
     {
-        if (Session.IsBusy || DialogOpen) return;
+        if (Preview != null || Session.IsBusy || DialogOpen) return;
         Session.IsBusy = true;
         try { await Task.Run(() => Session.LoadPage(page)); selected.Clear(); message = "Table page loaded."; }
         catch (Exception ex) { message = ex.ToString(); }
@@ -206,7 +250,7 @@
     }
     public async Task SaveAsync()
     {
-        if (Session.IsBusy || (!adding && editing == null)) return;
+        if (Preview != null || Session.IsBusy || (!adding && editing == null)) return;
         Session.IsBusy = true;
         dialogError = "";
         try
@@ -235,7 +279,7 @@
     }
     public async Task DeleteAsync()
     {
-        if (Session.IsBusy || editing != null || !confirmDelete) return;
+        if (Preview != null || Session.IsBusy || editing != null || !confirmDelete) return;
         Session.IsBusy = true;
         dialogError = "";
         try
@@ -254,4 +298,76 @@
         catch (Exception ex) { dialogError = ex.ToString(); }
         finally { Session.IsBusy = false; }
     }
+}
+
+@code {
+    [Parameter] public QueryResultSession? Preview { get; set; }
+    [Parameter] public IDesktopServices Desktop { get; set; } = default!;
+    private QueryResultSnapshot? previewSnapshot;
+    private int[] previewOrder = [];
+    private const int PreviewPageSize = 100;
+    private int previewPage, previewSortColumn = -1;
+    private int previewSearchColumn = -1, previewFilterColumn = -1;
+    private string previewSearchText = "", previewFilterText = "";
+    private int? previewSelected;
+    private bool previewDescending, previewDisposed;
+    private string previewMessage = "Click a column to sort. Select a row to copy it.";
+    private int PreviewPageCount => Math.Max(1, (previewOrder.Length + PreviewPageSize - 1) / PreviewPageSize);
+
+    protected override void OnInitialized() { if (Preview != null) { Preview.Changed += RefreshPreview; LoadPreview(); } }
+    private void RefreshPreview() => _ = InvokeAsync(() => { if (!previewDisposed) { LoadPreview(); StateHasChanged(); } });
+    private void LoadPreview()
+    {
+        previewSnapshot = Preview?.Current;
+        previewOrder = Enumerable.Range(0, previewSnapshot?.RowCount ?? 0).ToArray();
+        previewPage = 0; previewSortColumn = -1; previewSelected = null; previewDescending = false;
+        previewSearchColumn = previewFilterColumn = -1; previewSearchText = previewFilterText = "";
+        previewMessage = "Click a column to sort. Select a row to copy it.";
+    }
+    public void ApplySearch() => Search(previewSearchColumn, previewSearchText);
+    public void Search(int column, string text)
+    {
+        if (previewSnapshot == null || column < 0 || column >= previewSnapshot.ColumnCount || previewSnapshot.GetColumnType(column) == typeof(byte[])) return;
+        previewFilterColumn = string.IsNullOrEmpty(text) ? -1 : column;
+        previewFilterText = text;
+        RebuildOrder();
+        previewMessage = "Search covers loaded preview rows only. Matches displayed text, ignoring case.";
+    }
+    public void ClearSearch()
+    {
+        previewSearchColumn = previewFilterColumn = -1; previewSearchText = previewFilterText = "";
+        RebuildOrder(); previewMessage = "Search cleared.";
+    }
+    private void RebuildOrder()
+    {
+        if (previewSnapshot == null) return;
+        var indices = previewSortColumn >= 0 ? previewSnapshot.Sort(previewSortColumn, previewDescending) : Enumerable.Range(0, previewSnapshot.RowCount).ToArray();
+        previewOrder = indices.Where(i => previewFilterColumn < 0 || (!previewSnapshot.IsNull(i, previewFilterColumn)
+            && previewSnapshot.FormatCell(i, previewFilterColumn).Contains(previewFilterText, StringComparison.OrdinalIgnoreCase))).ToArray();
+        previewPage = 0; previewSelected = null;
+    }
+    public void Sort(int column)
+    {
+        previewDescending = previewSortColumn == column && !previewDescending;
+        previewSortColumn = column;
+        RebuildOrder();
+    }
+    private bool PreviewIsSelected(int index) => previewSelected == index;
+    private string PreviewSortState(int column) => previewSortColumn == column ? (previewDescending ? "descending" : "ascending") : "none";
+    private void Select(int index) => previewSelected = index;
+    private void SelectWithKey(KeyboardEventArgs e, int index) { if (e.Key is "Enter" or " ") Select(index); }
+    private void Previous() { if (previewPage > 0) previewPage--; }
+    private void Next() { if (previewPage + 1 < PreviewPageCount) previewPage++; }
+    public async Task CopyAsync(bool all)
+    {
+        if (previewSnapshot is null || (!all && previewSelected is null)) return;
+        try
+        {
+            var text = previewSnapshot.CopyText(all ? previewOrder : new[] { previewSelected!.Value });
+            await Desktop.CopyTextAsync(text);
+            previewMessage = all ? $"Copied {previewOrder.Length:N0} preview rows." : "Copied selected row.";
+        }
+        catch (Exception ex) { previewMessage = "Copy failed: " + ex.Message; }
+    }
+    public void Dispose() { previewDisposed = true; if (Preview != null) Preview.Changed -= RefreshPreview; }
 }

@@ -11,7 +11,7 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
     public Task<string?> SelectNewFilePathAsync(string name, string extension) => MainThread.InvokeOnMainThreadAsync(() => NewFileDialog.Select(WinRT.Interop.WindowNative.GetWindowHandle(Owner.Handler?.PlatformView ?? throw new InvalidOperationException("The application window is not ready.")), name, extension));
     public Task<string?> FolderAsync() => MainThread.InvokeOnMainThreadAsync(() => WindowsFiles.FolderAsync(Owner));
     public Task CopyTextAsync(string text) => MainThread.InvokeOnMainThreadAsync(() => Clipboard.Default.SetTextAsync(text));
-    public Task ShowResultsAsync(QueryResultSession session) => MainThread.InvokeOnMainThreadAsync(() =>
+    public Task ShowTablePreviewAsync(QueryResultSession session) => MainThread.InvokeOnMainThreadAsync(() =>
     {
         if (resultWindow is { } existing)
         {
@@ -22,8 +22,8 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
             }
             return;
         }
-        var page = new Controls.QueryResultsHostPage(session, this);
-        var window = new Window(page) { Title = "DataPieMaui · Query results", Width = 1100, Height = 750, MinimumWidth = 640, MinimumHeight = 420 };
+        var page = new Controls.TableEditorHostPage(session, this);
+        var window = new Window(page) { Title = "DataPieMaui · Table editor · Read-only preview", Width = 1100, Height = 750, MinimumWidth = 640, MinimumHeight = 420 };
         window.Destroying += (_, _) =>
         {
             if (ReferenceEquals(resultWindow, window)) resultWindow = null;

@@ -45,7 +45,7 @@ internal static class QueryResultsChecks
             var snapshot = new QueryResultSnapshot(QueryPreviewResult.Read(reader, 1000), "Test");
             var session = new QueryResultSession(); session.Set(snapshot);
             var desktop = new Desktop();
-            using var component = new Harness { Session = session, Desktop = desktop }; component.Initialize();
+            using var component = new Harness { Preview = session, Desktop = desktop }; component.Initialize();
             component.Search(0, "match"); await component.CopyAsync(true);
             Check(desktop.Text == snapshot.CopyText(new[] { 205, 206 }), "Search missed later pages or ignored case incorrectly");
             component.Sort(0); await component.CopyAsync(true);
@@ -66,8 +66,10 @@ internal static class QueryResultsChecks
             var snapshot = new QueryResultSnapshot(QueryPreviewResult.Read(reader, 1000), "Test", "Table preview");
             session.Set(snapshot);
             var desktop = new Desktop();
-            using var component = new Harness { Session = session, Desktop = desktop };
+            using var component = new Harness { Preview = session, Desktop = desktop };
             component.Initialize();
+            component.BeginAdd(); component.BeginEdit(); component.RequestDelete();
+            await component.SaveAsync(); await component.DeleteAsync();
             await component.CopyAsync(false);
             Check(desktop.Calls == 0, "No-selection copy reached clipboard");
             await component.CopyAsync(true);
@@ -78,28 +80,34 @@ internal static class QueryResultsChecks
         });
         await test("Blazor result component renders safely and updates when session changes", async () =>
         {
-            var services = new ServiceCollection().AddLogging();
+            var services = new ServiceCollection().AddLogging().AddSingleton<Microsoft.JSInterop.IJSRuntime>(new NoopJs());
             await using var provider = services.BuildServiceProvider();
             await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
             var session = new QueryResultSession();
             await renderer.Dispatcher.InvokeAsync(async () =>
             {
-                var root = await renderer.RenderComponentAsync<QueryResults>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = session, ["Desktop"] = new Desktop() }));
+                var root = await renderer.RenderComponentAsync<TableEditor>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Preview"] = session, ["Desktop"] = new Desktop() }));
                 Check(root.ToHtmlString().Contains("Run a query"), "Missing empty state");
                 using var data = new DataTable(); data.Columns.Add("Name", typeof(string)); data.Rows.Add("<script>unsafe</script>");
                 using var reader = data.CreateDataReader();
                 session.Set(new QueryResultSnapshot(QueryPreviewResult.Read(reader, 1000), "Test", "Table preview"));
                 var html = root.ToHtmlString();
-                Check(html.Contains("Table preview") && html.Contains("Copy all preview rows") && !html.Contains("<script>unsafe</script>"), "Result update missing or cell rendered as markup");
+                Check(!html.Contains("<h1>Table editor</h1>") && html.Contains("Read-only preview") && html.Contains("Table preview") && html.Contains("Copy all preview rows") && !html.Contains("<script>unsafe</script>"), "Unified preview missing or cell rendered as markup");
+                Check(!html.Contains("Add record") && !html.Contains("Delete selected") && !html.Contains("data-dialog-resize"), "Read-only preview exposed write controls");
                 session.Set(null);
                 Check(root.ToHtmlString().Contains("Run a query"), "Cleared result remained visible");
             });
         });
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
-    private sealed class Harness : QueryResults
+    private sealed class Harness : TableEditor
     {
         public void Initialize() => base.OnInitialized();
+    }
+    private sealed class NoopJs : Microsoft.JSInterop.IJSRuntime
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => ValueTask.FromResult(default(TValue)!);
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) => ValueTask.FromResult(default(TValue)!);
     }
     private sealed class Desktop : IDesktopServices
     {
@@ -117,7 +125,7 @@ internal static class QueryResultsChecks
         public Task<string?> SaveAsync(string name, string extension) => Task.FromResult<string?>(null);
         public Task<string?> SelectNewFilePathAsync(string name, string extension) => Task.FromResult<string?>(null);
         public Task<string?> FolderAsync() => Task.FromResult<string?>(null);
-        public Task ShowResultsAsync(QueryResultSession session) => Task.CompletedTask;
+        public Task ShowTablePreviewAsync(QueryResultSession session) => Task.CompletedTask;
         public Task ShowTableEditorAsync(DataPieCore.TableEditorSession session, string connectionLabel) => Task.CompletedTask;
     }
 }

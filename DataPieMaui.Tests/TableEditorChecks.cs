@@ -144,7 +144,7 @@ internal static class TableEditorChecks
             {
                 var component = await renderer.RenderComponentAsync<DataPieMaui.Components.TableEditor>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = session, ["ConnectionLabel"] = "Test database" }));
                 string html = component.ToHtmlString();
-                Check(html.Contains("Table editor") && html.Contains("Delete selected") && html.Contains("Next") && html.Contains("Test database") && !html.Contains("<script>unsafe</script>"), "Missing controls or unescaped values");
+                Check(!html.Contains("<h1>Table editor</h1>") && html.Contains("Delete selected") && html.Contains("Next") && html.Contains("Test database") && !html.Contains("<script>unsafe</script>"), "Missing controls or unescaped values");
                 var keyless = TableEditorSession.Open(cs, "SQLITE", "", "NoKey");
                 var readOnly = await renderer.RenderComponentAsync<DataPieMaui.Components.TableEditor>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = keyless }));
                 Check(readOnly.ToHtmlString().Contains("Read-only") && readOnly.ToHtmlString().Contains("primary key"), "Read-only restriction not explained");

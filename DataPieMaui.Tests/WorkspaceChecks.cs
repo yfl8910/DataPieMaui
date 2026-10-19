@@ -736,7 +736,7 @@ internal static class WorkspaceChecks
         public Task<string?> OpenAsync(params string[] extensions) => Task.FromResult<string?>(null);
         public Task<string?> SaveAsync(string name, string extension) => Save();
         public Task<string?> FolderAsync() => Task.FromResult(Folder);
-        public Task ShowResultsAsync(QueryResultSession session) { ResultWindows++; return Task.CompletedTask; }
+        public Task ShowTablePreviewAsync(QueryResultSession session) { ResultWindows++; return Task.CompletedTask; }
     }
     private sealed class NoopJs : IJSRuntime
     {
