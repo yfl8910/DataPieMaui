@@ -36,7 +36,7 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
     });
     public Task ShowTableEditorAsync(DataPieCore.TableEditorSession session, string connectionLabel) => MainThread.InvokeOnMainThreadAsync(() =>
     {
-        var page = new Controls.TableEditorHostPage(session, connectionLabel);
+        var page = new Controls.TableEditorHostPage(session, connectionLabel, this);
         var window = new Window(page) { Title = "DataPieMaui · Table editor · " + session.TableName, Width = 1100, Height = 750, MinimumWidth = 640, MinimumHeight = 420 };
         bool allowClose = false, confirming = false;
         window.Created += (_, _) =>

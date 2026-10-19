@@ -20,6 +20,25 @@ internal static class SearchConditionChecks
                 + "INSERT INTO Orders VALUES(1006,'Z%_![''','P',999,0,'2026-10-19 08:00:00')", db); create.ExecuteNonQuery();
         }
         var conditions = new[] { new SearchCondition("Customer", "A"), new("Product", "P") };
+        await test("Table editor export button saves filtered rows and releases busy state on save or cancel", async () =>
+        {
+            var session = TableEditorSession.Open(cs, "SQLITE", "", "Orders");
+            try
+            {
+                session.Search(conditions);
+                string output = Path.Combine(root, "editor-button.xlsx");
+                var desktop = new Desktop { SavePath = output };
+                using var editor = new TableEditor { Session = session, Desktop = desktop };
+                await editor.ExportExcelAsync();
+                Check(File.Exists(output) && desktop.SaveCalls == 1 && !session.IsBusy, "Export button did not save or release busy state");
+                using var exported = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true);
+                Check(exported.Rows.Count == 167, "Export button did not preserve active filters");
+                desktop.SavePath = null;
+                await editor.ExportExcelAsync();
+                Check(desktop.SaveCalls == 2 && !session.IsBusy, "Canceling the save dialog left the editor busy");
+            }
+            finally { session.Data.Dispose(); }
+        });
         await test("Independent AND filters drive analysis groups totals and complete exports", () =>
         {
             var source = TableAnalysis.Open(cs, "SQLITE", "main", "Orders");
@@ -110,9 +129,11 @@ internal static class SearchConditionChecks
     private sealed class Desktop : IDesktopServices
     {
         public string? Text;
+        public string? SavePath;
+        public int SaveCalls;
         public Task CopyTextAsync(string text) { Text = text; return Task.CompletedTask; }
         public Task<string?> OpenAsync(params string[] extensions) => Task.FromResult<string?>(null);
-        public Task<string?> SaveAsync(string name, string extension) => Task.FromResult<string?>(null);
+        public Task<string?> SaveAsync(string name, string extension) { SaveCalls++; return Task.FromResult(SavePath); }
         public Task<string?> SelectNewFilePathAsync(string name, string extension) => Task.FromResult<string?>(null);
         public Task<string?> FolderAsync() => Task.FromResult<string?>(null);
         public Task ShowTablePreviewAsync(QueryResultSession session) => Task.CompletedTask;
