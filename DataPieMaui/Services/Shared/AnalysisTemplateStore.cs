@@ -47,7 +47,7 @@ public sealed class AnalysisTemplateStore(string path)
         ArgumentException.ThrowIfNullOrEmpty(tableName);
         name = name.Trim();
         if (name.Length is 0 or > 100) throw new ArgumentException("Template names must contain 1 to 100 characters.");
-        var settings = WithoutSearch(request);
+        var settings = ForStorage(request);
         string json = JsonSerializer.Serialize(new Payload(1, settings), JsonOptions);
         using var connection = Open();
         using var command = new SQLiteCommand("""
@@ -65,7 +65,7 @@ public sealed class AnalysisTemplateStore(string path)
     {
         name = name.Trim();
         if (name.Length is 0 or > 100) throw new ArgumentException("Template names must contain 1 to 100 characters.");
-        string json = JsonSerializer.Serialize(new Payload(1, WithoutSearch(request)), JsonOptions);
+        string json = JsonSerializer.Serialize(new Payload(1, ForStorage(request)), JsonOptions);
         using var connection = Open();
         using var command = new SQLiteCommand("UPDATE AnalysisTemplates SET Name=@name,ConfigJson=@json,UpdatedUtc=@updated WHERE TableName=@table AND Id=@id", connection);
         command.Parameters.AddWithValue("@name", name);
@@ -90,7 +90,7 @@ public sealed class AnalysisTemplateStore(string path)
         {
             var payload = JsonSerializer.Deserialize<Payload>(json, JsonOptions) ?? throw new InvalidDataException("Template settings are empty.");
             if (payload.Version != 1) throw new InvalidDataException("This template version is not supported.");
-            return WithoutSearch(payload.Settings);
+            return ForStorage(payload.Settings);
         }
         catch (JsonException ex) { throw new InvalidDataException("The template contains invalid settings.", ex); }
     }
@@ -101,12 +101,14 @@ public sealed class AnalysisTemplateStore(string path)
         command.Parameters.AddWithValue("@table", tableName); command.Parameters.AddWithValue("@id", id);
         if (command.ExecuteNonQuery() == 0) throw new InvalidOperationException("The template is no longer available. Refresh the template list.");
     }
-    internal static AnalysisRequest WithoutSearch(AnalysisRequest request)
+    internal static AnalysisRequest ForStorage(AnalysisRequest request)
     {
         if (request == null || request.Groups == null || request.Calculations == null || request.Groups.Any(string.IsNullOrEmpty)
             || request.Calculations.Any(c => c == null || string.IsNullOrEmpty(c.Column) || string.IsNullOrEmpty(c.Operation))
             || (request.Formulas ?? []).Any(f => f == null || string.IsNullOrWhiteSpace(f.Name) || string.IsNullOrEmpty(f.Left) || string.IsNullOrEmpty(f.Operation)))
             throw new InvalidDataException("The template has incomplete field or calculation settings.");
-        return request with { Groups = request.Groups.ToArray(), Calculations = request.Calculations.ToArray(), Formulas = request.Formulas?.ToArray(), SearchColumn = "", SearchColumns = null, SearchText = "", Conditions = null };
+        if (request.Conditions?.Any(c => c == null) == true) throw new InvalidDataException("The template contains an invalid search condition.");
+        var conditions = request.Conditions?.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray();
+        return request with { Groups = request.Groups.ToArray(), Calculations = request.Calculations.ToArray(), Formulas = request.Formulas?.ToArray(), SearchColumn = "", SearchColumns = null, SearchText = "", Conditions = conditions?.Length > 0 ? conditions : null };
     }
 }

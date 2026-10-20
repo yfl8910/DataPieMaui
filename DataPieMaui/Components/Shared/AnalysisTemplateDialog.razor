@@ -11,9 +11,10 @@ else if (editing == "calculations" && draft != null)
 else
 {
 <div class="modal-overlay">
-    <section class="editor-dialog" role="dialog" aria-modal="true" aria-labelledby="template-manager-title" tabindex="-1">
+    <section class="editor-dialog template-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="template-manager-title" tabindex="-1">
         <div class="dialog-header"><h2 id="template-manager-title">Manage templates</h2><button data-dialog-close @onclick="CloseAsync" disabled="@Session.Busy" aria-label="Close template manager">×</button></div>
-        <fieldset class="dialog-body" disabled="@Session.Busy">
+        <div class="dialog-body template-manager-body" tabindex="0" aria-label="Template settings">
+        <fieldset class="template-manager-fields" disabled="@Session.Busy">
             <div class="template-name-row">
                 <label>Template<select value="@selected" @onchange="SelectTemplate"><option value="0">Select a template</option>@foreach (var item in Session.Templates) { <option value="@item.Id">@item.Name</option> }</select></label>
                 <label>Template name<input @bind="TemplateName" @bind:event="oninput" maxlength="100" disabled="@(selected == 0)" placeholder="Enter a new name" /></label>
@@ -42,18 +43,22 @@ else
                 </section>
                 <p>Changes are saved only when you click Update selected. Current analysis settings and results are kept.</p>
             }
-            <div class="toolbar">
-                <button @onclick="UpdateAsync" disabled="@(draft == null || string.IsNullOrWhiteSpace(TemplateName))">Update selected</button>
-                <button @onclick="() => confirmDelete = true" disabled="@(selected == 0)">Delete template</button>
-            </div>
+            <p role="status" style="white-space:pre-wrap">@Session.Status</p>
+        </fieldset>
+        </div>
+        <div class="dialog-actions template-manager-actions">
             @if (confirmDelete)
             {
                 <p role="alert">Delete template '@Session.Templates.FirstOrDefault(t => t.Id == selected)?.Name'?</p>
-                <button class="danger" @onclick="DeleteAsync">Confirm delete</button><button @onclick="() => confirmDelete = false">Cancel</button>
+                <button class="danger" @onclick="DeleteAsync" disabled="@Session.Busy">Confirm delete</button><button @onclick="() => confirmDelete = false" disabled="@Session.Busy">Cancel</button>
             }
-            <p role="status" style="white-space:pre-wrap">@Session.Status</p>
-        </fieldset>
-        <div class="dialog-actions"><button @onclick="CloseAsync" disabled="@Session.Busy">Close</button></div>
+            else
+            {
+                <button @onclick="UpdateAsync" disabled="@(Session.Busy || draft == null || string.IsNullOrWhiteSpace(TemplateName))">Update selected</button>
+                <button @onclick="() => confirmDelete = true" disabled="@(Session.Busy || selected == 0)">Delete template</button>
+            }
+            <button @onclick="CloseAsync" disabled="@Session.Busy">Close</button>
+        </div>
     </section>
 </div>
 }

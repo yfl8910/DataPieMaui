@@ -15,6 +15,7 @@
 .analysis-calculation-dialog { width: min(1100px, 100%); }
 .analysis-calculation-row, .analysis-formula-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; padding: 12px 0; border-bottom: 1px solid #d8e0e9; margin-bottom: 12px; }
 .analysis-calculation-row label, .analysis-formula-row label { display: grid; gap: 5px; flex: 1; min-width: 120px; }
+.aggregate-move-up { align-self: center; padding: 6px 10px; }
 .dialog-body input:not([type=checkbox]), .dialog-body select { min-width: 0; width: 100%; padding: 8px; font: inherit; border: 1px solid #cbd5df; border-radius: 6px; }
 .dialog-body h3 { font-size: 15px; }
 .analysis-config-panel { min-width: 0; border: 1px solid #d8e0e9; border-radius: 6px; padding: 8px 12px; margin-top: 10px; overflow-wrap: anywhere; }
@@ -23,6 +24,12 @@
 .analysis-config-panel ul { padding-left: 20px; }
 .template-name-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .template-name-row label { display: grid; gap: 4px; min-width: 0; }
+.template-manager-dialog { height: min(800px, calc(100dvh - 48px)); }
+.template-manager-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.template-manager-fields { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
+.template-manager-actions { flex-wrap: wrap; }
+.template-manager-actions > p { flex-basis: 100%; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .template-manager-dialog { height: calc(100dvh - 24px); } }
 @media (max-width: 520px) { .template-name-row { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 720px) { .analysis-config-bar { grid-template-columns: auto minmax(0, 1fr); } }
 .analysis-settings { border: 1px solid #d8e0e9; border-radius: 8px; padding: 12px 16px; margin: 0; min-width: 0; flex-shrink: 0; max-height: 48vh; overflow: auto; }

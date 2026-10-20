@@ -5,14 +5,15 @@
         <div class="dialog-header"><h2 id="calculation-dialog-title">Calculations</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close calculation settings">×</button></div>
         <div class="dialog-body">
             <label><input type="checkbox" @bind="includeCount" /> Record count</label>
-            <h3>Aggregates</h3><p>Add numeric aggregates and optionally give each a name.</p>
+            <h3>Aggregates</h3><p>Add numeric aggregates and optionally give each a name. Click ↑ to move an aggregate up. Apply saves the column order.</p>
             @foreach (var item in aggregates)
             {
                 <div class="analysis-calculation-row" @key="item.Id">
+                    <button type="button" class="aggregate-move-up" aria-label="@("Move up " + item.ToCalculation().DisplayName)" title="Move up" disabled="@(aggregates[0].Id == item.Id)" @onclick="() => MoveAggregateUp(item.Id)">↑</button>
                     <label>Field<select @bind="item.Column">@foreach (var column in Source.NumericColumns) { <option value="@column">@column</option> }</select></label>
                     <label>Calculation<select @bind="item.Operation"><option value="SUM">Sum</option><option value="AVG">Average</option><option value="MIN">Min</option><option value="MAX">Max</option></select></label>
                     <label>Result name<input @bind="item.Name" @bind:event="oninput" maxlength="110" placeholder="@item.ToCalculation().DisplayName" /></label>
-                    <button @onclick="() => aggregates.Remove(item)" aria-label="Remove aggregate">×</button>
+                    <button @onclick="() => RemoveAggregate(item.Id)" aria-label="Remove aggregate">×</button>
                 </div>
             }
             <button @onclick="AddAggregate" disabled="@(Source.NumericColumns.Count == 0)">Add aggregate</button>
@@ -21,18 +22,18 @@
             {
                 <div class="analysis-formula-row" @key="formula">
                     <label>Result name<input @bind="formula.Name" @bind:event="oninput" maxlength="110" placeholder="Average price" /></label>
-                    <label>Left aggregate<select @bind="formula.Left"><option value="">Select aggregate</option>@foreach (var item in aggregates) { <option value="@item.Id">@item.ToCalculation().DisplayName</option> }</select></label>
+                    <label>Left aggregate<select @key="AggregateOptionsKey" aria-label="@("Left aggregate " + formula.Name)" value="@formula.Left" @onchange="e => ChangeAggregateReference(formula, false, e)"><option value="">Select aggregate</option>@foreach (var item in aggregates) { <option value="@item.Id">@item.ToCalculation().DisplayName</option> }</select></label>
                     <label>Operator<select @bind="formula.Operation"><option value="+">＋</option><option value="-">－</option><option value="*">×</option><option value="/">÷</option></select></label>
-                    <label>Right value<select @bind="formula.UseConstant"><option value="false">Aggregate</option><option value="true">Constant</option></select></label>
-                    @if (formula.UseConstant) { <label>Constant<input type="number" step="any" @bind="formula.Constant" /></label> }
-                    else { <label>Right aggregate<select @bind="formula.Right"><option value="">Select aggregate</option>@foreach (var item in aggregates) { <option value="@item.Id">@item.ToCalculation().DisplayName</option> }</select></label> }
+                    <label>Right value<select aria-label="@("Right value " + formula.Name)" value="@(formula.UseConstant ? "constant" : "aggregate")" @onchange="e => ChangeRightValue(formula, e)"><option value="aggregate">Aggregate</option><option value="constant">Constant</option></select></label>
+                    @if (formula.UseConstant) { <label @key='"constant"'>Constant<input aria-label="@("Constant " + formula.Name)" type="number" step="any" @bind="formula.Constant" /></label> }
+                    else { <label @key='"aggregate"'>Right aggregate<select @key="AggregateOptionsKey" aria-label="@("Right aggregate " + formula.Name)" value="@formula.Right" @onchange="e => ChangeAggregateReference(formula, true, e)"><option value="">Select aggregate</option>@foreach (var item in aggregates) { <option value="@item.Id">@item.ToCalculation().DisplayName</option> }</select></label> }
                     <button @onclick="() => formulas.Remove(formula)" aria-label="Remove formula">×</button>
                 </div>
             }
             <button @onclick="AddFormula" disabled="@(aggregates.Count == 0)">Add formula</button>
             <h3>Default sort</h3>
             <div class="analysis-calculation-row">
-                <label>Sort by<select aria-label="Sort by" value="@sortBy" @onchange="ChangeSortBy"><option value="">No default sort</option>
+                <label>Sort by<select @key="AggregateOptionsKey" aria-label="Sort by" value="@sortBy" @onchange="ChangeSortBy"><option value="">No default sort</option>
                     @foreach (var item in aggregates) { <option value="@("aggregate:" + item.Id)">@item.ToCalculation().DisplayName</option> }
                     @if (includeCount) { <option value="count">Record count</option> }
                     @foreach (var item in formulas) { <option value="@("formula:" + item.Name.Trim())">@item.Name</option> }
@@ -55,6 +56,32 @@
     private string sortBy = "";
     private bool sortDescending;
     private string error = "";
+    private string AggregateOptionsKey => string.Join("|", aggregates.Select(a => a.Id));
+    public void MoveAggregateUp(string id)
+    {
+        int index = aggregates.FindIndex(a => a.Id == id);
+        if (index <= 0) return;
+        (aggregates[index - 1], aggregates[index]) = (aggregates[index], aggregates[index - 1]);
+    }
+    public void RemoveAggregate(string id)
+    {
+        aggregates.RemoveAll(a => a.Id == id);
+        foreach (var formula in formulas) { if (formula.Left == id) formula.Left = ""; if (formula.Right == id) formula.Right = ""; }
+        if (sortBy == "aggregate:" + id) sortBy = "";
+    }
+    private void ChangeRightValue(AnalysisFormulaDraft formula, ChangeEventArgs args)
+    {
+        formula.UseConstant = args.Value?.ToString() == "constant";
+        if (!aggregates.Any(a => a.Id == formula.Right)) formula.Right = "";
+        error = "";
+    }
+    private void ChangeAggregateReference(AnalysisFormulaDraft formula, bool right, ChangeEventArgs args)
+    {
+        string value = args.Value?.ToString() ?? "";
+        if (!aggregates.Any(a => a.Id == value)) value = "";
+        if (right) formula.Right = value; else formula.Left = value;
+        error = "";
+    }
     public void ChangeSortBy(ChangeEventArgs args) { sortBy = args.Value?.ToString() ?? ""; error = ""; }
     public void ChangeSortDirection(ChangeEventArgs args) { sortDescending = args.Value?.ToString() == "desc"; error = ""; }
     protected override void OnInitialized()

@@ -40,7 +40,7 @@ internal static class AnalysisTemplateChecks
             Check(original.Groups.SequenceEqual(request.Groups) && original.Calculations.SequenceEqual(request.Calculations) && original.Formulas!.SequenceEqual(request.Formulas!), "Template lost grouping order, names or formula identifiers");
             Check(original.SearchColumn == "" && original.SearchText == "" && original.EffectiveSearchColumns.Count == 0, "Search conditions were persisted");
             long andId = store.Save("Sales", "AND filters", request with { Conditions = new[] { new SearchCondition("Region", "Secret independent filter") } });
-            Check(store.Load("Sales", andId).Conditions == null, "Independent search conditions were saved in a template");
+            Check(store.Load("Sales", andId).Conditions?.Single().Text == "Secret independent filter", "Independent search conditions were not saved in a template");
             store.Delete("Sales", andId);
             var changed = request with { Formulas = new[] { request.Formulas![0], request.Formulas[1] with { Constant = 4 } } };
             Check(store.Save("Sales", "区域均价", changed) == first && store.List("Sales").Count == 2, "Same table/name did not overwrite atomically with a stable ID");
@@ -151,12 +151,39 @@ internal static class AnalysisTemplateChecks
             component.ApplyGroups(Array.Empty<string>());
             await component.SaveCurrentTemplateAsync();
             Check(store.Load("Sales", first).Groups.Count == 0 && session.Templates.Any(t => t.Id == first), "Quick Save did not update the current template with a stable ID");
-            Check(store.Load("Sales", first).Conditions == null, "Quick Save persisted search conditions");
+            Check(store.Load("Sales", first).Conditions?.Single().Text == "North", "Quick Save did not persist current search conditions");
             int count = session.Templates.Count;
             var fresh = new DataAnalysis { Session = session };
             await fresh.SaveCurrentTemplateAsync();
             await fresh.SaveNewTemplateAsync();
             Check(session.Templates.Count == count, "Quick Save created an unnamed template instead of requesting a name");
+        });
+        await test("Templates save, restore, edit and remove independent default filters without changing live analysis", async () =>
+        {
+            var session = new DataAnalysisSession(source, "Source", store);
+            var settings = request with { Conditions = new[] { new SearchCondition("Region", "North"), new SearchCondition("Region", "") } };
+            long id = (await session.SaveTemplateAsync("Default filters", settings))!.Value;
+            Check(store.Load("Sales", id).Conditions?.Count == 1, "Blank conditions were saved");
+            var component = new DataAnalysis { Session = session };
+            component.SetConditions(new[] { new SearchCondition("Region", "South") });
+            await component.ApplyTemplateAsync(id);
+            Check(session.LastRequest!.Conditions!.Single().Text == "North" && session.Result!.FormatCell(0, 0) == "North", "Template defaults were not restored before analysis");
+            var previous = session.Result;
+            var manager = new DataPieMaui.Components.Shared.AnalysisTemplateDialog { Session = session };
+            await manager.LoadAsync(id);
+            manager.SetFilters(new[] { new SearchCondition("Region", "South"), new SearchCondition("Region", "outh") });
+            await manager.UpdateAsync();
+            Check(store.Load("Sales", id).Conditions?.Count == 2 && ReferenceEquals(session.Result, previous), "Manager lost AND conditions or changed live results");
+            await component.ApplyTemplateAsync(id);
+            Check(session.LastRequest!.Conditions!.Count == 2 && session.Result!.FormatCell(0, 0) == "South", "Edited AND defaults were not applied");
+            Check(await session.SaveTemplateAsync("Default filters", settings with { Conditions = new[] { new SearchCondition("Missing", "A") } }) == null
+                && store.Load("Sales", id).Conditions?.Count == 2, "Invalid search fields overwrote saved defaults");
+            manager.SetFilters(Array.Empty<SearchCondition>()); await manager.UpdateAsync();
+            Check(store.Load("Sales", id).Conditions == null, "Clearing saved defaults failed");
+            component.SetConditions(new[] { new SearchCondition("Region", "North") });
+            await component.ApplyTemplateAsync(id);
+            Check(session.Result!.FormatCell(0, 0) == "North", "Template without defaults did not retain current search");
+            store.Delete("Sales", id);
         });
     }
     private sealed class NoopJs : Microsoft.JSInterop.IJSRuntime

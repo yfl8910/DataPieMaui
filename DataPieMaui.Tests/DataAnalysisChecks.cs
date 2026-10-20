@@ -27,6 +27,7 @@ internal static class DataAnalysisChecks
             + "CREATE TABLE ManyGroups(Label TEXT, Value INTEGER); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1505) INSERT INTO ManyGroups SELECT 'group '||x,x FROM n;");
         var source = TableAnalysis.Open(cs, "SQLITE", "main", "Sales");
         await test("Calculation sort dropdown events update, rerender, apply and restore selections", () => CalculationSortInteractionChecks.Run(source));
+        await test("Aggregate move-up clicks preserve column identities, formulas and templates while right-value types switch correctly", () => CalculationSortInteractionChecks.RunReorderAndRightValue(source, root));
         await test("Default calculation sorting precedes preview limits and exports include one overall total outside the filter", () =>
         {
             var many = TableAnalysis.Open(cs, "SQLITE", "main", "ManyGroups");
