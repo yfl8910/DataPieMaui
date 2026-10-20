@@ -48,9 +48,9 @@ else
     <div class="toolbar">
         <button @onclick="BeginAdd" disabled="@(Session.IsBusy || DialogOpen || !Session.CanInsert)">Add record</button>
         <button @onclick="BeginEdit" disabled="@(Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit)">EDIT</button>
+        <button @onclick="ExportExcelAsync" disabled="@(Session.IsBusy || DialogOpen)" title="Export all rows matching the applied search, across all pages">Export Excel</button>
         <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">Delete selected</button>
         <button @onclick="() => LoadAsync(Session.Page)" disabled="@(Session.IsBusy || DialogOpen)">Refresh</button>
-        <button @onclick="ExportExcelAsync" disabled="@(Session.IsBusy || DialogOpen)" title="Export all rows matching the applied search, across all pages">Export Excel</button>
     </div>
     <ConditionSearch Fields="EditorSearchFields" Value="editorConditions" ValueChanged="SetEditorConditions" OnSearch="ApplyEditorConditionsAsync" OnClear="ClearSearchAsync" Disabled="@(Session.IsBusy || DialogOpen)"
                      Notice="All conditions must match across the full table. Text contains; numbers/booleans match exactly; dates use yyyy-MM-dd." />

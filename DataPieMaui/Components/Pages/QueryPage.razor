@@ -3,8 +3,8 @@
 @inherits WorkspacePageBase
 <section class="card">
     <div class="actions align-end"><label class="grow">Table<select @bind="Model.Form.QueryTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label>
-        <button @onclick="EditQueryTableAsync" disabled="@(string.IsNullOrEmpty(Form.QueryTable))">Query&amp;Edit</button>
         @foreach (var kind in new[] { "SELECT", "UPDATE", "DELETE" }) { <button @onclick="() => GenerateAsync(kind)">@kind</button> }
+        <button @onclick="EditQueryTableAsync" disabled="@(string.IsNullOrEmpty(Form.QueryTable))">Query&amp;Edit</button>
     </div>
     <label>SQL editor<textarea class="sql-editor" @bind="Model.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="Enter SQL. Preview shows up to 1,000 rows."></textarea></label>
     <div class="actions"><button class="primary" @onclick="PreviewAsync">Preview query</button><button @onclick="ExecuteSqlAsync">Run SQL</button><span class="action-divider"></span><button @onclick="() => ExportQueryAsync(false, false)">Query to Excel</button><button @onclick="() => ExportQueryAsync(true, false)">Query to CSV</button><button @onclick="() => ExportQueryAsync(false, true)">Table to Excel</button><button @onclick="() => ExportQueryAsync(true, true)">Table to CSV</button></div>
