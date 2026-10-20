@@ -7,17 +7,23 @@
         @if (Session.TemplatesEnabled)
         {
             <div class="analysis-template-bar">
-                <select aria-label="Template" @bind="selectedTemplateId"><option value="0">Select a template</option>@foreach (var template in Session.Templates) { <option value="@template.Id">@template.Name</option> }</select>
+                <select aria-label="Template" @bind="selectedTemplateId" @bind:after="TemplateSelectionChangedAsync"><option value="0">Select a template</option>@foreach (var template in Session.Templates) { <option value="@template.Id">@template.Name</option> }</select>
                 <button @onclick="() => ApplyTemplateAsync(selectedTemplateId)" disabled="@(selectedTemplateId == 0)">Apply template</button>
                 <button @onclick="SaveCurrentTemplateAsync">Save</button>
                 <button @onclick="OpenTemplateManager">Manage templates</button>
+                <button @onclick="NewTemplateAsync">New template</button>
             </div>
+            @if (isNewTemplateDraft) { <p class="notice">New template, not saved. Adjust settings and click Save to enter a new name.</p> }
         }
         <div class="analysis-config-bar">
             <button @onclick="OpenGroupSettings">Group by (@groups.Count)</button>
             <span title="@string.Join(", ", groups)">@(groups.Count == 0 ? "Total (no grouping)" : string.Join(", ", groups))</span>
             <button @onclick="OpenCalculationSettings">Calculations (@(calculations.Count + formulas.Count + (includeCount ? 1 : 0)))</button>
             <span title="@CalculationSummary">@CalculationSummary</span>
+            @if (templateConditions.Count > 0)
+            {
+                <div class="analysis-default-filters"><strong>Default filters</strong><span>@DefaultFilterSummary</span></div>
+            }
         </div>
         <ConditionSearch Fields="AnalysisSearchFields" Value="conditions" ValueChanged="SetConditions" OnSearch="AnalyzeConditionsAsync" OnClear="ClearConditionsAsync" AllowAllText="true" SearchLabel="Analyze" Disabled="Session.Busy"
                          Notice="All conditions must match source rows before grouping. Empty values are ignored.">
@@ -77,11 +83,11 @@ else if (settingsDialog == "save-template")
         <div class="dialog-header"><h2 id="save-template-title">Save template</h2><button data-dialog-close @onclick="CloseSettings" disabled="@Session.Busy" aria-label="Cancel saving template">×</button></div>
         <form @onsubmit="SaveNewTemplateAsync" @onsubmit:preventDefault>
             <fieldset class="dialog-body" disabled="@Session.Busy">
-                <label>Template name<input @bind="newTemplateName" @bind:event="oninput" maxlength="100" autofocus /></label>
-                <p>Saves current Group by, Calculations, default sort and nonempty search conditions. The same table and name replaces the existing template.</p>
+                <label>Template name<input @bind="NewTemplateName" @bind:event="oninput" maxlength="100" autofocus /></label>
+                <p>Saves current Group by, Calculations, default sort and nonempty search conditions. @(isNewTemplateDraft ? "Enter a different name to create a new template." : "The same table and name replaces the existing template.")</p>
                 <p role="status" style="white-space:pre-wrap">@Session.Status</p>
             </fieldset>
-            <div class="dialog-actions"><button type="submit" disabled="@(Session.Busy || string.IsNullOrWhiteSpace(newTemplateName))">Save</button><button type="button" @onclick="CloseSettings" disabled="@Session.Busy">Cancel</button></div>
+            <div class="dialog-actions"><button type="submit" disabled="@(Session.Busy || string.IsNullOrWhiteSpace(NewTemplateName))">Save</button><button type="button" @onclick="CloseSettings" disabled="@Session.Busy">Cancel</button></div>
         </form>
     </section></div>
 }
@@ -95,22 +101,46 @@ else if (settingsDialog == "save-template")
     private bool defaultSortDescending;
     private string settingsDialog = "";
     private long selectedTemplateId;
-    private string newTemplateName = "";
+    private bool isNewTemplateDraft;
+    private IReadOnlyList<SearchCondition> templateConditions = [];
+    private string DefaultFilterSummary => string.Join(" AND ", templateConditions.Select(c => (string.IsNullOrEmpty(c.Column) ? "All text fields" : c.Column) + " contains \"" + c.Text + "\""));
+    private void SetTemplateConditions(AnalysisRequest request) => templateConditions = request.Conditions?.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray() ?? [];
+    private async Task TemplateSelectionChangedAsync()
+    {
+        if (selectedTemplateId > 0) isNewTemplateDraft = false;
+        templateConditions = [];
+        if (selectedTemplateId > 0 && await Session.LoadTemplateAsync(selectedTemplateId, false) is { } request) SetTemplateConditions(request);
+    }
+    public string NewTemplateName { get; set; } = "";
+    public async Task NewTemplateAsync()
+    {
+        if (Session.Busy || settingsDialog.Length > 0) return;
+        if (selectedTemplateId > 0)
+        {
+            var request = await Session.LoadTemplateAsync(selectedTemplateId, false);
+            if (request == null) return;
+            groups = request.Groups.ToList(); calculations = request.Calculations.ToList(); formulas = (request.Formulas ?? []).ToList(); includeCount = request.IncludeCount;
+            defaultSort = request.SortBy ?? ""; defaultSortDescending = request.SortDescending;
+            conditions = request.Conditions?.ToArray() ?? [];
+        }
+        selectedTemplateId = 0; templateConditions = []; NewTemplateName = ""; isNewTemplateDraft = true; clipboardMessage = "";
+        Session.Reset(); displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
+    }
     public async Task SaveCurrentTemplateAsync()
     {
         if (Session.Busy || settingsDialog.Length > 0) return;
         clipboardMessage = "";
         var template = Session.Templates.FirstOrDefault(t => t.Id == selectedTemplateId);
-        if (template == null) { newTemplateName = ""; settingsDialog = "save-template"; return; }
-        if (await Session.SaveTemplateAsync(template.Name, Request) is { } id) selectedTemplateId = id;
+        if (template == null) { NewTemplateName = ""; settingsDialog = "save-template"; return; }
+        if (await Session.SaveTemplateAsync(template.Name, Request) is { } id) { selectedTemplateId = id; SetTemplateConditions(Request); }
     }
     public async Task SaveNewTemplateAsync()
     {
-        if (Session.Busy || settingsDialog != "save-template" || string.IsNullOrWhiteSpace(newTemplateName)) return;
-        if (await Session.SaveTemplateAsync(newTemplateName, Request) is { } id) { selectedTemplateId = id; CloseSettings(); }
+        if (Session.Busy || settingsDialog != "save-template" || string.IsNullOrWhiteSpace(NewTemplateName)) return;
+        if (await Session.SaveTemplateAsync(NewTemplateName, Request, isNewTemplateDraft) is { } id) { selectedTemplateId = id; isNewTemplateDraft = false; SetTemplateConditions(Request); CloseSettings(); }
     }
     public void OpenTemplateManager() { if (!Session.Busy) { clipboardMessage = ""; settingsDialog = "templates"; } }
-    private void TemplateSelected(long id) => selectedTemplateId = id;
+    private async Task TemplateSelected(long id) { selectedTemplateId = id; await TemplateSelectionChangedAsync(); }
     public async Task ApplyTemplateAsync(long templateId)
     {
         clipboardMessage = "";
@@ -119,6 +149,8 @@ else if (settingsDialog == "save-template")
         if (request == null) return;
         if (request.Conditions is { Count: > 0 }) conditions = request.Conditions.ToArray();
         selectedTemplateId = templateId;
+        isNewTemplateDraft = false;
+        SetTemplateConditions(request);
         groups = request.Groups.ToList(); calculations = request.Calculations.ToList(); formulas = (request.Formulas ?? []).ToList(); includeCount = request.IncludeCount;
         defaultSort = request.SortBy ?? ""; defaultSortDescending = request.SortDescending;
         displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
@@ -166,13 +198,20 @@ else if (settingsDialog == "save-template")
         displayedResult = Session.Result;
         order = Enumerable.Range(0, Session.Result?.RowCount ?? 0).ToArray(); page = 0; sortColumn = -1; selected = null;
     }
-    private async Task ExportAsync() { clipboardMessage = ""; await Session.ExportAsync(Desktop); }
+    private async Task ExportAsync()
+    {
+        clipboardMessage = "";
+        string name = Session.Templates.FirstOrDefault(t => t.Id == selectedTemplateId)?.Name ?? "";
+        await Session.ExportAsync(Desktop, name);
+    }
     private void Reset()
     {
         if (Session.Busy) return;
         groups.Clear(); calculations.Clear(); formulas.Clear(); includeCount = true; conditions = []; clipboardMessage = "";
         defaultSort = ""; defaultSortDescending = false;
         selectedTemplateId = 0;
+        isNewTemplateDraft = false;
+        templateConditions = [];
         Session.Reset(); displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
     }
     private bool IsSelected(int index) => selected == index;

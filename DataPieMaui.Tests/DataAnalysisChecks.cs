@@ -336,6 +336,9 @@ internal static class DataAnalysisChecks
             var desktop = new Desktop { Path = Path.Combine(root, "session-analysis.xlsx") };
             await session.ExportAsync(desktop);
             Check(File.Exists(desktop.Path) && session.Status.Contains(desktop.Path), "Session export failed or omitted the full path");
+            Check(desktop.SuggestedName == "Analysis", "Untemplated export default name changed");
+            await session.ExportAsync(desktop, "区域销售汇总");
+            Check(desktop.SuggestedName == "区域销售汇总", "Template name was not suggested for the export");
             await using var provider = new ServiceCollection().AddLogging().AddSingleton<Microsoft.JSInterop.IJSRuntime>(new NoopJs()).BuildServiceProvider();
             await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
             await renderer.Dispatcher.InvokeAsync(async () =>
@@ -350,7 +353,8 @@ internal static class DataAnalysisChecks
     private sealed class Desktop : IDesktopServices
     {
         public string? Path;
-        public Task<string?> SaveAsync(string name, string extension) => Task.FromResult(Path);
+        public string? SuggestedName;
+        public Task<string?> SaveAsync(string name, string extension) { SuggestedName = name; return Task.FromResult(Path); }
         public Task<string?> SelectNewFilePathAsync(string name, string extension) => Task.FromResult<string?>(null);
         public Task<string?> OpenAsync(params string[] extensions) => Task.FromResult<string?>(null);
         public Task<string?> FolderAsync() => Task.FromResult<string?>(null);

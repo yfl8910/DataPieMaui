@@ -26,7 +26,7 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         catch (Exception ex) { Status = ex.ToString(); }
         finally { Busy = false; }
     }
-    public async Task<long?> SaveTemplateAsync(string name, AnalysisRequest request)
+    public async Task<long?> SaveTemplateAsync(string name, AnalysisRequest request, bool createOnly = false)
     {
         if (Busy || templateStore == null) return null;
         Busy = true;
@@ -34,9 +34,9 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         {
             request = AnalysisTemplateStore.ForStorage(request);
             Source.ValidateRequest(request);
-            long id = await Task.Run(() => templateStore.Save(Source.TemplateTableName, name, request));
+            long id = await Task.Run(() => templateStore.Save(Source.TemplateTableName, name, request, createOnly));
             Templates = await Task.Run(() => templateStore.List(Source.TemplateTableName));
-            Status = $"Template '{name.Trim()}' saved. An existing template with the same table and name is replaced.";
+            Status = createOnly ? $"New template '{name.Trim()}' saved." : $"Template '{name.Trim()}' saved. An existing template with the same table and name is replaced.";
             return id;
         }
         catch (Exception ex) { Status = ex.ToString(); return null; }
@@ -125,14 +125,14 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         catch (Exception ex) { Status = ex.ToString(); }
         finally { Busy = false; }
     }
-    public async Task ExportAsync(IDesktopServices desktop)
+    public async Task ExportAsync(IDesktopServices desktop, string templateName = "")
     {
         if (Busy || LastRequest == null) return;
         Busy = true;
         try
         {
             var request = LastRequest;
-            var path = await desktop.SaveAsync("Analysis", ".xlsx");
+            var path = await desktop.SaveAsync(string.IsNullOrWhiteSpace(templateName) ? "Analysis" : templateName.Trim(), ".xlsx");
             if (path == null) { Status = "Export canceled."; return; }
             Status = "Exporting all analysis groups…";
             await Task.Run(() => Source.Export(request, path));

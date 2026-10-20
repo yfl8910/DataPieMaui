@@ -6,6 +6,8 @@
 .analysis-template-bar > select { flex: 1 1 180px; width: auto; max-width: 360px; }
 .analysis-config-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; border: 1px solid #d8e0e9; border-radius: 6px; padding: 8px 12px; }
 .analysis-config-bar > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.analysis-default-filters { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 12px; min-width: 0; font-size: 13px; }
+.analysis-default-filters > span { overflow-wrap: anywhere; white-space: pre-wrap; color: #68778c; }
 .analysis-group-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin: 16px 0; }
 .analysis-group-list label { display: flex; align-items: flex-start; gap: 6px; overflow-wrap: anywhere; }
 .analysis-group-list small { display: block; color: #68778c; font-weight: normal; }

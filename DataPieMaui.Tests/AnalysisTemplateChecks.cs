@@ -185,6 +185,64 @@ internal static class AnalysisTemplateChecks
             Check(session.Result!.FormatCell(0, 0) == "North", "Template without defaults did not retain current search");
             store.Delete("Sales", id);
         });
+        await test("Analysis displays saved template filters after configuration summaries without confusing unsaved searches", async () =>
+        {
+            var session = new DataAnalysisSession(source, "Source", store);
+            long id = (await session.SaveTemplateAsync("Summary filters", request with { Conditions = new[] { new SearchCondition("Region", "North") } }))!.Value;
+            await using var provider = new ServiceCollection().AddLogging().AddSingleton<Microsoft.JSInterop.IJSRuntime>(new NoopJs()).BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                SummaryHarness? component = null;
+                var view = await renderer.RenderComponentAsync<SummaryHarness>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = session, ["Capture"] = (Action<SummaryHarness>)(c => component = c) }));
+                Check(!view.ToHtmlString().Contains("analysis-default-filters"), "Summary displayed without template defaults");
+                await component!.ApplyTemplateAsync(id); component.Render();
+                string Summary() { string html = view.ToHtmlString(); int start = html.IndexOf("analysis-default-filters", StringComparison.Ordinal); return start < 0 ? "" : html.Substring(start, html.IndexOf("</div>", start, StringComparison.Ordinal) - start); }
+                Check(Summary().Contains("Default filters") && Summary().Contains("Region") && Summary().Contains("North"), "Saved filter summary missing");
+                component.SetConditions(new[] { new SearchCondition("Region", "South") }); component.Render();
+                Check(Summary().Contains("North") && !Summary().Contains("South"), "Draft search changed saved-default summary");
+                await component.SaveCurrentTemplateAsync(); component.Render();
+                Check(Summary().Contains("South"), "Saving template did not update its summary");
+                await session.SaveTemplateAsync("Summary filters", request with { Conditions = null });
+                await component.ApplyTemplateAsync(id); component.Render();
+                Check(Summary() == "", "No-default template still displayed a saved-filter summary");
+            });
+            store.Delete("Sales", id);
+        });
+        await test("New template copies saved settings into an unsaved draft and rejects duplicate names without replacing the source", async () =>
+        {
+            var session = new DataAnalysisSession(source, "Source", store);
+            var original = request with { Conditions = new[] { new SearchCondition("Region", "North") }, SortBy = "aggregate:revenue", SortDescending = true };
+            long originalId = (await session.SaveTemplateAsync("Copy source", original))!.Value;
+            var component = new DataAnalysis { Session = session };
+            await component.ApplyTemplateAsync(originalId);
+            component.ApplyGroups(Array.Empty<string>()); component.SetConditions(new[] { new SearchCondition("Region", "South") });
+            int before = store.List("Sales").Count;
+            await component.NewTemplateAsync();
+            Check(session.Result == null && session.LastRequest == null && store.List("Sales").Count == before, "New template ran analysis or wrote a record immediately");
+            await component.AnalyzeAsync();
+            Check(session.LastRequest!.Groups.SequenceEqual(new[] { "Region" }) && session.LastRequest.Conditions!.Single().Text == "North"
+                && session.LastRequest.SortBy == "aggregate:revenue" && session.LastRequest.SortDescending && session.LastRequest.Formulas!.SequenceEqual(original.Formulas!), "Draft did not copy the selected saved template completely");
+            component.ApplyGroups(Array.Empty<string>());
+            await component.SaveCurrentTemplateAsync(); component.NewTemplateName = "Copy source";
+            await component.SaveNewTemplateAsync();
+            Check(session.Status.Contains("already exists") && store.Load("Sales", originalId).Groups.Count == 1 && store.List("Sales").Count == before, "New draft overwrote the source on a duplicate name");
+            component.NewTemplateName = "Copy destination"; await component.SaveNewTemplateAsync();
+            var copy = store.List("Sales").Single(t => t.Name == "Copy destination");
+            Check(copy.Id != originalId && store.Load("Sales", copy.Id).Groups.Count == 0 && store.Load("Sales", originalId).Groups.Count == 1, "Draft was not saved as an independent template");
+            component.SetConditions(new[] { new SearchCondition("Region", "South") }); await component.SaveCurrentTemplateAsync();
+            Check(store.Load("Sales", copy.Id).Conditions!.Single().Text == "South" && store.Load("Sales", originalId).Conditions!.Single().Text == "North", "Saved draft was not selected or source was modified");
+            var unselected = new DataAnalysis { Session = session }; unselected.ApplyGroups(new[] { "Region" }); unselected.SetConditions(new[] { new SearchCondition("Region", "South") });
+            await unselected.NewTemplateAsync(); await unselected.AnalyzeAsync();
+            Check(session.LastRequest!.Groups.Count == 1 && session.LastRequest.Conditions!.Single().Text == "South", "New template without a selection did not retain current configuration");
+            store.Delete("Sales", copy.Id); store.Delete("Sales", originalId);
+        });
+    }
+    private sealed class SummaryHarness : DataAnalysis
+    {
+        [Parameter] public Action<SummaryHarness>? Capture { get; set; }
+        protected override void OnInitialized() => Capture?.Invoke(this);
+        public void Render() => StateHasChanged();
     }
     private sealed class NoopJs : Microsoft.JSInterop.IJSRuntime
     {

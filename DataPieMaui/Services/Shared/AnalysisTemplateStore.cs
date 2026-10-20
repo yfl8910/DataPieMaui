@@ -42,7 +42,7 @@ public sealed class AnalysisTemplateStore(string path)
         while (reader.Read()) results.Add(new(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), DateTime.Parse(reader.GetString(3), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
         return results;
     }
-    public long Save(string tableName, string name, AnalysisRequest request)
+    public long Save(string tableName, string name, AnalysisRequest request, bool createOnly = false)
     {
         ArgumentException.ThrowIfNullOrEmpty(tableName);
         name = name.Trim();
@@ -50,7 +50,7 @@ public sealed class AnalysisTemplateStore(string path)
         var settings = ForStorage(request);
         string json = JsonSerializer.Serialize(new Payload(1, settings), JsonOptions);
         using var connection = Open();
-        using var command = new SQLiteCommand("""
+        using var command = new SQLiteCommand(createOnly ? "INSERT INTO AnalysisTemplates(TableName,Name,ConfigJson,UpdatedUtc) VALUES(@table,@name,@json,@updated) RETURNING Id" : """
             INSERT INTO AnalysisTemplates(TableName,Name,ConfigJson,UpdatedUtc) VALUES(@table,@name,@json,@updated)
             ON CONFLICT(TableName,Name) DO UPDATE SET ConfigJson=excluded.ConfigJson,UpdatedUtc=excluded.UpdatedUtc
             RETURNING Id
@@ -59,7 +59,9 @@ public sealed class AnalysisTemplateStore(string path)
         command.Parameters.AddWithValue("@name", name);
         command.Parameters.AddWithValue("@json", json);
         command.Parameters.AddWithValue("@updated", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
-        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        try { return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture); }
+        catch (SQLiteException ex) when (createOnly && ex.ResultCode == SQLiteErrorCode.Constraint)
+        { throw new InvalidOperationException("A template with this name already exists. Enter a different name for the new template.", ex); }
     }
     public void Update(string tableName, long id, string name, AnalysisRequest request)
     {
