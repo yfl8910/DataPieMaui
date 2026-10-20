@@ -26,6 +26,50 @@ internal static class DataAnalysisChecks
             + "INSERT INTO Sales VALUES('North','A',10.25,2,'literal %_''[',1),('North','A',20.75,4,'regular',0),('South','B',NULL,NULL,'regular',0),('North','B',5,1,'regular',1);"
             + "CREATE TABLE ManyGroups(Label TEXT, Value INTEGER); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1505) INSERT INTO ManyGroups SELECT 'group '||x,x FROM n;");
         var source = TableAnalysis.Open(cs, "SQLITE", "main", "Sales");
+        await test("Analysis Excel export isolates numeric styles, headers, filters and frozen panes from shared exports", () =>
+        {
+            var request = new AnalysisRequest(new[] { "Region" }, new[] { new AnalysisCalculation("Amount", "SUM", "Revenue"), new("Qty", "SUM", "Units") },
+                Formulas: new[] { new AnalysisFormula("Rate %", "SUM|Amount", "/", Constant: 100) });
+            string output = Path.Combine(root, "styled-analysis.xlsx"); source.Export(request, output);
+            using (var archive = System.IO.Compression.ZipFile.OpenRead(output))
+            {
+                System.Xml.Linq.XDocument Read(string name) { using var input = archive.GetEntry(name)!.Open(); return System.Xml.Linq.XDocument.Load(input); }
+                System.Xml.Linq.XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+                var sheet = Read("xl/worksheets/sheet1.xml"); var styles = Read("xl/styles.xml");
+                Check(sheet.Descendants(ns + "pane").Single().Attribute("state")?.Value == "frozen" && sheet.Descendants(ns + "autoFilter").Single().Attribute("ref")?.Value == "A1:E3", "Freeze/filter ranges missing");
+                Check(sheet.Descendants(ns + "col").Count() == 5 && sheet.Descendants(ns + "c").Where(c => c.Attribute("r")!.Value.EndsWith("1")).All(c => c.Attribute("s")?.Value == "1"), "Header styling or column widths missing");
+                var cells = sheet.Descendants(ns + "c").ToDictionary(c => c.Attribute("r")!.Value);
+                Check(cells["B2"].Attribute("s")?.Value == "2" && cells["E2"].Attribute("s")?.Value == "3" && cells["E2"].Element(ns + "v")?.Value == "0.36", "Numeric/percentage styles changed the raw value");
+                Check(styles.Descendants(ns + "numFmt").Any(f => f.Attribute("formatCode")?.Value == "0.0%"), "Percentage format missing");
+            }
+            using (var data = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true))
+                Check(data.Rows.Count == 2 && Convert.ToDouble(data.Rows[0]["Revenue"]) == 36 && Convert.ToDouble(data.Rows[0]["Rate %"]) == 0.36, "Styled workbook could not be read as numeric data");
+            using var table = new System.Data.DataTable(); table.Columns.Add("Code"); table.Columns.Add("Value", typeof(decimal)); table.Rows.Add("=1+1", 0.256m);
+            string shared = Path.Combine(root, "unchanged-shared.xlsx");
+            using (var reader = table.CreateDataReader()) ExcelIO.SaveMiniExcel(shared, reader, "Data");
+            using (var zip = System.IO.Compression.ZipFile.OpenRead(shared))
+            using (var input = zip.GetEntry("xl/styles.xml")!.Open())
+            using (var text = new StreamReader(input)) Check(!text.ReadToEnd().Contains("FF334E68"), "Analysis formatting changed shared exports");
+            string direct = Path.Combine(root, "styled-text.xlsx");
+            using (var reader = table.CreateDataReader()) AnalysisExcelExport.Save(direct, reader, 1);
+            using (var zip = System.IO.Compression.ZipFile.OpenRead(direct))
+            using (var input = zip.GetEntry("xl/worksheets/sheet1.xml")!.Open())
+            {
+                var xml = System.Xml.Linq.XDocument.Load(input); System.Xml.Linq.XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+                Check(!xml.Descendants(ns + "f").Any() && xml.Descendants(ns + "t").Any(t => t.Value == "=1+1"), "Text interpreted as formula");
+            }
+            byte[] previous = File.ReadAllBytes(output);
+            Sql("CREATE TABLE LongAnalysis(Label TEXT, Value NUMERIC); INSERT INTO LongAnalysis VALUES(hex(zeroblob(17000)),1)");
+            var oversized = TableAnalysis.Open(cs, "SQLITE", "main", "LongAnalysis");
+            try
+            {
+                oversized.Export(new AnalysisRequest(new[] { "Label" }, new[] { new AnalysisCalculation("Value", "SUM") }), output);
+                throw new Exception("Expected Excel cell limit rejection");
+            }
+            catch (InvalidOperationException ex) { Check(ex.Message.Contains("32,767"), "Unexpected export failure"); }
+            Check(File.ReadAllBytes(output).SequenceEqual(previous) && Directory.GetFiles(root, "styled-analysis.xlsx.*.xlsx").Length == 0, "Failed formatted export damaged the previous file or left temporary files");
+            return Task.CompletedTask;
+        });
         await test("Analysis percentage headers format ratios without changing raw values or ordinary columns", () =>
         {
             var culture = System.Globalization.CultureInfo.CurrentCulture;

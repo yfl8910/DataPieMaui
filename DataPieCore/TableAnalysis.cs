@@ -226,7 +226,7 @@ public sealed class TableAnalysis
                 access.conn.Open(); Validate(access.conn, query);
                 using var command = Command(access.conn, query.Sql, query.SearchValue, query.Parameters);
                 using var reader = command.ExecuteReader();
-                ExcelIO.SaveMiniExcel(temporary, reader, "Analysis");
+                AnalysisExcelExport.Save(temporary, reader, request.Groups.Count);
             }
             File.Move(temporary, path, true);
         }
