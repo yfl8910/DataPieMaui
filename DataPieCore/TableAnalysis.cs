@@ -17,7 +17,8 @@ public sealed record AnalysisFormula(string Name, string Left, string Operation,
 public sealed record AnalysisField(string Name, string Type, bool CanGroup, string Notice);
 public sealed record AnalysisRequest(IReadOnlyList<string> Groups, IReadOnlyList<AnalysisCalculation> Calculations,
     bool IncludeCount = true, string SearchColumn = "", string SearchText = "", IReadOnlyList<AnalysisFormula> Formulas = null,
-    IReadOnlyList<string> SearchColumns = null, IReadOnlyList<SearchCondition> Conditions = null)
+    IReadOnlyList<string> SearchColumns = null, IReadOnlyList<SearchCondition> Conditions = null,
+    string SortBy = "", bool SortDescending = false)
 {
     public IReadOnlyList<string> EffectiveSearchColumns => SearchColumns ?? (string.IsNullOrEmpty(SearchColumn) ? Array.Empty<string>() : new[] { SearchColumn });
 }
@@ -84,6 +85,7 @@ public sealed class TableAnalysis
         var select = request.Groups.Select((name, i) => groups[i] + " AS " + Q("__g" + i)).ToList();
         var output = request.Groups.Select((name, i) => "s." + Q("__g" + i) + " AS " + Q(name)).ToList();
         var references = new Dictionary<string, string>(StringComparer.Ordinal);
+        var sortExpressions = new Dictionary<string, string>(StringComparer.Ordinal);
         var aliases = request.Groups.ToHashSet(StringComparer.OrdinalIgnoreCase);
         string Alias(string name)
         {
@@ -113,11 +115,13 @@ public sealed class TableAnalysis
                 ? "CONVERT(decimal(38,0)," + reference + ")" : reference);
             select.Add(calculation.Operation + "(" + expression + ") AS " + Q(internalName));
             output.Add(reference + " AS " + Alias(calculation.DisplayName));
+            sortExpressions.Add("aggregate:" + calculation.Key, reference);
         }
         if (request.IncludeCount)
         {
             select.Add((provider == "SQLSERVER" ? "COUNT_BIG(*)" : "COUNT(*)") + " AS " + Q("__count"));
             output.Add("s." + Q("__count") + " AS " + Alias("Records"));
+            sortExpressions.Add("count", "s." + Q("__count"));
         }
         foreach (var formula in request.Formulas ?? Array.Empty<AnalysisFormula>())
         {
@@ -134,6 +138,7 @@ public sealed class TableAnalysis
             string expression = formula.Operation == "/" ? (provider == "SQLITE" ? "(1.0 * " + left + ")" : left) + " / NULLIF(" + right + ",0)"
                 : left + " " + formula.Operation + " " + right;
             output.Add("(" + expression + ") AS " + Alias(formula.Name.Trim()));
+            sortExpressions.Add("formula:" + formula.Name.Trim(), "(" + expression + ")");
         }
         string tableName = provider == "SQLSERVER" ? Q(table.TableSchemaName) + "." + Q(table.Name) : Q("main") + "." + Q(table.Name);
         string filter = "", searchValue = null;
@@ -166,13 +171,24 @@ public sealed class TableAnalysis
         string sql = "SELECT " + string.Join(", ", select) + " FROM " + tableName + filter;
         if (groups.Length > 0) sql += " GROUP BY " + string.Join(", ", groups);
         sql = "SELECT " + string.Join(", ", output) + " FROM (" + sql + ") s";
-        if (groups.Length > 0) sql += " ORDER BY " + string.Join(", ", request.Groups.Select((_, i) => "s." + Q("__g" + i)));
+        if (!string.IsNullOrEmpty(request.SortBy) && !sortExpressions.ContainsKey(request.SortBy)) throw new ArgumentException("Select an available default sort calculation, or choose No default sort.");
+        if (groups.Length > 0)
+        {
+            string order = string.Join(", ", request.Groups.Select((_, i) => "s." + Q("__g" + i)));
+            if (!string.IsNullOrEmpty(request.SortBy))
+            {
+                string expression = sortExpressions[request.SortBy];
+                order = $"CASE WHEN {expression} IS NULL THEN 1 ELSE 0 END, {expression}" + (request.SortDescending ? " DESC, " : " ASC, ") + order;
+            }
+            sql += " ORDER BY " + order;
+        }
         return new(sql, searchValue, validation, searchParameters);
     }
 
-    private static IDbCommand Command(IDbConnection connection, string sql, string searchValue, IReadOnlyList<SearchParameter> parameters = null)
+    private static IDbCommand Command(IDbConnection connection, string sql, string searchValue, IReadOnlyList<SearchParameter> parameters = null, IDbTransaction transaction = null)
     {
         var command = connection.CreateCommand(); command.CommandText = sql; command.CommandTimeout = 120;
+        command.Transaction = transaction;
         if (searchValue != null)
         {
             var parameter = command.CreateParameter(); parameter.ParameterName = "@search"; parameter.DbType = DbType.String; parameter.Value = searchValue;
@@ -181,10 +197,10 @@ public sealed class TableAnalysis
         if (parameters != null) SearchConditions.Bind(command, parameters);
         return command;
     }
-    private static void Validate(IDbConnection connection, AnalysisQuery query)
+    private static void Validate(IDbConnection connection, AnalysisQuery query, IDbTransaction transaction = null)
     {
         if (query.ValidationSql == null) return;
-        using var validation = Command(connection, query.ValidationSql, query.SearchValue, query.Parameters);
+        using var validation = Command(connection, query.ValidationSql, query.SearchValue, query.Parameters, transaction);
         if (validation.ExecuteScalar() != null) throw new InvalidOperationException("Selected numeric fields contain nonnumeric values in matching source rows. Correct the source data or change the calculation fields.");
     }
     public QueryPreviewResult Analyze(AnalysisRequest request)
@@ -206,9 +222,9 @@ public sealed class TableAnalysis
         var totals = ReadPreview(access.conn, overall);
         return new(rows, totals);
     }
-    private static QueryPreviewResult ReadPreview(IDbConnection connection, AnalysisQuery query)
+    private static QueryPreviewResult ReadPreview(IDbConnection connection, AnalysisQuery query, IDbTransaction transaction = null)
     {
-        using var command = Command(connection, query.Sql, query.SearchValue, query.Parameters);
+        using var command = Command(connection, query.Sql, query.SearchValue, query.Parameters, transaction);
         using var reader = command.ExecuteReader();
         var result = QueryPreviewResult.Read(reader, 1000);
         if (result.Truncated) command.Cancel();
@@ -223,10 +239,22 @@ public sealed class TableAnalysis
         {
             using (var access = DbAccessFactory.Create(connectionString, provider))
             {
-                access.conn.Open(); Validate(access.conn, query);
-                using var command = Command(access.conn, query.Sql, query.SearchValue, query.Parameters);
+                access.conn.Open();
+                using var transaction = access.conn.BeginTransaction(IsolationLevel.Serializable);
+                Validate(access.conn, query, transaction);
+                object[] totals = null;
+                if (request.Groups.Count > 0)
+                {
+                    var overall = BuildQuery(table, provider, request with { Groups = Array.Empty<string>() });
+                    var result = ReadPreview(access.conn, overall, transaction);
+                    totals = new object[request.Groups.Count + result.ColumnCount];
+                    totals[0] = "Total";
+                    for (int i = 0; i < result.ColumnCount; i++) totals[request.Groups.Count + i] = result.GetValue(0, i);
+                }
+                using var command = Command(access.conn, query.Sql, query.SearchValue, query.Parameters, transaction);
                 using var reader = command.ExecuteReader();
-                AnalysisExcelExport.Save(temporary, reader, request.Groups.Count);
+                AnalysisExcelExport.Save(temporary, reader, request.Groups.Count, totals);
+                reader.Close(); transaction.Commit();
             }
             File.Move(temporary, path, true);
         }

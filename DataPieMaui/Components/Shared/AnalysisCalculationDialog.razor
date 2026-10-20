@@ -30,6 +30,15 @@
                 </div>
             }
             <button @onclick="AddFormula" disabled="@(aggregates.Count == 0)">Add formula</button>
+            <h3>Default sort</h3>
+            <div class="analysis-calculation-row">
+                <label>Sort by<select aria-label="Sort by" value="@sortBy" @onchange="ChangeSortBy"><option value="">No default sort</option>
+                    @foreach (var item in aggregates) { <option value="@("aggregate:" + item.Id)">@item.ToCalculation().DisplayName</option> }
+                    @if (includeCount) { <option value="count">Record count</option> }
+                    @foreach (var item in formulas) { <option value="@("formula:" + item.Name.Trim())">@item.Name</option> }
+                </select></label>
+                <label>Direction<select aria-label="Direction" value="@(sortDescending ? "desc" : "asc")" @onchange="ChangeSortDirection"><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+            </div>
             @if (error.Length > 0) { <div class="dialog-error" role="alert">@error</div> }
         </div>
         <div class="dialog-actions"><button @onclick="OnCancel">Cancel</button><button class="primary" @onclick="ApplyAsync">Apply</button></div>
@@ -43,10 +52,15 @@
     private readonly List<AnalysisCalculationDraft> aggregates = [];
     private readonly List<AnalysisFormulaDraft> formulas = [];
     private bool includeCount;
+    private string sortBy = "";
+    private bool sortDescending;
     private string error = "";
+    public void ChangeSortBy(ChangeEventArgs args) { sortBy = args.Value?.ToString() ?? ""; error = ""; }
+    public void ChangeSortDirection(ChangeEventArgs args) { sortDescending = args.Value?.ToString() == "desc"; error = ""; }
     protected override void OnInitialized()
     {
         includeCount = Settings.IncludeCount;
+        sortBy = Settings.SortBy ?? ""; sortDescending = Settings.SortDescending;
         aggregates.AddRange(Settings.Calculations.Select(c => new AnalysisCalculationDraft { Column = c.Column, Operation = c.Operation, Name = c.Name, Id = c.Key }));
         formulas.AddRange((Settings.Formulas ?? []).Select(f => new AnalysisFormulaDraft { Name = f.Name, Left = f.Left, Operation = f.Operation, Right = f.Right, UseConstant = f.Constant.HasValue, Constant = f.Constant }));
     }
@@ -65,8 +79,8 @@
         try
         {
             if (formulas.Any(f => f.UseConstant && !f.Constant.HasValue)) throw new ArgumentException("Enter a numeric constant.");
-            var result = new AnalysisCalculationSettings(aggregates.Select(a => a.ToCalculation()).ToArray(), includeCount, formulas.Select(f => f.ToFormula()).ToArray());
-            Source.ValidateRequest(Settings with { Calculations = result.Calculations, IncludeCount = result.IncludeCount, Formulas = result.Formulas });
+            var result = new AnalysisCalculationSettings(aggregates.Select(a => a.ToCalculation()).ToArray(), includeCount, formulas.Select(f => f.ToFormula()).ToArray(), sortBy, sortDescending);
+            Source.ValidateRequest(Settings with { Calculations = result.Calculations, IncludeCount = result.IncludeCount, Formulas = result.Formulas, SortBy = result.SortBy, SortDescending = result.SortDescending });
             await OnApply.InvokeAsync(result);
         }
         catch (ArgumentException ex) { error = ex.Message; }

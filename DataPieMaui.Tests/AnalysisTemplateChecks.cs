@@ -33,6 +33,10 @@ internal static class AnalysisTemplateChecks
             second = store.Save("Sales", "收入与销量", request with { Groups = Array.Empty<string>() });
             Check(first != second && store.List("Sales").Count == 2, "Different template names were overwritten");
             var original = store.Load("Sales", first);
+            long sortedId = store.Save("Sales", "Sorted settings", request with { SortBy = "aggregate:revenue", SortDescending = true });
+            var sortedSettings = store.Load("Sales", sortedId);
+            Check(sortedSettings.SortBy == "aggregate:revenue" && sortedSettings.SortDescending && string.IsNullOrEmpty(original.SortBy), "Default sort was not persisted or old templates acquired a sort");
+            store.Delete("Sales", sortedId);
             Check(original.Groups.SequenceEqual(request.Groups) && original.Calculations.SequenceEqual(request.Calculations) && original.Formulas!.SequenceEqual(request.Formulas!), "Template lost grouping order, names or formula identifiers");
             Check(original.SearchColumn == "" && original.SearchText == "" && original.EffectiveSearchColumns.Count == 0, "Search conditions were persisted");
             long andId = store.Save("Sales", "AND filters", request with { Conditions = new[] { new SearchCondition("Region", "Secret independent filter") } });

@@ -26,6 +26,38 @@ internal static class DataAnalysisChecks
             + "INSERT INTO Sales VALUES('North','A',10.25,2,'literal %_''[',1),('North','A',20.75,4,'regular',0),('South','B',NULL,NULL,'regular',0),('North','B',5,1,'regular',1);"
             + "CREATE TABLE ManyGroups(Label TEXT, Value INTEGER); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1505) INSERT INTO ManyGroups SELECT 'group '||x,x FROM n;");
         var source = TableAnalysis.Open(cs, "SQLITE", "main", "Sales");
+        await test("Calculation sort dropdown events update, rerender, apply and restore selections", () => CalculationSortInteractionChecks.Run(source));
+        await test("Default calculation sorting precedes preview limits and exports include one overall total outside the filter", () =>
+        {
+            var many = TableAnalysis.Open(cs, "SQLITE", "main", "ManyGroups");
+            var request = new AnalysisRequest(new[] { "Label" }, new[] { new AnalysisCalculation("Value", "SUM") }, SortBy: "aggregate:SUM|Value", SortDescending: true);
+            var preview = many.Analyze(request);
+            Check(preview.RowCount == 1000 && Convert.ToInt64(preview.GetValue(0, 1)) == 1505 && Convert.ToInt64(preview.GetValue(999, 1)) == 506, "Default sort was applied after the preview limit");
+            Check(Convert.ToInt64(many.Analyze(request with { SortDescending = false }).GetValue(0, 1)) == 1, "Ascending sort failed");
+            try { many.Analyze(request with { SortBy = "1; DROP TABLE ManyGroups" }); throw new Exception("Expected invalid sort rejection"); } catch (ArgumentException) { }
+            string path = Path.Combine(root, "sorted-with-total.xlsx"); many.Export(request, path);
+            using (var exported = MiniExcelLibs.MiniExcel.QueryAsDataTable(path, useHeaderRow: true))
+            {
+                Check(exported.Rows.Count == 1506 && Convert.ToInt64(exported.Rows[0]["SUM Value"]) == 1505 && Convert.ToInt64(exported.Rows[1504]["SUM Value"]) == 1, "Export order differed from analysis");
+                Check((string)exported.Rows[1505]["Label"] == "Total" && Convert.ToInt64(exported.Rows[1505]["SUM Value"]) == 1505L * 1506 / 2, "Overall total missing or based on preview");
+            }
+            using (var zip = System.IO.Compression.ZipFile.OpenRead(path))
+            using (var input = zip.GetEntry("xl/worksheets/sheet1.xml")!.Open())
+            {
+                var xml = System.Xml.Linq.XDocument.Load(input); System.Xml.Linq.XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+                Check(xml.Descendants(ns + "autoFilter").Single().Attribute("ref")?.Value == "A1:C1506" && xml.Descendants(ns + "c").Single(c => c.Attribute("r")?.Value == "B1507").Attribute("s")?.Value == "6", "Total row was filtered or unformatted");
+            }
+            var formula = new AnalysisRequest(new[] { "Region" }, new[] { new AnalysisCalculation("Amount", "AVG", Id: "amount"), new("Qty", "SUM", Id: "qty") },
+                Formulas: new[] { new AnalysisFormula("Ratio %", "amount", "/", "qty") }, SortBy: "formula:Ratio %", SortDescending: true);
+            var sorted = source.Analyze(formula);
+            Check((string)sorted.GetValue(sorted.RowCount - 1, 0) == "South", "NULL sort results were not last");
+            var sql = TableAnalysis.BuildQuery(new TableStruct { Name = "Sales", TableSchemaName = "dbo", Columns = new[] { new Column { Name = "Region", Type = "nvarchar(20)" }, new Column { Name = "Amount", Type = "numeric" }, new Column { Name = "Qty", Type = "int" } }.ToList() }, "SQLSERVER", formula);
+            Check(sql.Sql.Contains("CASE WHEN") && sql.Sql.Contains(" DESC, "), "SQL Server default sort SQL missing");
+            string noGroups = Path.Combine(root, "total-only.xlsx"); many.Export(request with { Groups = Array.Empty<string>() }, noGroups);
+            using var totalOnly = MiniExcelLibs.MiniExcel.QueryAsDataTable(noGroups, useHeaderRow: true);
+            Check(totalOnly.Rows.Count == 1, "Ungrouped export duplicated overall totals");
+            return Task.CompletedTask;
+        });
         await test("Analysis Excel export isolates numeric styles, headers, filters and frozen panes from shared exports", () =>
         {
             var request = new AnalysisRequest(new[] { "Region" }, new[] { new AnalysisCalculation("Amount", "SUM", "Revenue"), new("Qty", "SUM", "Units") },
@@ -43,7 +75,7 @@ internal static class DataAnalysisChecks
                 Check(styles.Descendants(ns + "numFmt").Any(f => f.Attribute("formatCode")?.Value == "0.0%"), "Percentage format missing");
             }
             using (var data = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true))
-                Check(data.Rows.Count == 2 && Convert.ToDouble(data.Rows[0]["Revenue"]) == 36 && Convert.ToDouble(data.Rows[0]["Rate %"]) == 0.36, "Styled workbook could not be read as numeric data");
+                Check(data.Rows.Count == 3 && Convert.ToDouble(data.Rows[0]["Revenue"]) == 36 && Convert.ToDouble(data.Rows[0]["Rate %"]) == 0.36, "Styled workbook could not be read as numeric data");
             using var table = new System.Data.DataTable(); table.Columns.Add("Code"); table.Columns.Add("Value", typeof(decimal)); table.Rows.Add("=1+1", 0.256m);
             string shared = Path.Combine(root, "unchanged-shared.xlsx");
             using (var reader = table.CreateDataReader()) ExcelIO.SaveMiniExcel(shared, reader, "Data");
@@ -118,7 +150,7 @@ internal static class DataAnalysisChecks
             Check(session.Matches(request with { SearchColumns = new[] { "Owner", "City" } }) && !session.Matches(request with { SearchColumns = new[] { "City" } }), "Field selection changes were not tracked correctly");
             string output = Path.Combine(root, "multi-search.xlsx"); searchSource.Export(request, output);
             using var exported = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true);
-            Check(exported.Rows.Count == 2 && exported.Rows.Cast<System.Data.DataRow>().Sum(r => Convert.ToDouble(r["SUM Amount"])) == 60, "Export did not use multi-field search");
+            Check(exported.Rows.Count == 3 && exported.Rows.Cast<System.Data.DataRow>().Take(2).Sum(r => Convert.ToDouble(r["SUM Amount"])) == 60, "Export did not use multi-field search");
         });
         await test("Analysis aggregates every source row and exports groups beyond the preview limit", () =>
         {
@@ -134,7 +166,7 @@ internal static class DataAnalysisChecks
                 && Convert.ToInt64(withTotals.Totals.GetValue(0, 1)) == 1505, "Totals used only preview groups or current page");
             string output = Path.Combine(root, "analysis-all.xlsx"); many.Export(request, output);
             using var exported = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true);
-            Check(exported.Rows.Count == 1505 && Directory.GetFiles(root, "analysis-all.xlsx.*.xlsx").Length == 0, "Export truncated groups or left temporary files");
+            Check(exported.Rows.Count == 1506 && Directory.GetFiles(root, "analysis-all.xlsx.*.xlsx").Length == 0, "Export truncated groups or left temporary files");
             return Task.CompletedTask;
         });
         await test("Analysis validates field roles, operations and dynamically typed SQLite numbers", () =>
@@ -247,6 +279,11 @@ internal static class DataAnalysisChecks
             using var exported = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true);
             var north = exported.Rows.Cast<System.Data.DataRow>().Single(r => Convert.ToString(r["Region"]) == "North");
             Check(Convert.ToDouble(north["Average price"]) == 25, "Export did not use the same formulas as preview");
+            var overall = pricing.Analyze(priceRequest with { Groups = Array.Empty<string>() });
+            var exportedTotal = exported.Rows[exported.Rows.Count - 1];
+            Check((string)exportedTotal[0] == "Total", "Formula export omitted Total row");
+            for (int i = 0; i < overall.ColumnCount; i++)
+                Check(Convert.ToDouble(exportedTotal[priceRequest.Groups.Count + i]) == Convert.ToDouble(overall.GetValue(0, i)), "Export total used grouped sums instead of overall aggregates/formulas");
             return Task.CompletedTask;
         });
         await test("Analysis settings dialogs isolate drafts and apply grouping and calculation configuration", async () =>

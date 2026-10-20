@@ -53,7 +53,7 @@ internal static class SearchConditionChecks
             Check(injection.Groups.RowCount == 0, "Condition value was interpreted as SQL");
             string output = Path.Combine(root, "and-analysis.xlsx"); source.Export(request, output);
             using var exported = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true);
-            Check(exported.Rows.Count == 1 && Convert.ToInt64(exported.Rows[0]["Records"]) == 167, "Export did not reuse AND filters");
+            Check(exported.Rows.Count == 2 && Convert.ToInt64(exported.Rows[0]["Records"]) == 167, "Export did not reuse AND filters");
             return Task.CompletedTask;
         });
         await test("Table editor AND search persists across paging and retains typed search and failed-search state", () =>

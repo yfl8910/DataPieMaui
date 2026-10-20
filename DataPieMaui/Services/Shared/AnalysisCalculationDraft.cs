@@ -20,4 +20,4 @@ public sealed class AnalysisFormulaDraft
     public decimal? Constant { get; set; }
     public AnalysisFormula ToFormula() => new(Name, Left, Operation, UseConstant ? "" : Right, UseConstant ? Constant : null);
 }
-public sealed record AnalysisCalculationSettings(IReadOnlyList<AnalysisCalculation> Calculations, bool IncludeCount, IReadOnlyList<AnalysisFormula> Formulas);
+public sealed record AnalysisCalculationSettings(IReadOnlyList<AnalysisCalculation> Calculations, bool IncludeCount, IReadOnlyList<AnalysisFormula> Formulas, string SortBy = "", bool SortDescending = false);

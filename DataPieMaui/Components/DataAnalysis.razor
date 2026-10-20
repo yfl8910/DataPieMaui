@@ -78,7 +78,7 @@ else if (settingsDialog == "save-template")
         <form @onsubmit="SaveNewTemplateAsync" @onsubmit:preventDefault>
             <fieldset class="dialog-body" disabled="@Session.Busy">
                 <label>Template name<input @bind="newTemplateName" @bind:event="oninput" maxlength="100" autofocus /></label>
-                <p>Saves current Group by and Calculations. The same table and name replaces the existing template.</p>
+                <p>Saves current Group by, Calculations, default sort and nonempty search conditions. The same table and name replaces the existing template.</p>
                 <p role="status" style="white-space:pre-wrap">@Session.Status</p>
             </fieldset>
             <div class="dialog-actions"><button type="submit" disabled="@(Session.Busy || string.IsNullOrWhiteSpace(newTemplateName))">Save</button><button type="button" @onclick="CloseSettings" disabled="@Session.Busy">Cancel</button></div>
@@ -91,6 +91,8 @@ else if (settingsDialog == "save-template")
     private List<string> groups = [];
     private List<AnalysisCalculation> calculations = [];
     private List<AnalysisFormula> formulas = [];
+    private string defaultSort = "";
+    private bool defaultSortDescending;
     private string settingsDialog = "";
     private long selectedTemplateId;
     private string newTemplateName = "";
@@ -115,8 +117,10 @@ else if (settingsDialog == "save-template")
         if (Session.Busy || templateId == 0) return;
         var request = await Session.LoadTemplateAsync(templateId);
         if (request == null) return;
+        if (request.Conditions is { Count: > 0 }) conditions = request.Conditions.ToArray();
         selectedTemplateId = templateId;
         groups = request.Groups.ToList(); calculations = request.Calculations.ToList(); formulas = (request.Formulas ?? []).ToList(); includeCount = request.IncludeCount;
+        defaultSort = request.SortBy ?? ""; defaultSortDescending = request.SortDescending;
         displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
         await AnalyzeAsync();
     }
@@ -128,6 +132,7 @@ else if (settingsDialog == "save-template")
     public void ApplyCalculations(AnalysisCalculationSettings value)
     {
         calculations = value.Calculations.ToList(); formulas = value.Formulas.ToList(); includeCount = value.IncludeCount; CloseSettings();
+        defaultSort = value.SortBy; defaultSortDescending = value.SortDescending;
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -152,7 +157,7 @@ else if (settingsDialog == "save-template")
         order = Enumerable.Range(0, Session.Result?.RowCount ?? 0).ToArray(); page = 0; sortColumn = -1; selected = null;
     }
     private int PageCount => Math.Max(1, (order.Length + 99) / 100);
-    private AnalysisRequest Request => new(groups.ToArray(), calculations.ToArray(), includeCount, Formulas: formulas.ToArray(), Conditions: conditions.ToArray());
+    private AnalysisRequest Request => new(groups.ToArray(), calculations.ToArray(), includeCount, Formulas: formulas.ToArray(), Conditions: conditions.ToArray(), SortBy: defaultSort, SortDescending: defaultSortDescending);
     public async Task AnalyzeAsync()
     {
         if (Session.Busy) return;
@@ -166,6 +171,7 @@ else if (settingsDialog == "save-template")
     {
         if (Session.Busy) return;
         groups.Clear(); calculations.Clear(); formulas.Clear(); includeCount = true; conditions = []; clipboardMessage = "";
+        defaultSort = ""; defaultSortDescending = false;
         selectedTemplateId = 0;
         Session.Reset(); displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
     }

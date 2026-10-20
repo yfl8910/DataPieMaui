@@ -15,7 +15,7 @@ internal static class AnalysisExcelExport
 {
     private const string Ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
-    public static void Save(string path, IDataReader reader, int groupColumns)
+    public static void Save(string path, IDataReader reader, int groupColumns, object[] totals = null)
     {
         int count = reader.FieldCount;
         if (count is < 1 or > 16384) throw new InvalidOperationException("Excel supports 1 to 16,384 columns.");
@@ -44,10 +44,10 @@ internal static class AnalysisExcelExport
             <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
             <numFmts count="2"><numFmt numFmtId="164" formatCode="0.0%"/><numFmt numFmtId="165" formatCode="yyyy-mm-dd hh:mm:ss"/></numFmts>
             <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts>
-            <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF334E68"/><bgColor indexed="64"/></patternFill></fill></fills>
-            <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+            <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF334E68"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF28756A"/><bgColor indexed="64"/></patternFill></fill></fills>
+            <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top style="thin"><color rgb="FF90BCB4"/></top><bottom/><diagonal/></border></borders>
             <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-            <cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
+            <cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="4" fontId="1" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/><xf numFmtId="165" fontId="1" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/></cellXfs>
             <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
             </styleSheet>
             """);
@@ -78,31 +78,32 @@ internal static class AnalysisExcelExport
         xml.WriteEndElement(); Start("sheetData"); Start("row"); Attr("r", 1); Attr("ht", 30); Attr("customHeight", 1);
         for (int c = 0; c < count; c++) TextCell(Column(c) + "1", names[c], 1);
         xml.WriteEndElement(); int rowNumber = 1;
-        void Row(object[] values)
+        void Row(object[] values, bool total = false)
         {
             if (++rowNumber > 1048576) throw new InvalidOperationException("Analysis exceeds Excel's 1,048,575 data-row limit. Narrow the search or grouping.");
             Start("row"); Attr("r", rowNumber);
             for (int c = 0; c < count; c++)
             {
-                object value = values[c]; if (value is null or DBNull) continue;
+                object value = values[c]; if (value is null or DBNull) { if (total) { Start("c"); Attr("r", Column(c) + rowNumber.ToString(Invariant)); Attr("s", 5); xml.WriteEndElement(); } continue; }
                 if (value is double d && !double.IsFinite(d) || value is float f && !float.IsFinite(f))
                     throw new InvalidOperationException("Excel cannot store a nonfinite numeric analysis result.");
                 string reference = Column(c) + rowNumber.ToString(Invariant);
                 if (Numeric(value) || value is DateTime || value is bool)
                 {
                     Start("c"); Attr("r", reference);
-                    Attr("s", value is DateTime ? 4 : Numeric(value) && names[c].Contains('%') ? 3 : Numeric(value) && c >= groupColumns ? 2 : 0);
+                    int style = value is DateTime ? 4 : Numeric(value) && names[c].Contains('%') ? 3 : Numeric(value) && c >= groupColumns ? 2 : 0; Attr("s", total ? (style == 0 ? 5 : style + 4) : style);
                     if (value is bool) Attr("t", "b");
                     Start("v"); xml.WriteString(value is DateTime date ? date.ToOADate().ToString("R", Invariant) : value is bool flag ? (flag ? "1" : "0") : Convert.ToString(value, Invariant));
                     xml.WriteEndElement(); xml.WriteEndElement();
                 }
-                else TextCell(reference, Convert.ToString(value, Invariant) ?? "", 0);
+                else TextCell(reference, Convert.ToString(value, Invariant) ?? "", total ? 5 : 0);
             }
             xml.WriteEndElement();
         }
         foreach (var values in sample) Row(values);
         while (reader.Read()) { var values = new object[count]; reader.GetValues(values); Row(values); }
-        xml.WriteEndElement(); Empty("autoFilter", ("ref", "A1:" + Column(count - 1) + rowNumber.ToString(Invariant)));
+        int lastDataRow = rowNumber; if (totals != null) Row(totals, true);
+        xml.WriteEndElement(); Empty("autoFilter", ("ref", "A1:" + Column(count - 1) + lastDataRow.ToString(Invariant)));
         xml.WriteEndElement();
     }
     private static bool Numeric(object value) => value is byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal;

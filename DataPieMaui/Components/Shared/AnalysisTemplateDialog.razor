@@ -33,6 +33,12 @@ else
                     @foreach (var formula in draft.Formulas ?? []) { <li>@formula.Name = @AggregateName(formula.Left) @formula.Operation @(formula.Constant?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? AggregateName(formula.Right))</li> }
                 </ul>
                 <button @onclick='() => editing = "calculations"'>Edit Calculations</button>
+                <p>Default sort: @(string.IsNullOrEmpty(draft.SortBy) ? "None" : (draft.SortBy.StartsWith("aggregate:") ? AggregateName(draft.SortBy.Substring(10)) : draft.SortBy.StartsWith("formula:") ? draft.SortBy.Substring(8) : "Record count") + (draft.SortDescending ? " · Descending" : " · Ascending"))</p>
+                </section>
+                <section class="analysis-config-panel" aria-label="Default search conditions">
+                    <h3>Default search conditions</h3>
+                    <ConditionSearch Fields="SearchFields" Value="@(draft.Conditions ?? Array.Empty<SearchCondition>())" ValueChanged="SetFilters" OnSearch="SetFilters" OnClear="ClearFilters" AllowAllText="true" SearchLabel="Apply filters" Disabled="Session.Busy"
+                                     Notice="All conditions use AND. Nonempty values are saved with Update selected. No saved filters keeps the current search when applying this template." />
                 </section>
                 <p>Changes are saved only when you click Update selected. Current analysis settings and results are kept.</p>
             }
@@ -61,6 +67,9 @@ else
     private AnalysisRequest? draft;
     private bool confirmDelete;
     private string editing = "";
+    private IReadOnlyList<SearchField> SearchFields => Session.Source.TextColumns.Select(n => new SearchField(n, n)).ToArray();
+    public void SetFilters(IReadOnlyList<SearchCondition> value) { if (draft != null && !Session.Busy) draft = draft with { Conditions = value.ToArray() }; }
+    private void ClearFilters() => SetFilters(Array.Empty<SearchCondition>());
     protected override async Task OnInitializedAsync() => await LoadAsync(SelectedId);
     public async Task LoadAsync(long id)
     {
@@ -79,7 +88,7 @@ else
     public void ApplyGroups(IReadOnlyList<string> groups) { if (draft != null) draft = draft with { Groups = groups.ToArray() }; CloseEditor(); }
     public void ApplyCalculations(AnalysisCalculationSettings settings)
     {
-        if (draft != null) draft = draft with { Calculations = settings.Calculations.ToArray(), Formulas = settings.Formulas.ToArray(), IncludeCount = settings.IncludeCount };
+        if (draft != null) draft = draft with { Calculations = settings.Calculations.ToArray(), Formulas = settings.Formulas.ToArray(), IncludeCount = settings.IncludeCount, SortBy = settings.SortBy, SortDescending = settings.SortDescending };
         CloseEditor();
     }
     public async Task UpdateAsync()

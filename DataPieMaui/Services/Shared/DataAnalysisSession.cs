@@ -32,7 +32,7 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         Busy = true;
         try
         {
-            request = AnalysisTemplateStore.WithoutSearch(request);
+            request = AnalysisTemplateStore.ForStorage(request);
             Source.ValidateRequest(request);
             long id = await Task.Run(() => templateStore.Save(Source.TemplateTableName, name, request));
             Templates = await Task.Run(() => templateStore.List(Source.TemplateTableName));
@@ -48,7 +48,7 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         Busy = true;
         try
         {
-            request = AnalysisTemplateStore.WithoutSearch(request);
+            request = AnalysisTemplateStore.ForStorage(request);
             Source.ValidateRequest(request);
             await Task.Run(() => templateStore.Update(Source.TemplateTableName, id, name, request));
             Templates = await Task.Run(() => templateStore.List(Source.TemplateTableName));
@@ -92,6 +92,7 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
     }
     public bool Matches(AnalysisRequest request) => LastRequest is { } last && last.Groups.SequenceEqual(request.Groups)
         && last.Calculations.SequenceEqual(request.Calculations) && last.IncludeCount == request.IncludeCount
+        && (last.SortBy ?? "") == (request.SortBy ?? "") && last.SortDescending == request.SortDescending
         && SameSearch(last, request)
         && (last.Formulas ?? []).SequenceEqual(request.Formulas ?? []);
     private static bool SameSearch(AnalysisRequest left, AnalysisRequest right)
