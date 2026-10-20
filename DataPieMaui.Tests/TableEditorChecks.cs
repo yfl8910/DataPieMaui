@@ -113,16 +113,39 @@ internal static class TableEditorChecks
             Check(Convert.ToInt64(session.Data.Rows[0]["Id"]) == 2, "Delete did not persist");
             session.Data.Dispose(); return Task.CompletedTask;
         });
-        await test("Table editor supports composite keys and keeps keyless tables read-only", () =>
+        await test("Table editor supports composite keys and keyless SQLite records", () =>
         {
             var session = TableEditorSession.Open(cs, "SQLITE", "", "Composite");
             session.Save(session.Data.Rows[1], new Dictionary<string, object> { ["Value"] = "changed" }); session.LoadPage(0);
             Check((string)session.Data.Rows[0]["Value"] == "first" && (string)session.Data.Rows[1]["Value"] == "changed", "Composite key targeted wrong record");
             session.Data.Dispose();
             var readOnly = TableEditorSession.Open(cs, "SQLITE", "", "NoKey");
-            Check(!readOnly.CanEdit && !readOnly.IsEditable("Name"), "Keyless table editable");
-            try { readOnly.Delete(new[] { readOnly.Data.Rows[0] }); throw new Exception("Expected key rejection"); } catch (InvalidOperationException) { }
+            Check(readOnly.CanEdit && readOnly.IsEditable("Name"), "Keyless table is still read-only");
+            readOnly.Save(readOnly.Data.Rows[0], new Dictionary<string, object> { ["Name"] = "editable" });
+            readOnly.LoadPage(0);
+            Check((string)readOnly.Data.Rows[0]["Name"] == "editable" && readOnly.Data.Columns.Count == 1, "Keyless save failed or exposed rowid");
             readOnly.Data.Dispose(); return Task.CompletedTask;
+        });
+        await test("Keyless editors identify duplicate SQLite rows and reject ambiguous original-value writes atomically", () =>
+        {
+            Execute("CREATE TABLE Duplicates(Name TEXT, Payload BLOB); INSERT INTO Duplicates VALUES('same',X'01'),('same',X'01'); CREATE TABLE ShadowIds(rowid TEXT,_rowid_ TEXT,oid TEXT,Name TEXT); INSERT INTO ShadowIds VALUES('a','b','c','same'),('a','b','c','same'),('d','e','f','unique');");
+            var rows = TableEditorSession.Open(cs, "SQLITE", "", "Duplicates");
+            Check(rows.CanEdit && rows.IsEditable("Name") && !rows.IsEditable("Payload"), "Binary field blocked the whole table");
+            rows.Save(rows.Data.Rows[0], new Dictionary<string, object> { ["Name"] = "changed" }); rows.LoadPage(0);
+            Check(rows.Data.Rows.Count == 2 && (string)rows.Data.Rows[0]["Name"] == "changed" && (string)rows.Data.Rows[1]["Name"] == "same", "Duplicate row edit affected another row");
+            Execute("UPDATE Duplicates SET Name='external' WHERE rowid=2");
+            Conflict(() => rows.Delete(new[] { rows.Data.Rows[0], rows.Data.Rows[1] }));
+            rows.LoadPage(0); Check(rows.Data.Rows.Count == 2, "Stale delete did not roll back the earlier row");
+            rows.Delete(new[] { rows.Data.Rows[0] }); rows.LoadPage(0); Check(rows.Data.Rows.Count == 1, "Keyless deletion failed");
+            rows.Data.Dispose();
+            var fallback = TableEditorSession.Open(cs, "SQLITE", "", "ShadowIds");
+            Check(fallback.CanEdit, "Original-value fallback disabled");
+            Conflict(() => fallback.Save(fallback.Data.Rows[0], new Dictionary<string, object> { ["Name"] = "unsafe" }));
+            Conflict(() => fallback.Delete(new[] { fallback.Data.Rows[2], fallback.Data.Rows[0] }));
+            fallback.LoadPage(0); Check(fallback.Data.Rows.Count == 3 && (string)fallback.Data.Rows[0]["Name"] == "same", "Ambiguous update/delete was not rolled back");
+            fallback.Save(fallback.Data.Rows[2], new Dictionary<string, object> { ["Name"] = "safe" });
+            fallback.LoadPage(0); Check((string)fallback.Data.Rows[2]["Name"] == "safe", "Uniquely matched fallback row could not be edited");
+            fallback.Data.Dispose(); return Task.CompletedTask;
         });
         await test("Table editor enforces foreign keys and quotes unusual table names", () =>
         {
@@ -147,7 +170,7 @@ internal static class TableEditorChecks
                 Check(!html.Contains("<h1>Table editor</h1>") && html.Contains("Delete selected") && html.Contains("Next") && html.Contains("Test database") && !html.Contains("<script>unsafe</script>"), "Missing controls or unescaped values");
                 var keyless = TableEditorSession.Open(cs, "SQLITE", "", "NoKey");
                 var readOnly = await renderer.RenderComponentAsync<DataPieMaui.Components.TableEditor>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = keyless }));
-                Check(readOnly.ToHtmlString().Contains("Read-only") && readOnly.ToHtmlString().Contains("primary key"), "Read-only restriction not explained");
+                Check(readOnly.ToHtmlString().Contains("Table data") && readOnly.ToHtmlString().Contains("SQLite rowid"), "Keyless editing identity not explained");
                 keyless.Data.Dispose();
             });
             session.Data.Dispose();

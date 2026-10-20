@@ -13,6 +13,9 @@ public sealed class TableEditorSession
 {
     private readonly string connectionString, databaseType, destination;
     private readonly HashSet<string> keys;
+    private string sqliteRowId;
+    private readonly string rowIdAlias = "__editor_" + Guid.NewGuid().ToString("N");
+    private readonly Dictionary<DataRow, object> rowIds = new();
     private readonly Dictionary<string, (string SqlType, bool ReadOnly, int Size)> metadata = new();
     private readonly HashSet<string> insertable = new(StringComparer.Ordinal);
     private readonly HashSet<string> defaults;
@@ -29,10 +32,14 @@ public sealed class TableEditorSession
         && Comparable(Data.Columns[column].DataType) && Data.Columns[column].DataType != typeof(byte[]);
     public bool HasDraft { get; set; }
     public bool IsBusy { get; set; }
-    public bool CanEdit => keys.Count > 0 && Data.Rows.Cast<DataRow>().All(r => keys.All(k => !r.IsNull(k)))
-        && Data.Columns.Cast<DataColumn>().All(c => Comparable(c.DataType));
-    public bool CanInsert => CanEdit;
-    public string ReadOnlyReason => "Editing requires a primary key with non-NULL values and supported column types.";
+    public bool CanEdit => sqliteRowId != null || Data.Columns.Cast<DataColumn>().Any(CanCompare);
+    public bool CanInsert => Data.Columns.Count > 0;
+    public string ReadOnlyReason => "No supported columns are available to identify this record safely.";
+    public string IdentityNotice => sqliteRowId != null ? "Records are located using SQLite rowid and original values."
+        : keys.Count > 0 ? "Records are located using their key and original values."
+        : "No unique key: original comparable values identify each record. Changes matching zero or multiple rows are rolled back.";
+    private bool CanCompare(DataColumn column) => Comparable(column.DataType)
+        && (!metadata.TryGetValue(column.ColumnName, out var info) || info.SqlType is not ("xml" or "geography" or "geometry" or "hierarchyid" or "sql_variant"));
     private string Quote(string name) => SqlQueryBuilder.QuoteIdentifier(name, databaseType);
     private TableEditorSession(string connectionString, string databaseType, TableStruct table)
     {
@@ -50,8 +57,48 @@ public sealed class TableEditorSession
         var table = access.ShowTables().SingleOrDefault(t => t.Name == name && (databaseType != "SQLSERVER" || t.TableSchemaName == schema))
             ?? throw new InvalidOperationException("The selected table is no longer available. Refresh the table list.");
         var editor = new TableEditorSession(connectionString, databaseType, table);
+        editor.FindLocator(table);
         editor.LoadPage(0);
         return editor;
+    }
+
+    private void FindLocator(TableStruct table)
+    {
+        if (keys.Count > 0) return;
+        using var access = DbAccessFactory.Create(connectionString, databaseType);
+        access.conn.Open();
+        using var command = access.conn.CreateCommand();
+        if (databaseType == "SQLITE")
+        {
+            var names = table.Columns.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            string candidate = new[] { "rowid", "_rowid_", "oid" }.FirstOrDefault(n => !names.Contains(n));
+            if (candidate == null) return;
+            command.CommandText = $"SELECT {Quote(candidate)} FROM {destination} LIMIT 0";
+            try { using var reader = command.ExecuteReader(); sqliteRowId = candidate; }
+            catch (System.Data.SQLite.SQLiteException) { /* WITHOUT ROWID tables use their declared key/original values. */ }
+        }
+        else if (databaseType == "SQLSERVER")
+        {
+            command.CommandText = """
+                SELECT i.index_id,c.name FROM sys.indexes i
+                JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id
+                JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id
+                WHERE i.object_id=OBJECT_ID(@table) AND i.is_unique=1 AND i.has_filter=0
+                  AND i.is_disabled=0 AND i.is_hypothetical=0 AND ic.key_ordinal>0
+                  AND NOT EXISTS(SELECT 1 FROM sys.index_columns k JOIN sys.columns n ON n.object_id=k.object_id AND n.column_id=k.column_id
+                      WHERE k.object_id=i.object_id AND k.index_id=i.index_id AND k.key_ordinal>0 AND n.is_nullable=1)
+                ORDER BY i.index_id,ic.key_ordinal
+                """;
+            var parameter = command.CreateParameter(); parameter.ParameterName = "@table"; parameter.Value = destination; command.Parameters.Add(parameter);
+            using var reader = command.ExecuteReader();
+            int? first = null;
+            while (reader.Read())
+            {
+                int index = reader.GetInt32(0); first ??= index;
+                if (index != first) break;
+                keys.Add(reader.GetString(1));
+            }
+        }
     }
 
     public void LoadPage(int page)
@@ -102,18 +149,20 @@ public sealed class TableEditorSession
         var predicate = BuildPredicate(conditions);
         SearchConditions.Bind(command, predicate.Parameters);
         string filter = predicate.Sql.Length == 0 ? "" : " WHERE " + predicate.Sql;
-        string order = keys.Count > 0 ? string.Join(",", keys.Select(Quote)) : "(SELECT NULL)";
+        string order = sqliteRowId != null ? Quote(sqliteRowId) : keys.Count > 0 ? string.Join(",", keys.Select(Quote)) : "(SELECT NULL)";
+        string projection = sqliteRowId == null ? "*" : $"{Quote(sqliteRowId)} AS {Quote(rowIdAlias)},*";
         command.CommandText = $"SELECT {(databaseType == "SQLSERVER" ? "COUNT_BIG(*)" : "COUNT(*)")} FROM {destination}{filter}";
         long totalRows = Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
         command.CommandText = databaseType == "SQLSERVER"
             ? $"SELECT * FROM {destination}{filter} ORDER BY {order} OFFSET {offset} ROWS FETCH NEXT {PageSize + 1} ROWS ONLY"
-            : $"SELECT * FROM {destination}{filter} ORDER BY {order} LIMIT {PageSize + 1} OFFSET {offset}";
+            : $"SELECT {projection} FROM {destination}{filter} ORDER BY {order} LIMIT {PageSize + 1} OFFSET {offset}";
         using var reader = command.ExecuteReader(CommandBehavior.KeyInfo);
         using var schema = reader.GetSchemaTable();
         var nextMetadata = new Dictionary<string, (string, bool, int)>();
         var nextInsertable = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < reader.FieldCount; i++)
         {
+            if (reader.GetName(i) == rowIdAlias) continue;
             DataRow info = schema.Rows[i];
             bool Flag(string field) => schema.Columns.Contains(field) && info[field] is bool flag && flag;
             string type = reader.GetDataTypeName(i).ToLowerInvariant();
@@ -159,6 +208,14 @@ public sealed class TableEditorSession
         }
         bool hasNext = next.Rows.Count > PageSize;
         if (hasNext) next.Rows.RemoveAt(PageSize);
+        rowIds.Clear();
+        if (sqliteRowId != null)
+        {
+            foreach (DataRow row in next.Rows) rowIds.Add(row, row[rowIdAlias]);
+            next.PrimaryKey = Array.Empty<DataColumn>();
+            next.Constraints.Clear();
+            next.Columns.Remove(rowIdAlias);
+        }
         next.AcceptChanges();
         Data.Dispose(); Data = next;
         metadata.Clear(); foreach (var entry in nextMetadata) metadata.Add(entry.Key, entry.Value);
@@ -270,7 +327,7 @@ public sealed class TableEditorSession
             }
             string assignments = changes == null ? "" : string.Join(",", changes.Select(c => Quote(c.Key) + "=" + Parameter(c.Key, c.Value)));
             // Compare the entire original row, including rowversion. Any conflict rolls back the batch.
-            string predicate = string.Join(" AND ", Data.Columns.Cast<DataColumn>().Select(c =>
+            string predicate = string.Join(" AND ", Data.Columns.Cast<DataColumn>().Where(CanCompare).Select(c =>
             {
                 if (original.IsNull(c)) return Quote(c.ColumnName) + " IS NULL";
                 string value = Parameter(c.ColumnName, original[c]);
@@ -280,9 +337,16 @@ public sealed class TableEditorSession
                         : $"{Quote(c.ColumnName)} COLLATE BINARY={value}";
                 return Quote(c.ColumnName) + "=" + value;
             }));
+            if (sqliteRowId != null)
+            {
+                if (!rowIds.TryGetValue(original, out var id)) throw new InvalidOperationException("Refresh before editing this record.");
+                var parameter = command.CreateParameter(); parameter.ParameterName = "@rowId"; parameter.Value = id; command.Parameters.Add(parameter);
+                predicate = Quote(sqliteRowId) + "=@rowId" + (predicate.Length > 0 ? " AND " + predicate : "");
+            }
+            if (predicate.Length == 0) throw new InvalidOperationException(ReadOnlyReason);
             command.CommandText = changes == null ? $"DELETE FROM {destination} WHERE {predicate}" : $"UPDATE {destination} SET {assignments} WHERE {predicate}";
             if (command.ExecuteNonQuery() != 1)
-                throw new InvalidOperationException("The record changed or was deleted, or the update could not be verified. No changes were committed. Cancel and refresh before retrying.");
+                throw new InvalidOperationException("The record changed, was deleted, or matches multiple rows. No changes were committed. Refresh before retrying; duplicate records require a primary key or unique identifier.");
         }
         transaction.Commit();
     }

@@ -56,6 +56,7 @@ else
                      Notice="All conditions must match across the full table. Text contains; numbers/booleans match exactly; dates use yyyy-MM-dd." />
     @if (Session.Conditions.Count > 0) { <p>Active conditions: @string.Join(" AND ", Session.Conditions.Select(c => c.Column + ": " + c.Text))</p> }
     @if (!Session.CanEdit) { <p class="notice">@Session.ReadOnlyReason</p> }
+    @if (Session.CanEdit) { <p class="notice">@Session.IdentityNotice</p> }
     <TableDataGrid TRow="DataRow" Rows="@(Session.Data.Rows.Cast<DataRow>())" ColumnCount="Session.Data.Columns.Count"
                    CellText="EditorCellText" CellIsNull="EditorCellIsNull" IsSelected="selected.Contains"
                    EmptyText="@(Session.SearchColumn != null ? "No matching records." : "No records.")">
