@@ -61,6 +61,25 @@ public sealed class AnalysisTemplateStore(string path)
         command.Parameters.AddWithValue("@updated", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
         return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
+    public void Update(string tableName, long id, string name, AnalysisRequest request)
+    {
+        name = name.Trim();
+        if (name.Length is 0 or > 100) throw new ArgumentException("Template names must contain 1 to 100 characters.");
+        string json = JsonSerializer.Serialize(new Payload(1, WithoutSearch(request)), JsonOptions);
+        using var connection = Open();
+        using var command = new SQLiteCommand("UPDATE AnalysisTemplates SET Name=@name,ConfigJson=@json,UpdatedUtc=@updated WHERE TableName=@table AND Id=@id", connection);
+        command.Parameters.AddWithValue("@name", name);
+        command.Parameters.AddWithValue("@json", json);
+        command.Parameters.AddWithValue("@updated", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("@table", tableName);
+        command.Parameters.AddWithValue("@id", id);
+        try
+        {
+            if (command.ExecuteNonQuery() == 0) throw new InvalidOperationException("The template is no longer available. Reopen the template manager.");
+        }
+        catch (SQLiteException ex) when (ex.ResultCode == SQLiteErrorCode.Constraint)
+        { throw new InvalidOperationException("A template with this name already exists for this table. Choose a different name.", ex); }
+    }
     public AnalysisRequest Load(string tableName, long id)
     {
         using var connection = Open();

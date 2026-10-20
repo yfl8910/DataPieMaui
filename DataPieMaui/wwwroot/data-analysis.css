@@ -3,7 +3,8 @@
 .analysis-template-bar label { display: grid; gap: 4px; flex: 1; min-width: 160px; }
 .analysis-template-bar input, .analysis-template-bar select { width: 100%; min-width: 0; padding: 8px; font: inherit; border: 1px solid #cbd5df; border-radius: 6px; background: white; }
 .analysis-template-bar button { white-space: nowrap; }
-.analysis-config-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
+.analysis-template-bar > select { flex: 1 1 180px; width: auto; max-width: 360px; }
+.analysis-config-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; border: 1px solid #d8e0e9; border-radius: 6px; padding: 8px 12px; }
 .analysis-config-bar > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .analysis-group-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin: 16px 0; }
 .analysis-group-list label { display: flex; align-items: flex-start; gap: 6px; overflow-wrap: anywhere; }
@@ -16,6 +17,13 @@
 .analysis-calculation-row label, .analysis-formula-row label { display: grid; gap: 5px; flex: 1; min-width: 120px; }
 .dialog-body input:not([type=checkbox]), .dialog-body select { min-width: 0; width: 100%; padding: 8px; font: inherit; border: 1px solid #cbd5df; border-radius: 6px; }
 .dialog-body h3 { font-size: 15px; }
+.analysis-config-panel { min-width: 0; border: 1px solid #d8e0e9; border-radius: 6px; padding: 8px 12px; margin-top: 10px; overflow-wrap: anywhere; }
+.analysis-config-panel h3 { margin: 0 0 6px; }
+.analysis-config-panel p, .analysis-config-panel ul { margin: 0 0 8px; }
+.analysis-config-panel ul { padding-left: 20px; }
+.template-name-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.template-name-row label { display: grid; gap: 4px; min-width: 0; }
+@media (max-width: 520px) { .template-name-row { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 720px) { .analysis-config-bar { grid-template-columns: auto minmax(0, 1fr); } }
 .analysis-settings { border: 1px solid #d8e0e9; border-radius: 8px; padding: 12px 16px; margin: 0; min-width: 0; flex-shrink: 0; max-height: 48vh; overflow: auto; }
 .analysis-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 20px; }

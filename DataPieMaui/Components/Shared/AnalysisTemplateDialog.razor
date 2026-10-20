@@ -1,0 +1,96 @@
+@using DataPieCore
+@using DataPieMaui.Services.Shared
+@if (editing == "groups" && draft != null)
+{
+    <AnalysisGroupDialog Source="Session.Source" Selected="draft.Groups" OnApply="ApplyGroups" OnCancel="CloseEditor" />
+}
+else if (editing == "calculations" && draft != null)
+{
+    <AnalysisCalculationDialog Source="Session.Source" Settings="draft" OnApply="ApplyCalculations" OnCancel="CloseEditor" />
+}
+else
+{
+<div class="modal-overlay">
+    <section class="editor-dialog" role="dialog" aria-modal="true" aria-labelledby="template-manager-title" tabindex="-1">
+        <div class="dialog-header"><h2 id="template-manager-title">Manage templates</h2><button data-dialog-close @onclick="CloseAsync" disabled="@Session.Busy" aria-label="Close template manager">×</button></div>
+        <fieldset class="dialog-body" disabled="@Session.Busy">
+            <div class="template-name-row">
+                <label>Template<select value="@selected" @onchange="SelectTemplate"><option value="0">Select a template</option>@foreach (var item in Session.Templates) { <option value="@item.Id">@item.Name</option> }</select></label>
+                <label>Template name<input @bind="TemplateName" @bind:event="oninput" maxlength="100" disabled="@(selected == 0)" placeholder="Enter a new name" /></label>
+            </div>
+            @if (draft != null)
+            {
+                <section class="analysis-config-panel" aria-label="Group by settings">
+                <h3>Group by</h3>
+                <p>@(draft.Groups.Count == 0 ? "Total (no grouping)" : string.Join(", ", draft.Groups))</p>
+                <button @onclick='() => editing = "groups"'>Edit Group by</button>
+                </section>
+                <section class="analysis-config-panel" aria-label="Calculation settings">
+                <h3>Calculations</h3>
+                <ul>
+                    @foreach (var calculation in draft.Calculations) { <li>@calculation.DisplayName · @(calculation.Operation + "(" + calculation.Column + ")")</li> }
+                    @if (draft.IncludeCount) { <li>Record count</li> }
+                    @foreach (var formula in draft.Formulas ?? []) { <li>@formula.Name = @AggregateName(formula.Left) @formula.Operation @(formula.Constant?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? AggregateName(formula.Right))</li> }
+                </ul>
+                <button @onclick='() => editing = "calculations"'>Edit Calculations</button>
+                </section>
+                <p>Changes are saved only when you click Update selected. Current analysis settings and results are kept.</p>
+            }
+            <div class="toolbar">
+                <button @onclick="UpdateAsync" disabled="@(draft == null || string.IsNullOrWhiteSpace(TemplateName))">Update selected</button>
+                <button @onclick="() => confirmDelete = true" disabled="@(selected == 0)">Delete template</button>
+            </div>
+            @if (confirmDelete)
+            {
+                <p role="alert">Delete template '@Session.Templates.FirstOrDefault(t => t.Id == selected)?.Name'?</p>
+                <button class="danger" @onclick="DeleteAsync">Confirm delete</button><button @onclick="() => confirmDelete = false">Cancel</button>
+            }
+            <p role="status" style="white-space:pre-wrap">@Session.Status</p>
+        </fieldset>
+        <div class="dialog-actions"><button @onclick="CloseAsync" disabled="@Session.Busy">Close</button></div>
+    </section>
+</div>
+}
+@code {
+    [Parameter, EditorRequired] public DataAnalysisSession Session { get; set; } = default!;
+    [Parameter] public long SelectedId { get; set; }
+    [Parameter] public EventCallback<long> SelectedIdChanged { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    private long selected;
+    public string TemplateName { get; set; } = "";
+    private AnalysisRequest? draft;
+    private bool confirmDelete;
+    private string editing = "";
+    protected override async Task OnInitializedAsync() => await LoadAsync(SelectedId);
+    public async Task LoadAsync(long id)
+    {
+        if (Session.Busy) return;
+        selected = id; draft = null; confirmDelete = false;
+        TemplateName = Session.Templates.FirstOrDefault(t => t.Id == id)?.Name ?? "";
+        if (id != 0) draft = await Session.LoadTemplateAsync(id, false);
+    }
+    private string AggregateName(string? key) => draft?.Calculations.FirstOrDefault(c => c.Key == key)?.DisplayName ?? key ?? "";
+    private async Task SelectTemplate(ChangeEventArgs args)
+    {
+        await LoadAsync(long.TryParse(args.Value?.ToString(), out var id) ? id : 0);
+        await SelectedIdChanged.InvokeAsync(selected);
+    }
+    private void CloseEditor() => editing = "";
+    public void ApplyGroups(IReadOnlyList<string> groups) { if (draft != null) draft = draft with { Groups = groups.ToArray() }; CloseEditor(); }
+    public void ApplyCalculations(AnalysisCalculationSettings settings)
+    {
+        if (draft != null) draft = draft with { Calculations = settings.Calculations.ToArray(), Formulas = settings.Formulas.ToArray(), IncludeCount = settings.IncludeCount };
+        CloseEditor();
+    }
+    public async Task UpdateAsync()
+    {
+        if (Session.Busy || draft == null || Session.Templates.FirstOrDefault(t => t.Id == selected) is not { } item) return;
+        if (await Session.UpdateTemplateAsync(selected, TemplateName, draft)) { TemplateName = TemplateName.Trim(); await SelectedIdChanged.InvokeAsync(selected); }
+    }
+    public async Task DeleteAsync()
+    {
+        if (Session.Busy || !confirmDelete) return;
+        if (await Session.DeleteTemplateAsync(selected)) { await LoadAsync(0); await SelectedIdChanged.InvokeAsync(0); }
+    }
+    private Task CloseAsync() => Session.Busy ? Task.CompletedTask : OnClose.InvokeAsync();
+}

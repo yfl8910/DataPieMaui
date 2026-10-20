@@ -18,7 +18,9 @@ public sealed class QueryResultSnapshot
     public string FormatGroupedCell(int row, int column) => data.GetValue(row, column) switch
     {
         byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal
-            => ((IFormattable)data.GetValue(row, column)).ToString("N2", System.Globalization.CultureInfo.CurrentCulture),
+            => GetColumnName(column).Contains('%')
+                ? ((IFormattable)data.GetValue(row, column)).ToString("0.0%", System.Globalization.CultureInfo.CurrentCulture)
+                : ((IFormattable)data.GetValue(row, column)).ToString("N2", System.Globalization.CultureInfo.CurrentCulture),
         _ => FormatCell(row, column)
     };
 

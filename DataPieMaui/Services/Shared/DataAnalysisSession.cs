@@ -42,7 +42,23 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         catch (Exception ex) { Status = ex.ToString(); return null; }
         finally { Busy = false; }
     }
-    public async Task<AnalysisRequest?> LoadTemplateAsync(long id)
+    public async Task<bool> UpdateTemplateAsync(long id, string name, AnalysisRequest request)
+    {
+        if (Busy || templateStore == null) return false;
+        Busy = true;
+        try
+        {
+            request = AnalysisTemplateStore.WithoutSearch(request);
+            Source.ValidateRequest(request);
+            await Task.Run(() => templateStore.Update(Source.TemplateTableName, id, name, request));
+            Templates = await Task.Run(() => templateStore.List(Source.TemplateTableName));
+            Status = $"Template '{name.Trim()}' updated.";
+            return true;
+        }
+        catch (Exception ex) { Status = ex.ToString(); return false; }
+        finally { Busy = false; }
+    }
+    public async Task<AnalysisRequest?> LoadTemplateAsync(long id, bool clearResults = true)
     {
         if (Busy || templateStore == null) return null;
         Busy = true;
@@ -53,8 +69,8 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
                 .Concat(request.Calculations.Where(c => !Source.NumericColumns.Contains(c.Column)).Select(c => c.Column)).Distinct().ToArray();
             if (unavailable.Length > 0) throw new InvalidOperationException("Template fields are missing or incompatible: " + string.Join(", ", unavailable));
             Source.ValidateRequest(request);
-            Result = null; Totals = null; LastRequest = null;
-            Status = "Template applied. Search conditions cleared. Click Analyze to refresh results.";
+            if (clearResults) { Result = null; Totals = null; LastRequest = null; }
+            Status = "Template settings loaded.";
             return request;
         }
         catch (Exception ex) { Status = ex.ToString(); return null; }

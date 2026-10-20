@@ -26,6 +26,24 @@ internal static class DataAnalysisChecks
             + "INSERT INTO Sales VALUES('North','A',10.25,2,'literal %_''[',1),('North','A',20.75,4,'regular',0),('South','B',NULL,NULL,'regular',0),('North','B',5,1,'regular',1);"
             + "CREATE TABLE ManyGroups(Label TEXT, Value INTEGER); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1505) INSERT INTO ManyGroups SELECT 'group '||x,x FROM n;");
         var source = TableAnalysis.Open(cs, "SQLITE", "main", "Sales");
+        await test("Analysis percentage headers format ratios without changing raw values or ordinary columns", () =>
+        {
+            var culture = System.Globalization.CultureInfo.CurrentCulture;
+            try
+            {
+                System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+                using var table = new System.Data.DataTable();
+                table.Columns.Add("Margin %", typeof(decimal)); table.Columns.Add("Revenue", typeof(decimal)); table.Columns.Add("Text %", typeof(string));
+                table.Rows.Add(0.256m, 1234.5m, "code"); table.Rows.Add(-0.125m, 0m, "value"); table.Rows.Add(DBNull.Value, DBNull.Value, DBNull.Value);
+                using var reader = table.CreateDataReader();
+                var snapshot = new QueryResultSnapshot(QueryPreviewResult.Read(reader, 1000), "Test");
+                Check(snapshot.FormatGroupedCell(0, 0) == "25.6%" && snapshot.FormatGroupedCell(1, 0) == "-12.5%", "Ratio percentage formatting failed");
+                Check(snapshot.FormatGroupedCell(0, 1) == "1,234.50" && snapshot.FormatGroupedCell(0, 2) == "code" && snapshot.IsNull(2, 0), "Percentage formatting changed normal columns or NULLs");
+                Check(snapshot.CopyText(new[] { 0 }).Contains("0.256"), "Percentage display changed raw copied values");
+            }
+            finally { System.Globalization.CultureInfo.CurrentCulture = culture; }
+            return Task.CompletedTask;
+        });
         await test("Analysis groups multiple text fields and computes numeric aggregates and NULL-aware counts", () =>
         {
             Check(source.TextColumns.SequenceEqual(new[] { "Region", "PIC", "Note" }) && source.NumericColumns.Contains("Amount") && !source.NumericColumns.Contains("Flag"), "Wrong selectable column types");

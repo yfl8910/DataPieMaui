@@ -115,8 +115,44 @@ internal static class AnalysisTemplateChecks
             {
                 var component = await renderer.RenderComponentAsync<DataAnalysis>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = session }));
                 string html = component.ToHtmlString();
-                Check(html.Contains("Apply template") && html.Contains("Save template") && html.Contains("Delete template") && html.Contains("Refresh templates") && html.Contains("Session save"), "Template controls or names were not rendered");
+                Check(html.Contains("Apply template") && html.Contains("Manage templates") && !html.Contains("Template name") && !html.Contains("Save template") && html.Contains("Session save"), "Main template controls were not compact");
+                var dialog = await renderer.RenderComponentAsync<DataPieMaui.Components.Shared.AnalysisTemplateDialog>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = session, ["SelectedId"] = first }));
+                string management = dialog.ToHtmlString();
+                Check(management.Contains("Group by") && management.Contains("Calculations") && management.Contains("Region") && management.Contains("Total revenue") && management.Contains("Average price") && management.Contains("Delete template") && management.Contains("Update selected") && !management.Contains("New template") && !management.Contains("Save template"), "Template management did not show saved configuration and edit/delete actions");
             });
+        });
+        await test("Applying an analysis template immediately calculates results", async () =>
+        {
+            var session = new DataAnalysisSession(source, "Source", store);
+            var component = new DataAnalysis { Session = session };
+            component.SetConditions(new[] { new SearchCondition("Region", "North") });
+            await component.ApplyTemplateAsync(first);
+            Check(session.Result != null && session.Totals != null && session.LastRequest != null && session.Status.Contains("Analysis completed"), "Applying a template did not analyze automatically");
+            Check(session.LastRequest!.Conditions!.Single().Text == "North" && session.Result!.RowCount == 1 && session.Result.FormatCell(0, 0) == "North", "Applying a template discarded current search conditions");
+            var currentResult = session.Result;
+            var currentRequest = session.LastRequest;
+            var manager = new DataPieMaui.Components.Shared.AnalysisTemplateDialog { Session = session };
+            await session.RefreshTemplatesAsync();
+            await manager.LoadAsync(first);
+            manager.ApplyGroups(Array.Empty<string>());
+            manager.TemplateName = "Renamed analysis";
+            await manager.UpdateAsync();
+            Check(store.Load("Sales", first).Groups.Count == 0 && ReferenceEquals(session.Result, currentResult) && ReferenceEquals(session.LastRequest, currentRequest), "Managing a template changed live analysis or failed to update saved settings");
+            Check(store.List("Sales").Single(t => t.Id == first).Name == "Renamed analysis", "Renaming created another template or kept the old name");
+            string otherName = store.List("Sales").First(t => t.Id != first).Name;
+            manager.TemplateName = otherName;
+            await manager.UpdateAsync();
+            Check(store.List("Sales").Single(t => t.Id == first).Name == "Renamed analysis" && session.Status.Contains("already exists"), "Duplicate rename overwrote a different template");
+            await session.RefreshTemplatesAsync();
+            component.ApplyGroups(Array.Empty<string>());
+            await component.SaveCurrentTemplateAsync();
+            Check(store.Load("Sales", first).Groups.Count == 0 && session.Templates.Any(t => t.Id == first), "Quick Save did not update the current template with a stable ID");
+            Check(store.Load("Sales", first).Conditions == null, "Quick Save persisted search conditions");
+            int count = session.Templates.Count;
+            var fresh = new DataAnalysis { Session = session };
+            await fresh.SaveCurrentTemplateAsync();
+            await fresh.SaveNewTemplateAsync();
+            Check(session.Templates.Count == count, "Quick Save created an unnamed template instead of requesting a name");
         });
     }
     private sealed class NoopJs : Microsoft.JSInterop.IJSRuntime

@@ -7,14 +7,11 @@
         @if (Session.TemplatesEnabled)
         {
             <div class="analysis-template-bar">
-                <label>Template<select @bind="selectedTemplateId" @bind:after="TemplateSelectionChanged"><option value="0">Select a template</option>@foreach (var template in Session.Templates) { <option value="@template.Id">@template.Name</option> }</select></label>
-                <button @onclick="ApplyTemplateAsync" disabled="@(selectedTemplateId == 0)">Apply template</button>
-                <label>Template name<input @bind="templateName" @bind:event="oninput" maxlength="100" placeholder="Name these grouping and calculation settings" /></label>
-                <button @onclick="SaveTemplateAsync" disabled="@string.IsNullOrWhiteSpace(templateName)" title="The same table and template name replaces the existing template">Save template</button>
-                <button class="danger" @onclick="RequestDeleteTemplate" disabled="@(selectedTemplateId == 0)">Delete template</button>
-                <button @onclick="RefreshTemplatesAsync">Refresh templates</button>
+                <select aria-label="Template" @bind="selectedTemplateId"><option value="0">Select a template</option>@foreach (var template in Session.Templates) { <option value="@template.Id">@template.Name</option> }</select>
+                <button @onclick="() => ApplyTemplateAsync(selectedTemplateId)" disabled="@(selectedTemplateId == 0)">Apply template</button>
+                <button @onclick="SaveCurrentTemplateAsync">Save</button>
+                <button @onclick="OpenTemplateManager">Manage templates</button>
             </div>
-            <p>Templates match this table name across databases. Saving the same name replaces that template. Search conditions are not saved.</p>
         }
         <div class="analysis-config-bar">
             <button @onclick="OpenGroupSettings">Group by (@groups.Count)</button>
@@ -70,15 +67,24 @@ else if (settingsDialog == "calculations")
 {
     <AnalysisCalculationDialog Source="Session.Source" Settings="Request" OnApply="ApplyCalculations" OnCancel="CloseSettings" />
 }
-else if (settingsDialog == "delete-template")
+else if (settingsDialog == "templates")
 {
-    <div class="modal-overlay"><section class="editor-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-template-title" tabindex="-1">
-        <div class="dialog-header"><h2 id="delete-template-title">Delete template</h2><button data-dialog-close @onclick="CloseSettings" disabled="@Session.Busy" aria-label="Cancel template deletion">×</button></div>
-        <div class="dialog-body"><p>Delete template '@Session.Templates.FirstOrDefault(t => t.Id == selectedTemplateId)?.Name' for @Session.Source.TemplateTableName? Table data and current analysis settings are kept.</p></div>
-        <div class="dialog-actions"><button @onclick="CloseSettings" disabled="@Session.Busy">Cancel</button><button class="danger" @onclick="DeleteTemplateAsync" disabled="@Session.Busy">Delete template</button></div>
+    <AnalysisTemplateDialog Session="Session" SelectedId="selectedTemplateId" SelectedIdChanged="TemplateSelected" OnClose="CloseSettings" />
+}
+else if (settingsDialog == "save-template")
+{
+    <div class="modal-overlay"><section class="editor-dialog" role="dialog" aria-modal="true" aria-labelledby="save-template-title" tabindex="-1">
+        <div class="dialog-header"><h2 id="save-template-title">Save template</h2><button data-dialog-close @onclick="CloseSettings" disabled="@Session.Busy" aria-label="Cancel saving template">×</button></div>
+        <form @onsubmit="SaveNewTemplateAsync" @onsubmit:preventDefault>
+            <fieldset class="dialog-body" disabled="@Session.Busy">
+                <label>Template name<input @bind="newTemplateName" @bind:event="oninput" maxlength="100" autofocus /></label>
+                <p>Saves current Group by and Calculations. The same table and name replaces the existing template.</p>
+                <p role="status" style="white-space:pre-wrap">@Session.Status</p>
+            </fieldset>
+            <div class="dialog-actions"><button type="submit" disabled="@(Session.Busy || string.IsNullOrWhiteSpace(newTemplateName))">Save</button><button type="button" @onclick="CloseSettings" disabled="@Session.Busy">Cancel</button></div>
+        </form>
     </section></div>
 }
-
 @code {
     [Parameter, EditorRequired] public DataAnalysisSession Session { get; set; } = default!;
     [Parameter, EditorRequired] public IDesktopServices Desktop { get; set; } = default!;
@@ -87,35 +93,32 @@ else if (settingsDialog == "delete-template")
     private List<AnalysisFormula> formulas = [];
     private string settingsDialog = "";
     private long selectedTemplateId;
-    private string templateName = "";
-    private void TemplateSelectionChanged() => templateName = Session.Templates.FirstOrDefault(t => t.Id == selectedTemplateId)?.Name ?? "";
-    private async Task RefreshTemplatesAsync()
+    private string newTemplateName = "";
+    public async Task SaveCurrentTemplateAsync()
     {
+        if (Session.Busy || settingsDialog.Length > 0) return;
         clipboardMessage = "";
-        await Session.RefreshTemplatesAsync();
-        if (!Session.Templates.Any(t => t.Id == selectedTemplateId)) { selectedTemplateId = 0; templateName = ""; }
+        var template = Session.Templates.FirstOrDefault(t => t.Id == selectedTemplateId);
+        if (template == null) { newTemplateName = ""; settingsDialog = "save-template"; return; }
+        if (await Session.SaveTemplateAsync(template.Name, Request) is { } id) selectedTemplateId = id;
     }
-    private async Task SaveTemplateAsync()
+    public async Task SaveNewTemplateAsync()
     {
-        clipboardMessage = "";
-        if (await Session.SaveTemplateAsync(templateName, Request) is { } id) { selectedTemplateId = id; TemplateSelectionChanged(); }
+        if (Session.Busy || settingsDialog != "save-template" || string.IsNullOrWhiteSpace(newTemplateName)) return;
+        if (await Session.SaveTemplateAsync(newTemplateName, Request) is { } id) { selectedTemplateId = id; CloseSettings(); }
     }
-    private async Task ApplyTemplateAsync()
+    public void OpenTemplateManager() { if (!Session.Busy) { clipboardMessage = ""; settingsDialog = "templates"; } }
+    private void TemplateSelected(long id) => selectedTemplateId = id;
+    public async Task ApplyTemplateAsync(long templateId)
     {
         clipboardMessage = "";
-        var request = await Session.LoadTemplateAsync(selectedTemplateId);
+        if (Session.Busy || templateId == 0) return;
+        var request = await Session.LoadTemplateAsync(templateId);
         if (request == null) return;
+        selectedTemplateId = templateId;
         groups = request.Groups.ToList(); calculations = request.Calculations.ToList(); formulas = (request.Formulas ?? []).ToList(); includeCount = request.IncludeCount;
-        conditions = [];
         displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
-        TemplateSelectionChanged();
-    }
-    private void RequestDeleteTemplate() { if (!Session.Busy && selectedTemplateId > 0) settingsDialog = "delete-template"; }
-    private async Task DeleteTemplateAsync()
-    {
-        clipboardMessage = "";
-        if (await Session.DeleteTemplateAsync(selectedTemplateId)) { selectedTemplateId = 0; templateName = ""; }
-        CloseSettings();
+        await AnalyzeAsync();
     }
     private string CalculationSummary => string.Join(", ", calculations.Select(c => c.DisplayName).Concat(includeCount ? new[] { "Record count" } : []).Concat(formulas.Select(f => f.Name)));
     public void OpenGroupSettings() { if (!Session.Busy) settingsDialog = "groups"; }
@@ -135,7 +138,7 @@ else if (settingsDialog == "delete-template")
     private IReadOnlyList<SearchCondition> conditions = [];
     private string clipboardMessage = "";
     private IReadOnlyList<SearchField> AnalysisSearchFields => Session.Source.TextColumns.Select(n => new SearchField(n, n)).ToArray();
-    private void SetConditions(IReadOnlyList<SearchCondition> value) => conditions = value;
+    public void SetConditions(IReadOnlyList<SearchCondition> value) => conditions = value;
     private async Task AnalyzeConditionsAsync(IReadOnlyList<SearchCondition> value) { conditions = value; await AnalyzeAsync(); }
     private async Task ClearConditionsAsync() { conditions = []; await AnalyzeAsync(); }
     private int[] order = [];
@@ -163,7 +166,7 @@ else if (settingsDialog == "delete-template")
     {
         if (Session.Busy) return;
         groups.Clear(); calculations.Clear(); formulas.Clear(); includeCount = true; conditions = []; clipboardMessage = "";
-        selectedTemplateId = 0; templateName = "";
+        selectedTemplateId = 0;
         Session.Reset(); displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
     }
     private bool IsSelected(int index) => selected == index;
