@@ -7,9 +7,8 @@
         <button @onclick="EditQueryTableAsync" disabled="@(string.IsNullOrEmpty(Form.QueryTable))">Query&amp;Edit</button>
     </div>
     <label>SQL editor<textarea class="sql-editor" @bind="Model.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="Enter SQL. Preview shows up to 1,000 rows."></textarea></label>
-    <div class="actions"><button class="primary" @onclick="PreviewAsync">Preview query</button><button @onclick="ExecuteSqlAsync">Run SQL</button><span class="action-divider"></span><button @onclick="() => ExportQueryAsync(false, false)">Query to Excel</button><button @onclick="() => ExportQueryAsync(true, false)">Query to CSV</button><button @onclick="() => ExportQueryAsync(false, true)">Table to Excel</button><button @onclick="() => ExportQueryAsync(true, true)">Table to CSV</button></div>
+    <div class="actions"><button class="primary" @onclick="PreviewAsync">Preview query</button><button @onclick="ExecuteSqlAsync">Run SQL</button><span class="action-divider"></span><button @onclick="() => ExportQueryAsync(false, false)">Query to Excel</button><button @onclick="() => ExportQueryAsync(true, false)">Query to CSV</button></div>
 </section>
-<section class="card result-summary"><div><h2>Query preview</h2><p>@Model.QuerySummary</p><p class="muted">Sort, page, and copy the first 1,000 rows in Table editor (read-only).</p></div><button @onclick="OpenResultsAsync" disabled="@(Model.Results.Current is null)">Open Table editor</button></section>
 
 @code {
     private DBUtil.TableStruct SelectedQueryTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.QueryTable, "Select a table."), Type);
