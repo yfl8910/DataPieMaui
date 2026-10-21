@@ -515,9 +515,15 @@ internal static class WorkspaceChecks
         });
         await test("Import tabs retain inputs and Drop table requires confirmation and refreshes schema", async () =>
         {
+            Check(!workspace.Context.Form.ImportOptions.ValidateLengths, "Import length validation should default to off");
             var file = workspace.Context.Form.ImportPath;
             var folder = workspace.Context.Form.ImportFolder;
             importPage.ChangeTab("File"); importPage.ChangeTab("Batch"); tableDesignPage.ChangeTab("Drop");
+            Check(!workspace.Context.Form.ImportOptions.ValidateLengths, "Batch tab enabled validation automatically");
+            workspace.Context.Form.ImportOptions.ValidateLengths = true;
+            importPage.ChangeTab("File"); importPage.ChangeTab("Batch");
+            Check(workspace.Context.Form.ImportOptions.ValidateLengths, "Tabs discarded validation choice");
+            workspace.Context.Form.ImportOptions.ValidateLengths = false;
             Check(workspace.Context.Form.ImportPath == file && workspace.Context.Form.ImportFolder == folder, "Tabs discarded import inputs");
             const string target = "Drop ` odd.name";
             using (var db = new SQLiteConnection(connection))

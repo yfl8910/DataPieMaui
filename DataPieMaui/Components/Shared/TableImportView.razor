@@ -1,34 +1,40 @@
 @using DataPieMaui.Services.Shared
-<p>Target table: <strong>@Options.Table</strong></p>
+@if (!Embedded) { <p>Target table: <strong>@Options.Table</strong></p> }
 <div class="tabs" aria-label="Import methods">
-    <button class="@(!Options.Batch ? "active" : "")" aria-pressed="@(!Options.Batch)" @onclick="() => Options.Batch = false" disabled="@browsing">Import a file</button>
-    <button class="@(Options.Batch ? "active" : "")" aria-pressed="@Options.Batch" @onclick="() => Options.Batch = true" disabled="@browsing">Batch import</button>
+    <button class="@(!Options.Batch ? "active" : "")" aria-pressed="@(!Options.Batch)" @onclick="() => Options.Batch = false" disabled="@Busy">Import a file</button>
+    <button class="@(Options.Batch ? "active" : "")" aria-pressed="@Options.Batch" @onclick="() => Options.Batch = true" disabled="@Busy">Batch import</button>
 </div>
 @if (Options.Batch)
 {
     <p class="muted">Append each CSV and XLSX file in the folder to the target table.</p>
-    <div class="import-source-row"><label>Source folder<input @bind="Options.Folder" @bind:event="oninput" placeholder="Select an import folder" disabled="@browsing" /></label><button @onclick="BrowseAsync" disabled="@browsing">Browse folder</button></div>
+    <div class="import-source-row"><label>Source folder<input @bind="Options.Folder" @bind:event="oninput" placeholder="Select an import folder" disabled="@Busy" /></label><button @onclick="BrowseAsync" disabled="@Busy">Browse folder</button></div>
 }
 else
 {
     <p class="muted">Append data from Excel, CSV, or a SQLite database containing a table with the same name.</p>
-    <div class="import-source-row"><label>Source file<input @bind="Options.Path" @bind:event="oninput" placeholder="Select a file to import" disabled="@browsing" /></label><button @onclick="BrowseAsync" disabled="@browsing">Browse file</button></div>
+    <div class="import-source-row"><label>Source file<input @bind="Options.Path" @bind:event="oninput" placeholder="Select a file to import" disabled="@Busy" /></label><button @onclick="BrowseAsync" disabled="@Busy">Browse file</button></div>
 }
-<label><input type="checkbox" @bind="Options.ValidateLengths" /> Validate field lengths before importing</label>
+<label><input type="checkbox" @bind="Options.ValidateLengths" disabled="@Busy" /> Validate field lengths before importing</label>
 @if (!string.IsNullOrEmpty(error)) { <p role="alert">@error</p> }
 <div class="actions dialog-actions">
-    <button data-dismiss @onclick="() => OnComplete.InvokeAsync(false)" disabled="@browsing">Cancel</button>
-    <button class="primary" data-accept @onclick="() => OnComplete.InvokeAsync(true)" disabled="@(browsing || !(Options.Batch ? System.IO.Directory.Exists(Options.Folder) : System.IO.File.Exists(Options.Path)))">@(Options.Batch ? "Import folder" : "Import file")</button>
+    @if (!Embedded) { <button data-dismiss @onclick="() => OnComplete.InvokeAsync(false)" disabled="@Busy">Cancel</button> }
+    <button class="primary" data-accept @onclick="() => OnComplete.InvokeAsync(true)" disabled="@(Busy || !CanImport || !(Options.Batch ? System.IO.Directory.Exists(Options.Folder) : System.IO.File.Exists(Options.Path)))">@(Options.Batch ? "Import folder" : "Import file")</button>
 </div>
 @code {
     [Parameter, EditorRequired] public TableImportOptions Options { get; set; } = default!;
     [Parameter] public EventCallback<bool> OnComplete { get; set; }
+    [Parameter] public bool Embedded { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool CanImport { get; set; } = true;
+    [Parameter] public EventCallback OnBrowse { get; set; }
+    private bool Busy => browsing || Disabled;
     private bool browsing;
     private string error = "";
     private async Task BrowseAsync()
     {
+        if (Busy) return;
         browsing = true; error = "";
-        try { await Options.BrowseAsync(); }
+        try { if (OnBrowse.HasDelegate) await OnBrowse.InvokeAsync(); else await Options.BrowseAsync(); }
         catch (Exception ex) { error = ex.ToString(); }
         finally { browsing = false; }
     }

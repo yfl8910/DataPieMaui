@@ -4,7 +4,8 @@ namespace DataPieMaui.ViewModels;
 public sealed class WorkspaceForm
 {
     public string TableDesignTab { get; set; } = "Create";
-    public string ImportTab { get; set; } = "File";
+    public Services.Shared.TableImportOptions ImportOptions { get; } = new("", () => Task.FromResult<string?>(null), () => Task.FromResult<string?>(null));
+    public string ImportTab { get => ImportOptions.Batch ? "Batch" : "File"; set => ImportOptions.Batch = value == "Batch"; }
     public string DropTable { get; set; } = "";
 
     public string CreateTablePath { get; set; } = "";
@@ -27,8 +28,8 @@ public sealed class WorkspaceForm
     public string Sql { get; set; } = "";
 
     public string ImportTable { get; set; } = "";
-    public string ImportPath { get; set; } = "";
-    public string ImportFolder { get; set; } = "";
+    public string ImportPath { get => ImportOptions.Path; set => ImportOptions.Path = value; }
+    public string ImportFolder { get => ImportOptions.Folder; set => ImportOptions.Folder = value; }
 }
 
 public sealed class SelectableObject(string name, string kind)

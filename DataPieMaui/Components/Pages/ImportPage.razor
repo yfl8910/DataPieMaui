@@ -8,23 +8,7 @@
         <div class="actions align-end"><label class="grow">Target table<select @bind="Form.ImportTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label><button @onclick="EditImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">Query&amp;Edit</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Clear data</button></div>
     </section>
 <section class="card">
-<div class="tabs" aria-label="Import methods">
-    @foreach (var tab in new[] { ("File", "Import a file"), ("Batch", "Batch import") })
-    {
-        <button class="@(Form.ImportTab == tab.Item1 ? "active" : "")" aria-pressed="@(Form.ImportTab == tab.Item1)" @onclick="() => ChangeTab(tab.Item1)">@tab.Item2</button>
-    }
-</div>
-
-    @if (Form.ImportTab == "File")
-    {
-        <h2>Import a file</h2><p class="muted">Excel, CSV, or a SQLite database containing a table with the same name.</p>
-            <div class="actions align-end"><label class="grow">Source file<input @bind="Form.ImportPath" @bind:event="oninput" placeholder="Select a file to import" /></label><button @onclick="() => BrowseImportAsync(false)">Browse file</button><button class="primary" @onclick="ImportFileAsync">Import file</button><button @onclick="ImportFileWithLengthValidationAsync">Validate lengths and import</button></div>
-    }
-    else
-    {
-        <h2>Batch import</h2><p class="muted">Append each CSV and XLSX file in the folder to the target table.</p>
-            <div class="actions align-end"><label class="grow">Source folder<input @bind="Form.ImportFolder" @bind:event="oninput" placeholder="Select an import folder" /></label><button @onclick="() => BrowseImportAsync(true)">Browse folder</button><button class="primary" @onclick="ImportDirectoryAsync">Import folder</button></div>
-    }
+    <TableImportView Options="Form.ImportOptions" Embedded="true" Disabled="IsOperationRunning" CanImport="@(!string.IsNullOrEmpty(Form.ImportTable))" OnBrowse="() => BrowseImportAsync(Form.ImportOptions.Batch)" OnComplete="ImportAsync" />
 </section>
 
 @code {
@@ -47,7 +31,8 @@
         if (folder) Form.ImportFolder = path;
         else Form.ImportPath = path;
     });
-    public Task ImportFileAsync() => ImportFileAsync(false);
+    private Task ImportAsync(bool accepted) => !accepted ? Task.CompletedTask : Form.ImportOptions.Batch ? ImportDirectoryAsync() : ImportFileAsync();
+    public Task ImportFileAsync() => ImportFileAsync(Form.ImportOptions.ValidateLengths);
     public Task ImportFileWithLengthValidationAsync() => ImportFileAsync(true);
     private Task ImportFileAsync(bool validateFieldLengths) => RunAsync(validateFieldLengths ? "Validate lengths and import" : "Import file", async watch =>
     {
@@ -57,7 +42,7 @@
         watch.Start();
         await ImportIntoTableAsync(path, table, validateFieldLengths);
     });
-    public Task ImportDirectoryAsync() => Context.TableActions.ImportDirectoryAsync(Form.ImportFolder, SelectedImportTable(), true);
+    public Task ImportDirectoryAsync() => Context.TableActions.ImportDirectoryAsync(Form.ImportFolder, SelectedImportTable(), Form.ImportOptions.ValidateLengths);
     public Task ExportTemplateAsync() => RunAsync("Export template", async watch =>
     {
         var table = SelectedImportTable();
