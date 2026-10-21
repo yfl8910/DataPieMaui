@@ -39,3 +39,8 @@ button.primary { color: white; background: #176b64; }
 button.danger { color: #a62b20; border-color: #daaca7; }
 .dialog-body li { overflow-wrap: anywhere; }
 @media (max-width: 600px) { .modal-overlay { padding: 12px; } .editor-dialog { max-height: calc(100dvh - 24px); } }
+.import-source-row { display: flex; align-items: flex-end; gap: 10px; margin: 16px 0; }
+.import-source-row > label { flex: 1; min-width: 0; }
+.import-source-row input { width: 100%; padding: 8px; font: inherit; }
+.tabs { display: flex; gap: 8px; margin: 12px 0; }
+.tabs .active { background: #e1f1ec; border-color: #176b64; }

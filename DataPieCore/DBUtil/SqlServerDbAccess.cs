@@ -145,11 +145,12 @@ namespace DBUtil
             var lengthLimits = new Dictionary<string, int>(StringComparer.Ordinal);
             var blankAsNullColumns = new HashSet<string>(StringComparer.Ordinal);
             using (var schemaCmd = new SqlCommand($"SELECT TOP (0) * FROM {destination}", connection))
-            using (var schemaReader = schemaCmd.ExecuteReader())
+            using (var schemaReader = schemaCmd.ExecuteReader(CommandBehavior.KeyInfo))
             {
-                using var schema = validateFieldLengths ? schemaReader.GetSchemaTable() : null;
+                using var schema = schemaReader.GetSchemaTable();
                 for (int i = 0; i < schemaReader.FieldCount; i++)
                 {
+                    if (schema.Rows[i]["IsAutoIncrement"] is true) continue;
                     destinationColumns.Add(schemaReader.GetName(i));
                     string type = schemaReader.GetDataTypeName(i);
                     if (BlankImportValuesBecomeNull(type)) blankAsNullColumns.Add(schemaReader.GetName(i));
@@ -162,6 +163,14 @@ namespace DBUtil
                 }
             }
 
+            if (destinationColumns.Count == 0)
+            {
+                using var transaction = connection.BeginTransaction();
+                using var insert = new SqlCommand($"INSERT INTO {destination} DEFAULT VALUES", connection, transaction);
+                while (reader.Read()) insert.ExecuteNonQuery();
+                transaction.Commit();
+                return true;
+            }
             AddColumnMappings(bulkCopy, reader, destinationColumns);
 
             bulkCopy.WriteToServer(new ImportLengthDataReader(reader, lengthLimits, sourceFile, blankAsNullColumns));

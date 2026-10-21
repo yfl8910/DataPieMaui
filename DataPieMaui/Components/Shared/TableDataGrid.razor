@@ -2,7 +2,7 @@
 <div class="table-scroll" tabindex="0" aria-label="Table data">
     <table>
         <thead><tr>
-            <th>@LeadingHeader</th>
+            @if (ShowLeadingColumn) { <th>@LeadingHeader</th> }
             @for (int c = 0; c < ColumnCount; c++)
             {
                 <th aria-sort="@(SortState?.Invoke(c))">@ColumnHeader(c)</th>
@@ -12,7 +12,7 @@
             @foreach (var row in Rows)
             {
                 <tr class="@(IsSelected(row) ? "selected" : "")" tabindex="@(SelectRows ? 0 : (int?)null)" aria-selected="@(SelectRows ? IsSelected(row) : (bool?)null)" @onclick="() => SelectAsync(row)" @onkeydown="e => SelectWithKeyAsync(e, row)">
-                    <td>@LeadingCell(row)</td>
+                    @if (ShowLeadingColumn) { <td>@LeadingCell(row)</td> }
                     @for (int c = 0; c < ColumnCount; c++)
                     {
                         var text = CellText(row, c);
@@ -20,7 +20,7 @@
                     }
                 </tr>
             }
-            @if (!Rows.Any()) { <tr><td colspan="@(ColumnCount + 1)" class="empty">@EmptyText</td></tr> }
+            @if (!Rows.Any()) { <tr><td colspan="@(ColumnCount + (ShowLeadingColumn ? 1 : 0))" class="empty">@EmptyText</td></tr> }
         </tbody>
         @if (ShowFooter && Footer != null) { <tfoot>@Footer</tfoot> }
     </table>
@@ -29,6 +29,7 @@
 @code {
     [Parameter, EditorRequired] public IEnumerable<TRow> Rows { get; set; } = [];
     [Parameter] public int ColumnCount { get; set; }
+    [Parameter] public bool ShowLeadingColumn { get; set; } = true;
     [Parameter, EditorRequired] public RenderFragment<int> ColumnHeader { get; set; } = default!;
     [Parameter] public RenderFragment? LeadingHeader { get; set; }
     [Parameter, EditorRequired] public RenderFragment<TRow> LeadingCell { get; set; } = default!;

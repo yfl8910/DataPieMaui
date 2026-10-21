@@ -127,6 +127,7 @@ namespace DBUtil
             connection.Open();
             using var transaction = connection.BeginTransaction();
             var blankAsNull = new bool[names.Length];
+            var primaryKeys = new List<(string Name, string Type)>();
             using (var schema = connection.CreateCommand())
             {
                 schema.Transaction = transaction;
@@ -134,16 +135,29 @@ namespace DBUtil
                 using var columns = schema.ExecuteReader();
                 while (columns.Read())
                 {
+                    if (Convert.ToInt32(columns[5]) > 0) primaryKeys.Add((Convert.ToString(columns[1]), Convert.ToString(columns[2])));
                     int index = Array.FindIndex(names, n => string.Equals(n, Convert.ToString(columns[1]), StringComparison.OrdinalIgnoreCase));
                     if (index >= 0) blankAsNull[index] = NumericOrDateColumn(Convert.ToString(columns[2]) ?? "");
                 }
             }
+            bool hasPrimaryIndex = false;
+            using (var indexes = connection.CreateCommand())
+            {
+                indexes.Transaction = transaction;
+                indexes.CommandText = "PRAGMA index_list(" + QuoteIdentifier(tableName) + ")";
+                using var indexReader = indexes.ExecuteReader();
+                while (indexReader.Read()) if (Convert.ToString(indexReader[3]) == "pk") hasPrimaryIndex = true;
+            }
+            string identity = primaryKeys.Count == 1 && primaryKeys[0].Type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase) && !hasPrimaryIndex
+                ? primaryKeys[0].Name : null;
+            var ordinals = Enumerable.Range(0, names.Length).Where(i => !string.Equals(names[i], identity, StringComparison.OrdinalIgnoreCase)).ToArray();
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = "INSERT INTO " + QuoteIdentifier(tableName) + " (" +
-                string.Join(",", names.Select(QuoteIdentifier)) + ") VALUES (" +
-                string.Join(",", Enumerable.Range(0, names.Length).Select(i => "@p" + i)) + ")";
-            var parameters = new SQLiteParameter[names.Length];
+            command.CommandText = ordinals.Length == 0 ? "INSERT INTO " + QuoteIdentifier(tableName) + " DEFAULT VALUES"
+                : "INSERT INTO " + QuoteIdentifier(tableName) + " (" +
+                string.Join(",", ordinals.Select(i => QuoteIdentifier(names[i]))) + ") VALUES (" +
+                string.Join(",", Enumerable.Range(0, ordinals.Length).Select(i => "@p" + i)) + ")";
+            var parameters = new SQLiteParameter[ordinals.Length];
             for (int i = 0; i < parameters.Length; i++)
             {
                 parameters[i] = new SQLiteParameter("@p" + i);
@@ -159,9 +173,9 @@ namespace DBUtil
                 {
                     for (int i = 0; i < parameters.Length; i++)
                     {
-                        column = i;
-                        var value = reader.GetValue(i) ?? DBNull.Value;
-                        if (blankAsNull[i] && value is string text && string.IsNullOrWhiteSpace(text)) value = DBNull.Value;
+                        column = ordinals[i];
+                        var value = reader.GetValue(column) ?? DBNull.Value;
+                        if (blankAsNull[column] && value is string text && string.IsNullOrWhiteSpace(text)) value = DBNull.Value;
                         // SQLiteParameter retains inferred types; each row may contain a different CLR type.
                         parameters[i].ResetDbType();
                         parameters[i].Value = value;

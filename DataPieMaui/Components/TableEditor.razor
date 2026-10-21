@@ -1,6 +1,7 @@
 @using System.Data
 @using System.Globalization
 @using DataPieCore
+@using DataPieMaui.Services.Shared
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 
@@ -47,6 +48,7 @@ else
     <header><div><p>@ConnectionLabel</p><p>@Session.TableName</p></div><span class="badge">@(Session.CanEdit ? "Table data" : "Read-only")</span></header>
     <div class="toolbar">
         <button @onclick="BeginAdd" disabled="@(Session.IsBusy || DialogOpen || !Session.CanInsert)">Add record</button>
+        <button @onclick="BeginImport" disabled="@(Session.IsBusy || DialogOpen || Desktop == null)">Import file</button>
         <button @onclick="BeginEdit" disabled="@(Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit)">EDIT</button>
         <button @onclick="ExportExcelAsync" disabled="@(Session.IsBusy || DialogOpen)" title="Export all rows matching the applied search, across all pages">Export Excel</button>
         <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">Delete selected</button>
@@ -71,7 +73,20 @@ else
     </div></footer>
 </main>
 
-@if (DialogOpen)
+@if (importOpen)
+{
+    <div class="modal-overlay">
+        <section class="editor-dialog" role="dialog" aria-modal="true" aria-labelledby="editor-dialog-title" data-busy="@(Session.IsBusy ? "true" : "false")" tabindex="-1">
+            <div class="dialog-header"><h2 id="editor-dialog-title">Import file</h2><button aria-label="Close dialog" data-dialog-close @onclick="RequestClose" disabled="@Session.IsBusy">×</button></div>
+            <div class="dialog-body">
+                <p>@ConnectionLabel</p>
+                <TableImportView Options="importOptions!" Disabled="Session.IsBusy" OnComplete="CompleteImportAsync" />
+                @if (!string.IsNullOrEmpty(dialogError)) { <div class="dialog-error" role="alert">@dialogError</div> }
+            </div>
+        </section>
+    </div>
+}
+else if (DialogOpen)
 {
     <div class="modal-overlay">
         <section @key="DialogKey" class="editor-dialog" data-wide="@(!confirmDelete && Session.Data.Columns.Count > 10 ? "true" : "false")" data-movable="@(confirmDelete ? "false" : "true")" data-busy="@(Session.IsBusy ? "true" : "false")" role="@(confirmDelete ? "alertdialog" : "dialog")" aria-modal="true" aria-labelledby="editor-dialog-title" tabindex="-1">
@@ -141,7 +156,57 @@ else
     private readonly Dictionary<string, string> draft = new();
     private DataRow? editing;
     private bool confirmDelete, confirmDiscard, adding;
-    private bool DialogOpen => editing != null || adding || confirmDelete;
+    private bool DialogOpen => editing != null || adding || confirmDelete || importOpen;
+    private bool importOpen;
+    private TableImportOptions? importOptions;
+    public void BeginImport()
+    {
+        if (Preview != null || Session.IsBusy || DialogOpen || Desktop == null) return;
+        importOptions ??= new TableImportOptions(Session.TableName, () => Desktop.OpenAsync(".xlsx", ".xls", ".csv", ".db"), () => Desktop.FolderAsync());
+        dialogError = ""; importOpen = true;
+    }
+    public async Task CompleteImportAsync(bool accepted)
+    {
+        if (!importOpen || Session.IsBusy || importOptions == null) return;
+        if (!accepted) { importOpen = false; dialogError = ""; return; }
+        Session.IsBusy = true; dialogError = "";
+        bool attempted = false;
+        try
+        {
+            var options = importOptions;
+            string[] paths;
+            if (options.Batch)
+            {
+                if (!Directory.Exists(options.Folder)) throw new DirectoryNotFoundException("Select an existing folder.");
+                paths = ImportFiles.GetFiles(options.Folder).Select(f => f.FullName).ToArray();
+                if (paths.Length == 0) throw new InvalidOperationException("The folder contains no CSV or XLSX files.");
+            }
+            else
+            {
+                if (!File.Exists(options.Path)) throw new FileNotFoundException("Select an existing file.");
+                paths = [options.Path];
+            }
+            bool validate = options.ValidateLengths;
+            foreach (string path in paths)
+            {
+                attempted = true;
+                try { await Task.Run(() => Session.Import((access, target, source) => DatabaseOperations.Import(path, target, access, validate, source))); }
+                catch (Exception ex) { throw new InvalidOperationException($"Import failed for {Path.GetFileName(path)}. Previously imported data has been kept. {ex.Message}", ex); }
+            }
+            importOpen = false; message = $"Imported {paths.Length} file(s). Current search remains applied.";
+        }
+        catch (Exception ex) { dialogError = ex.Message; }
+        finally
+        {
+            if (attempted)
+            {
+                selected.Clear();
+                try { await Task.Run(() => Session.LoadPage(Session.Page)); }
+                catch (Exception ex) { message = "Refresh failed after import. Refresh before editing again. " + ex.Message; }
+            }
+            Session.IsBusy = false;
+        }
+    }
     private string DialogKey => confirmDelete ? "delete" : adding ? "new" : "edit";
     private bool IsLongText(DataColumn column)
     {
@@ -233,6 +298,7 @@ else
     public void RequestClose()
     {
         if (Preview != null || Session.IsBusy) return;
+        if (importOpen) { importOpen = false; dialogError = ""; return; }
         if (confirmDelete) { confirmDelete = false; dialogError = ""; return; }
         if (Dirty) { confirmDiscard = true; return; }
         Cancel();

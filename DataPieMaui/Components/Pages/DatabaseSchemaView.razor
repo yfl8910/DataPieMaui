@@ -30,13 +30,18 @@
             @if (selected.Kind == "Table")
             {
                 <TableActionBar OnImport="ImportSelectedTableAsync" OnExport="ExportSelectedTableAsync" OnEdit="EditSelectedTableAsync" OnAnalyze="AnalyzeSelectedTableAsync" OnClear="ClearSelectedTableAsync" OnDrop="DropSelectedTableAsync" />
-                <div class="schema-columns"><table><thead><tr><th>Column</th><th>Type</th><th>Primary key</th><th>Auto-generated ID</th><th>Nullable</th><th>Computed</th><th>Default</th></tr></thead>
-                    <tbody>@foreach (var column in columns)
-                    {
-                        <tr><td>@column.Name</td><td>@column.DisplayType(Type)</td><td>@YesNo(column.IsPrimaryKey)</td><td>@YesNo(column.IsIdentity)</td><td>@YesNo(column.IsNullable)</td><td>@(column.IsComputed.HasValue ? YesNo(column.IsComputed.Value) : "Not loaded")</td><td>@(column.DefaultLoaded ? string.IsNullOrEmpty(column.Default) ? "None" : column.Default : "Not loaded")</td></tr>
-                    }</tbody>
-                </table></div>
-                <p class="muted">Indexes, unique/check constraints and foreign key details are not loaded in this view.</p>
+                <div class="actions"><button @onclick="ToggleStructureAsync" aria-expanded="@showStructure" aria-controls="table-structure" disabled="@IsOperationRunning">@(showStructure ? "Hide structure" : "Show structure")</button></div>
+                @if (showStructure)
+                {
+                    <div id="table-structure" class="schema-columns">
+                        <TableDataGrid TRow="Column" Rows="columns" ColumnCount="7" ShowLeadingColumn="false"
+                                       CellText="StructureCell" CellIsNull="@((Column row, int column) => false)" IsSelected="@((Column row) => false)" EmptyText="No columns found.">
+                            <ColumnHeader Context="column">@StructureHeaders[column]</ColumnHeader>
+                            <LeadingCell Context="row"></LeadingCell>
+                        </TableDataGrid>
+                    </div>
+                    <p class="muted">Indexes, unique/check constraints and foreign key details are not loaded in this view.</p>
+                }
             }
             else
             {
@@ -56,6 +61,16 @@
     private string search = "", kind = "All";
     private DefinitionObject? selected;
     private IReadOnlyList<Column> columns = [];
+    private bool showStructure;
+    private static readonly string[] StructureHeaders = ["Column", "Type", "Primary key", "Auto-generated ID", "Nullable", "Computed", "Default"];
+    private string StructureCell(Column column, int index) => index switch
+    {
+        0 => column.Name, 1 => column.DisplayType(Type), 2 => YesNo(column.IsPrimaryKey),
+        3 => YesNo(column.IsIdentity), 4 => YesNo(column.IsNullable),
+        5 => column.IsComputed.HasValue ? YesNo(column.IsComputed.Value) : "Not loaded",
+        6 => column.DefaultLoaded ? string.IsNullOrEmpty(column.Default) ? "None" : column.Default : "Not loaded",
+        _ => ""
+    };
     private IReadOnlyList<DefinitionObject> Definitions => Database.Schema?.DefinitionObjects ?? [];
     private IEnumerable<DefinitionObject> Objects => (Database.Schema?.Tables.Select(t => new DefinitionObject("Table", Type == "SQLSERVER" ? t.TableSchemaName : "main", t.Name)) ?? [])
         .Concat(Definitions).Where(o => (kind == "All" || o.Kind == kind) && o.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase));
@@ -77,7 +92,7 @@
         var table = SelectedTable();
         await Context.TableActions.DropAsync(table);
         if (!Database.Schema!.Tables.Any(t => t.Name == table.Name && (Type != "SQLSERVER" || t.TableSchemaName == table.TableSchemaName)))
-        { selected = null; columns = []; }
+        { selected = null; columns = []; showStructure = false; }
     }
     public Task EditSelectedTableAsync() => RunAsync("Open table editor", async watch =>
     {
@@ -86,17 +101,21 @@
             ?? throw new InvalidOperationException("The table is no longer available. Refresh the schema.");
         await OpenTableEditorAsync(table, watch);
     });
-    public Task SelectAsync(DefinitionObject item) => RunAsync("Read schema details", async watch =>
+    public Task SelectAsync(DefinitionObject item) => RunAsync("Select object", watch =>
     {
+        selected = item; columns = []; showStructure = false;
+        return Task.CompletedTask;
+    });
+    public Task ToggleStructureAsync() => RunAsync("Read table structure", async watch =>
+    {
+        if (showStructure) { showStructure = false; return; }
+        if (selected is not { Kind: "Table" } item) return;
         watch.Start();
-        IReadOnlyList<Column> loaded = [];
-        if (item.Kind == "Table")
-        {
-            var table = Database.Schema!.Tables.Single(t => t.Name == item.Name && (Type != "SQLSERVER" || t.TableSchemaName == item.Schema));
-            if (Type == "SQLITE") loaded = await Task.Run(() => { using var access = (SQLiteDbAccess)Database.OpenAccess(); return access.ReadSchemaColumns(item.Name); });
-            else loaded = table.Columns;
-        }
-        selected = item; columns = loaded;
+        var table = SelectedTable();
+        var loaded = Type == "SQLITE"
+            ? await Task.Run(() => { using var access = (SQLiteDbAccess)Database.OpenAccess(); return access.ReadSchemaColumns(item.Name); })
+            : table.Columns;
+        columns = loaded; showStructure = true;
     });
     public Task ShowDefinitionAsync() => RunAsync("Read definition", async watch =>
     {
@@ -108,6 +127,6 @@
     });
     public Task RefreshAsync() => RunAsync("Refresh schema", async watch =>
     {
-        watch.Start(); await Context.RefreshSchemaAsync(); selected = null; columns = [];
+        watch.Start(); await Context.RefreshSchemaAsync(); selected = null; columns = []; showStructure = false;
     });
 }

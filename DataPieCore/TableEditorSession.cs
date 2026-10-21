@@ -20,6 +20,13 @@ public sealed class TableEditorSession
     private readonly HashSet<string> insertable = new(StringComparer.Ordinal);
     private readonly HashSet<string> defaults;
     public string TableName { get; }
+    private readonly string sourceTableName;
+    // Keep imports bound to the editor's original database and qualified table.
+    public void Import(Action<DBUtil.IDbAccess, string, string> importer)
+    {
+        using var access = DbAccessFactory.Create(connectionString, databaseType);
+        importer(access, databaseType == "SQLSERVER" ? destination : sourceTableName, sourceTableName);
+    }
     public const int PageSize = 100;
     public DataTable Data { get; private set; } = new();
     public int Page { get; private set; }
@@ -44,6 +51,7 @@ public sealed class TableEditorSession
     private TableEditorSession(string connectionString, string databaseType, TableStruct table)
     {
         this.connectionString = connectionString;
+        sourceTableName = table.Name;
         this.databaseType = databaseType;
         keys = table.Columns.Where(c => c.IsPrimaryKey).Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
         defaults = table.Columns.Where(c => !string.IsNullOrEmpty(c.Default)).Select(c => c.Name).ToHashSet(StringComparer.Ordinal);

@@ -13,6 +13,48 @@ internal static class TableEditorChecks
     {
         string path = Path.Combine(root, "editor.db"); SQLiteConnection.CreateFile(path);
         string cs = new SQLiteConnectionStringBuilder { DataSource = path, FailIfMissing = true }.ToString();
+        await test("Import ignores generated IDs but preserves manual and composite keys", () =>
+        {
+            using var access = DBUtil.DbAccessFactory.Create(cs, "SQLITE");
+            access.ExecuteSql("CREATE TABLE GeneratedIds(Id INTEGER PRIMARY KEY AUTOINCREMENT,Name TEXT); INSERT INTO GeneratedIds(Name) VALUES('existing'); CREATE TABLE ManualIds(Id INTEGER PRIMARY KEY,Name TEXT) WITHOUT ROWID; CREATE TABLE CompositeIds(Id INTEGER,Name TEXT,PRIMARY KEY(Id,Name)); CREATE TABLE OnlyId(Id INTEGER PRIMARY KEY);");
+            using var source = new DataTable(); source.Columns.Add("Id", typeof(string)); source.Columns.Add("Name", typeof(string));
+            source.Rows.Add("invalid", "first"); source.Rows.Add("invalid", "second");
+            using (var reader = source.CreateDataReader()) access.BulkInsert("GeneratedIds", reader);
+            using (var result = access.GetDataTable("SELECT Id FROM GeneratedIds ORDER BY Id"))
+                if (result.Rows.Count != 3 || Convert.ToInt64(result.Rows[2][0]) != 3) throw new Exception("Source IDs were used instead of generated IDs");
+            source.Rows.Clear(); source.Rows.Add("42", "manual");
+            foreach (string table in new[] { "ManualIds", "CompositeIds" })
+            {
+                using (var reader = source.CreateDataReader()) access.BulkInsert(table, reader);
+                using var result = access.GetDataTable("SELECT Id FROM " + table);
+                if (Convert.ToInt64(result.Rows[0][0]) != 42) throw new Exception("Manual key was skipped");
+            }
+            using var ids = new DataTable(); ids.Columns.Add("Id", typeof(string)); ids.Rows.Add("invalid"); ids.Rows.Add("invalid");
+            using (var reader = ids.CreateDataReader()) access.BulkInsert("OnlyId", reader);
+            using var only = access.GetDataTable("SELECT Id FROM OnlyId ORDER BY Id");
+            if (only.Rows.Count != 2 || Convert.ToInt64(only.Rows[1][0]) != 2) throw new Exception("Identity-only import failed");
+            return Task.CompletedTask;
+        });
+        await test("Table editor imports into its bound table and refreshes filtered totals", () =>
+        {
+            using (var db = new SQLiteConnection(cs))
+            {
+                db.Open(); using var create = new SQLiteCommand("CREATE TABLE [Import target](Id INTEGER PRIMARY KEY,Name TEXT)", db); create.ExecuteNonQuery();
+            }
+            string input = Path.Combine(root, "editor-import.csv");
+            File.WriteAllText(input, "Id,Name\n1,match one\n2,other\n");
+            var session = TableEditorSession.Open(cs, "SQLITE", "", "Import target");
+            session.Search("Name", "match");
+            session.Import((access, target, source) =>
+            {
+                if (target != "Import target" || source != "Import target") throw new Exception("Import target changed");
+                DataPieMaui.Services.DatabaseOperations.Import(input, target, access, false, source);
+            });
+            session.LoadPage(0);
+            if (session.TotalRows != 1 || session.SearchText != "match" || (string)session.Data.Rows[0]["Name"] != "match one")
+                throw new Exception("Import did not preserve filter and refresh total");
+            session.Data.Dispose(); return Task.CompletedTask;
+        });
         void Execute(string sql)
         {
             using var db = new SQLiteConnection(cs); db.Open(); using var cmd = new SQLiteCommand(sql, db); cmd.ExecuteNonQuery();

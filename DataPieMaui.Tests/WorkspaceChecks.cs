@@ -388,7 +388,15 @@ internal static class WorkspaceChecks
                 int loadedDefinitions = workspace.Context.Database.Schema!.ViewDefinitions.Count;
                 await browser!.SelectAsync(new DBUtil.DefinitionObject("Table", "main", "Items")); browser.Render();
                 var html = component.ToHtmlString();
+                Check(html.Contains("Show structure") && !html.Contains("Primary key") && !html.Contains("table-structure\" class="), "Table structure was displayed before request");
+                await browser.ToggleStructureAsync(); browser.Render();
+                html = component.ToHtmlString();
                 Check(html.Contains("Primary key") && html.Contains("Computed") && html.Contains("not loaded in this view"), "Column metadata or unloaded detail notice missing");
+                await browser.ToggleStructureAsync(); browser.Render();
+                Check(!component.ToHtmlString().Contains("Primary key"), "Hide structure retained grid");
+                await browser.ToggleStructureAsync(); browser.Render();
+                await browser.SelectAsync(new DBUtil.DefinitionObject("Table", "main", "Items")); browser.Render();
+                Check(!component.ToHtmlString().Contains("Primary key"), "Object selection did not reset structure visibility");
                 Check(workspace.Context.Database.Schema.ViewDefinitions.Count == loadedDefinitions, "Selecting table eagerly loaded SQL definitions");
                 var view = workspace.Context.Database.Schema.DefinitionObjects.First(o => o.Kind == "View");
                 await browser.SelectAsync(view); browser.Render();

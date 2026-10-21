@@ -14,6 +14,7 @@ else
     <p class="muted">Append data from Excel, CSV, or a SQLite database containing a table with the same name.</p>
     <div class="import-source-row"><label>Source file<input @bind="Options.Path" @bind:event="oninput" placeholder="Select a file to import" disabled="@Busy" /></label><button @onclick="BrowseAsync" disabled="@Busy">Browse file</button></div>
 }
+<p class="muted">Auto-generated ID columns are skipped and filled by the database.</p>
 <label><input type="checkbox" @bind="Options.ValidateLengths" disabled="@Busy" /> Validate field lengths before importing</label>
 @if (!string.IsNullOrEmpty(error)) { <p role="alert">@error</p> }
 <div class="actions dialog-actions">
