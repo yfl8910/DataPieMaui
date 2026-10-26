@@ -48,7 +48,7 @@
                 @if (selected.Kind == "Procedure") { <p>Has parameters: @(Type == "SQLSERVER" ? YesNo(selected.HasParameters) : "Not loaded")</p> }
                 <p class="muted">The SQL definition is loaded only when requested.</p>
                 <div class="actions">
-                    @if (selected.Kind == "View") { <button @onclick="QuerySelectedViewAsync">Query data</button> }
+                    @if (selected.Kind == "View") { <button @onclick="QuerySelectedViewAsync">Query data</button><button @onclick="AnalyzeSelectedViewAsync">Data analysis</button> }
                     @if (selected.Kind == "Procedure") { <button @onclick="RunSelectedProcedureAsync">Run</button> }
                     <button @onclick="ShowDefinitionAsync">View definition</button>
                 </div>
@@ -76,6 +76,7 @@
         .Concat(Definitions).Where(o => (kind == "All" || o.Kind == kind) && o.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase));
     private static string YesNo(bool value) => value ? "Yes" : "No";
     public Task QuerySelectedViewAsync() => selected is { Kind: "View" } item ? Context.Preview.PreviewObjectAsync(item) : Task.CompletedTask;
+    public Task AnalyzeSelectedViewAsync() => selected is { Kind: "View" } item ? Context.TableActions.AnalyzeViewAsync(item) : Task.CompletedTask;
     public Task RunSelectedProcedureAsync() => selected is { Kind: "Procedure" } item ? Context.ProcedureActions.RunSingleAsync(item) : Task.CompletedTask;
     private TableStruct SelectedTable()
     {

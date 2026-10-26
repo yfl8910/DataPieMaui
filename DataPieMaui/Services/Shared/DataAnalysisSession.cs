@@ -21,7 +21,7 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         try
         {
             Templates = await Task.Run(() => templateStore.List(Source.TemplateTableName));
-            Status = $"Loaded {Templates.Count} templates for {Source.TemplateTableName}.";
+            Status = $"Loaded {Templates.Count} templates for {Source.TableName}.";
         }
         catch (Exception ex) { Status = ex.ToString(); }
         finally { Busy = false; }

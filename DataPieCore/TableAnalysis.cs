@@ -30,16 +30,17 @@ public sealed class TableAnalysis
 {
     private readonly string connectionString, provider;
     private readonly TableStruct table;
+    private readonly bool isView;
     public string TableName => provider == "SQLSERVER" ? table.TableSchemaName + "." + table.Name : table.Name;
-    public string TemplateTableName => table.Name;
+    public string TemplateTableName => isView ? "\u0001View:" + table.Name : table.Name;
     public IReadOnlyList<string> TextColumns => table.Columns.Where(IsText).Select(c => c.Name).ToArray();
     public IReadOnlyList<string> NumericColumns => table.Columns.Where(IsNumeric).Select(c => c.Name).ToArray();
-    public IReadOnlyList<AnalysisField> Fields => table.Columns.Select(c => new AnalysisField(c.Name, c.Type, IsGroupable(c, provider), IsGroupable(c, provider) ? "" : "Binary or unsupported grouping type.")).ToArray();
+    public IReadOnlyList<AnalysisField> Fields => table.Columns.Select(c => new AnalysisField(c.Name, c.Type, IsGroupable(c, provider), IsGroupable(c, provider) ? "" : string.IsNullOrWhiteSpace(c.Type) ? "Type unavailable; this field cannot be grouped or used for numeric calculations." : "Binary or unsupported grouping type.")).ToArray();
     public string Provider => provider;
     public void ValidateRequest(AnalysisRequest request) => BuildQuery(table, provider, request);
 
-    private TableAnalysis(string connectionString, string provider, TableStruct table)
-    { this.connectionString = connectionString; this.provider = provider; this.table = table; }
+    private TableAnalysis(string connectionString, string provider, TableStruct table, bool isView = false)
+    { this.connectionString = connectionString; this.provider = provider; this.table = table; this.isView = isView; }
 
     public static TableAnalysis Open(string connectionString, string provider, string schema, string name)
     {
@@ -48,6 +49,29 @@ public sealed class TableAnalysis
             ?? throw new InvalidOperationException("The table is no longer available. Refresh the schema.");
         if (access is SQLiteDbAccess sqlite) table.Columns = sqlite.ReadSchemaColumns(name);
         return new(connectionString, provider, table);
+    }
+
+    public static TableAnalysis OpenView(string connectionString, string provider, string schema, string name)
+    {
+        using var access = DbAccessFactory.Create(connectionString, provider);
+        var view = ((IDefinitionReader)access).ListDefinitionObjects().SingleOrDefault(v => v.Kind == "View" && v.Name == name && (provider != "SQLSERVER" || v.Schema == schema))
+            ?? throw new InvalidOperationException("The view is no longer available. Refresh the schema.");
+        var table = new TableStruct { Name = view.Name, TableSchemaName = view.Schema };
+        if (access is SQLiteDbAccess sqlite) table.Columns = sqlite.ReadSchemaColumns(name);
+        else if (provider == "SQLSERVER")
+        {
+            if (access.conn.State != ConnectionState.Open) access.conn.Open();
+            using var command = access.conn.CreateCommand();
+            command.CommandText = "SELECT c.name, ty.name, c.precision, c.scale FROM sys.views v JOIN sys.schemas s ON s.schema_id=v.schema_id JOIN sys.columns c ON c.object_id=v.object_id JOIN sys.types ty ON ty.user_type_id=CASE WHEN c.system_type_id=240 THEN c.user_type_id ELSE c.system_type_id END WHERE s.name=@schema AND v.name=@name ORDER BY c.column_id";
+            foreach (var entry in new[] { (Name: "@schema", Value: schema), (Name: "@name", Value: name) })
+            { var parameter = command.CreateParameter(); parameter.ParameterName = entry.Name; parameter.Value = entry.Value; command.Parameters.Add(parameter); }
+            using var reader = command.ExecuteReader();
+            table.Columns = new List<Column>();
+            while (reader.Read()) table.Columns.Add(new Column { Name = reader.GetString(0), Type = reader.GetString(1), Precision = Convert.ToInt32(reader.GetValue(2)), Scale = Convert.ToInt32(reader.GetValue(3)) });
+        }
+        else throw new ArgumentException("Unsupported database type.");
+        if (table.Columns.Count == 0) throw new InvalidOperationException("The view has no available columns. Refresh the schema or check permissions.");
+        return new(connectionString, provider, table, true);
     }
 
     private static string BaseType(Column column) => (column.Type ?? "").Split('(')[0].Trim().ToLowerInvariant();

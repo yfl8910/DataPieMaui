@@ -26,6 +26,23 @@ internal static class DataAnalysisChecks
             + "INSERT INTO Sales VALUES('North','A',10.25,2,'literal %_''[',1),('North','A',20.75,4,'regular',0),('South','B',NULL,NULL,'regular',0),('North','B',5,1,'regular',1);"
             + "CREATE TABLE ManyGroups(Label TEXT, Value INTEGER); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1505) INSERT INTO ManyGroups SELECT 'group '||x,x FROM n;");
         var source = TableAnalysis.Open(cs, "SQLITE", "main", "Sales");
+        await test("View analysis uses view rows, typed fields and isolated templates", () =>
+        {
+            Sql("CREATE VIEW SalesView AS SELECT Region, Amount, Qty, Amount * Qty AS Extended FROM Sales WHERE Qty > 1;");
+            var view = TableAnalysis.OpenView(cs, "SQLITE", "main", "SalesView");
+            Check(view.NumericColumns.Contains("Amount") && view.Fields.Single(f => f.Name == "Extended").CanGroup == false && view.Fields.Single(f => f.Name == "Extended").Notice.Contains("Type unavailable"), "View field types were not handled safely");
+            var request = new AnalysisRequest(new[] { "Region" }, new[] { new AnalysisCalculation("Amount", "SUM") }, Conditions: new[] { new SearchCondition("Region", "North") });
+            var result = view.AnalyzeWithTotals(request);
+            Check(result.Groups.RowCount == 1 && Convert.ToDecimal(result.Groups.GetValue(0, 1)) == 31m && Convert.ToInt64(result.Totals.GetValue(0, 1)) == 2, "View analysis did not aggregate filtered view rows");
+            string output = Path.Combine(root, "view-analysis.xlsx"); view.Export(request, output);
+            using var exported = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true);
+            Check(exported.Rows.Count == 2 && Convert.ToDecimal(exported.Rows[0]["SUM Amount"]) == 31m, "View export failed");
+            var store = new AnalysisTemplateStore(Path.Combine(root, "view-templates.db"));
+            store.Save(view.TemplateTableName, "View template", request);
+            Check(store.List(view.TemplateTableName).Count == 1 && store.List("SalesView").Count == 0, "View templates overlap table templates");
+            try { TableAnalysis.OpenView(cs, "SQLITE", "main", "Sales"); throw new Exception("A table was accepted as a view"); } catch (InvalidOperationException) { }
+            return Task.CompletedTask;
+        });
         await test("Calculation sort dropdown events update, rerender, apply and restore selections", () => CalculationSortInteractionChecks.Run(source));
         await test("Aggregate move-up clicks preserve column identities, formulas and templates while right-value types switch correctly", () => CalculationSortInteractionChecks.RunReorderAndRightValue(source, root));
         await test("Default calculation sorting precedes preview limits and exports include one overall total outside the filter", () =>

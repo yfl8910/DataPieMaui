@@ -29,6 +29,13 @@ long Count(string path, string table)
 }
 try
 {
+    if (args.Contains("--analysis-only"))
+    {
+        await DataAnalysisChecks.Run(root, Test);
+        await AnalysisTemplateChecks.Run(root, Test);
+        Console.WriteLine($"{passed} regression checks passed.");
+        return 0;
+    }
     await Test("Import targets distinguish SQL Server schemas and quote qualified names", () =>
     {
         var dbo = new TableStruct { Name = "Items", TableSchemaName = "dbo" };

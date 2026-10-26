@@ -98,6 +98,19 @@ public sealed class TableActionService(WorkspaceContext context)
         await context.Desktop.ShowDataAnalysisAsync(session);
     });
 
+    public Task AnalyzeViewAsync(DefinitionObject view) => context.Operations.RunAsync("Open data analysis", async watch =>
+    {
+        if (view.Kind != "View" || !context.Database.Schema!.DefinitionObjects.Contains(view))
+            throw new InvalidOperationException("The view is no longer available. Refresh the schema.");
+        var connection = context.Database.Connection!;
+        string label = context.State.Connection;
+        watch.Start();
+        var source = await Task.Run(() => TableAnalysis.OpenView(connection.ConnectionString, connection.DatabaseType, view.Schema, view.Name));
+        var session = new DataAnalysisSession(source, label, new AnalysisTemplateStore(context.StorePath));
+        await session.RefreshTemplatesAsync();
+        await context.Desktop.ShowDataAnalysisAsync(session);
+    });
+
     public Task ClearAsync(TableStruct table) => context.Operations.RunAsync("Clear table", async watch =>
     {
         table = Resolve(table);
