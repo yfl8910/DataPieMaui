@@ -13,7 +13,7 @@
         <div class="actions"><button @onclick="() => SelectAll(true)">Select all</button><button @onclick="() => SelectAll(false)">Clear selection</button></div>
     </div>
     <ObjectSelection Items="VisibleItems" Label="@(Model.Form.ExportTab == "Table" ? "Tables" : "Views")" OnPreviewItem="PreviewItemAsync" OnDefinition="Context.Definitions.ShowAsync" OnSelectionChanged="SelectionChanged" />
-    <div class="actions"><button @onclick='() => ExportBatchAsync("standard")' title="Export all selected objects without formatting">Excel (Standard)</button><button class="primary" @onclick='() => ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => ExportBatchAsync("epplus")'>Excel (EPPlus)</button><button @onclick='() => ExportBatchAsync("csv")'>CSV folder</button></div>
+    <div class="actions"><button @onclick='() => ExportBatchAsync("standard")' title="Export all selected objects without formatting">Excel (Standard)</button><button class="primary" @onclick='() => ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => ExportBatchAsync("csv")'>CSV folder</button></div>
 </section>
 
 @code {
@@ -38,6 +38,7 @@
 
     public Task ExportBatchAsync(string mode) => RunAsync("Batch export", async watch =>
     {
+        if (mode is not ("standard" or "mini" or "csv")) throw new ArgumentException("Unsupported export format.", nameof(mode));
         var names = Exports.Where(x => x.Selected).Select(x => x.Name).ToArray();
         if (names.Length == 0) throw new InvalidOperationException("Select the tables or views to export.");
         string type = Type;
@@ -63,7 +64,6 @@
                 }
                 workbook.Complete();
             }
-            else if (mode == "epplus") ExcelIO.ExportSheetsWithEpplus(names, path, access, type);
             else if (mode == "mini") ExcelIO.ExportSheetsWithMiniExcel(names, path, access, type);
             else
             {

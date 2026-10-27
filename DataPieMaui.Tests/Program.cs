@@ -267,17 +267,13 @@ try
         Check(Count(destination, "Items") == 6, "SQLite file import failed");
         return Task.CompletedTask;
     });
-    await Test("Multi-sheet MiniExcel and EPPlus export", () =>
+    await Test("Multi-sheet MiniExcel export", () =>
     {
         using var access = operations.OpenAccess();
-        foreach (bool epplus in new[] { false, true })
-        {
-            var output = Path.Combine(root, epplus ? "epplus.xlsx" : "multi.xlsx");
-            if (epplus) ExcelIO.ExportSheetsWithEpplus(new[] { "Items", "ItemNames" }, output, access, "SQLITE");
-            else ExcelIO.ExportSheetsWithMiniExcel(new[] { "Items", "ItemNames" }, output, access, "SQLITE");
-            var sheets = MiniExcelLibs.MiniExcel.GetSheetNames(output);
-            Check(sheets.SequenceEqual(new[] { "Items", "ItemNames" }), "Missing worksheet");
-        }
+        var output = Path.Combine(root, "multi.xlsx");
+        ExcelIO.ExportSheetsWithMiniExcel(new[] { "Items", "ItemNames" }, output, access, "SQLITE");
+        var sheets = MiniExcelLibs.MiniExcel.GetSheetNames(output);
+        Check(sheets.SequenceEqual(new[] { "Items", "ItemNames" }), "Missing worksheet");
         return Task.CompletedTask;
     });
     await Test("Connection CRUD and duplicate prevention", () =>

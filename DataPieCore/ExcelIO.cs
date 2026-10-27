@@ -2,7 +2,6 @@ using DBUtil;
 using ExcelDataReader;
 using MiniExcelLibs;
 using MiniExcelLibs.OpenXml;
-using OfficeOpenXml;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -60,59 +59,6 @@ namespace DataPieCore
                 access.BulkInsert(tableName, reader);
         }
 
-        public static int SaveExcel(string filePath, IDataReader reader, string sheetName)
-        {
-            if (filePath is null) throw new ArgumentNullException(nameof(filePath));
-            if (reader is null) throw new ArgumentNullException(nameof(reader));
-
-            var watch = Stopwatch.StartNew();
-
-            ExcelPackage.License.SetNonCommercialOrganization("<DataPie>");
-
-            PrepareOutputFile(filePath);
-
-            using (var package = new ExcelPackage(new FileInfo(filePath)))
-            {
-                var ws = package.Workbook.Worksheets.Add(sheetName);
-                ws.Cells["A1"].LoadFromDataReader(reader, true);
-                package.Save();
-            }
-
-            watch.Stop();
-            return (int)watch.Elapsed.TotalSeconds;
-        }
-
-        public static int ExportSheetsWithEpplus(IList<string> tableNames, string filePath, IDbAccess dbAccess, string databaseType)
-        {
-            if (filePath is null) throw new ArgumentNullException(nameof(filePath));
-            if (tableNames is null || tableNames.Count == 0) throw new ArgumentException("tableNames required", nameof(tableNames));
-            if (dbAccess is null) throw new ArgumentNullException(nameof(dbAccess));
-
-            var watch = Stopwatch.StartNew();
-
-            // Keep EPPlus licensing call if required by your usage
-            ExcelPackage.License.SetNonCommercialOrganization("<DataPie>");
-
-            PrepareOutputFile(filePath);
-
-            using (var package = new ExcelPackage(new FileInfo(filePath)))
-            {
-                foreach (var table in tableNames)
-                {
-                    string sql = SqlQueryBuilder.BuildSelectAll(table, databaseType);
-                    using (var reader = dbAccess.GetDataReader(sql))
-                    {
-                        var ws = package.Workbook.Worksheets.Add(table);
-                        ws.Cells["A1"].LoadFromDataReader(reader, true);
-                    }
-                }
-
-                package.Save();
-            }
-
-            watch.Stop();
-            return (int)watch.Elapsed.TotalSeconds;
-        }
         public static int ExportSheetsWithMiniExcel(IList<string> tableNames, string filePath, IDbAccess dbAccess, string databaseType)
         {
             if (filePath is null) throw new ArgumentNullException(nameof(filePath));
