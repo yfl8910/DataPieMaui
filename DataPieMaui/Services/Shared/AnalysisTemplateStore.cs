@@ -48,7 +48,7 @@ public sealed class AnalysisTemplateStore(string path)
         name = name.Trim();
         if (name.Length is 0 or > 100) throw new ArgumentException("Template names must contain 1 to 100 characters.");
         var settings = ForStorage(request);
-        string json = JsonSerializer.Serialize(new Payload(1, settings), JsonOptions);
+        string json = JsonSerializer.Serialize(new Payload(3, settings), JsonOptions);
         using var connection = Open();
         using var command = new SQLiteCommand(createOnly ? "INSERT INTO AnalysisTemplates(TableName,Name,ConfigJson,UpdatedUtc) VALUES(@table,@name,@json,@updated) RETURNING Id" : """
             INSERT INTO AnalysisTemplates(TableName,Name,ConfigJson,UpdatedUtc) VALUES(@table,@name,@json,@updated)
@@ -67,7 +67,7 @@ public sealed class AnalysisTemplateStore(string path)
     {
         name = name.Trim();
         if (name.Length is 0 or > 100) throw new ArgumentException("Template names must contain 1 to 100 characters.");
-        string json = JsonSerializer.Serialize(new Payload(1, ForStorage(request)), JsonOptions);
+        string json = JsonSerializer.Serialize(new Payload(3, ForStorage(request)), JsonOptions);
         using var connection = Open();
         using var command = new SQLiteCommand("UPDATE AnalysisTemplates SET Name=@name,ConfigJson=@json,UpdatedUtc=@updated WHERE TableName=@table AND Id=@id", connection);
         command.Parameters.AddWithValue("@name", name);
@@ -91,7 +91,7 @@ public sealed class AnalysisTemplateStore(string path)
         try
         {
             var payload = JsonSerializer.Deserialize<Payload>(json, JsonOptions) ?? throw new InvalidDataException("Template settings are empty.");
-            if (payload.Version != 1) throw new InvalidDataException("This template version is not supported.");
+            if (payload.Version is not (1 or 2 or 3)) throw new InvalidDataException("This template version is not supported.");
             return ForStorage(payload.Settings);
         }
         catch (JsonException ex) { throw new InvalidDataException("The template contains invalid settings.", ex); }
@@ -111,6 +111,6 @@ public sealed class AnalysisTemplateStore(string path)
             throw new InvalidDataException("The template has incomplete field or calculation settings.");
         if (request.Conditions?.Any(c => c == null) == true) throw new InvalidDataException("The template contains an invalid search condition.");
         var conditions = request.Conditions?.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray();
-        return request with { Groups = request.Groups.ToArray(), Calculations = request.Calculations.ToArray(), Formulas = request.Formulas?.ToArray(), SearchColumn = "", SearchColumns = null, SearchText = "", Conditions = conditions?.Length > 0 ? conditions : null };
+        return request with { Groups = request.Groups.ToArray(), Calculations = request.Calculations.ToArray(), Formulas = request.Formulas?.ToArray(), SearchColumn = "", SearchColumns = null, SearchText = "", Conditions = conditions?.Length > 0 ? conditions : null, Filters = AnalysisFilters.Snapshot(request.Filters), ParameterValues = null };
     }
 }

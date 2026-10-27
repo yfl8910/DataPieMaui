@@ -1,0 +1,9 @@
+.advanced-search-dialog { width: min(1100px, 100%); }
+.advanced-search-dialog .analysis-config-panel { min-width: 0; border: 1px solid #d8e0e9; border-radius: 6px; padding: 8px 12px; margin-top: 10px; overflow-wrap: anywhere; }
+.advanced-search-dialog .analysis-filter-rule { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; border-bottom: 1px solid #d8e0e9; padding: 10px 0; }
+.advanced-search-dialog .analysis-filter-rule > label { display: grid; gap: 4px; flex: 1 1 160px; min-width: 0; }
+.advanced-search-dialog input:not([type=checkbox]), .advanced-search-dialog select { min-width: 0; width: 100%; padding: 8px; font: inherit; border: 1px solid #cbd5df; border-radius: 6px; }
+.advanced-search-dialog .analysis-filter-values { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.advanced-search-dialog .analysis-filter-values > input, .advanced-search-dialog .analysis-filter-values > select { flex: 1 1 140px; min-width: 0; }
+.advanced-search-dialog .analysis-filter-value { display: flex; gap: 4px; min-width: 0; flex: 1 1 160px; }
+.advanced-search-dialog .analysis-filter-value input { min-width: 0; width: 100%; }

@@ -1,0 +1,42 @@
+<div class="analysis-filter-values">
+    @if (Operation == "In")
+    {
+        @for (int index = 0; index < Values.Count; index++)
+        {
+            int slot = index;
+            <div class="analysis-filter-value"><input aria-label="@($"{Label} value {slot + 1}")" type="@InputType" step="any" value="@Values[slot]" @onchange="e => Change(slot, e.Value?.ToString() ?? string.Empty)" /><button type="button" @onclick="() => Remove(slot)" aria-label="Remove value">×</button></div>
+        }
+        <button type="button" @onclick="Add">Add value</button>
+    }
+    else if (Operation is not ("IsNull" or "IsNotNull"))
+    {
+        @for (int index = 0; index < (Operation == "Range" ? 2 : 1); index++)
+        {
+            int slot = index;
+            @if (Kind == "Boolean")
+            {
+                <select aria-label="@Label" value="@At(slot)" @onchange="e => Change(slot, e.Value?.ToString() ?? string.Empty)"><option value="">Not set</option><option value="true">True</option><option value="false">False</option></select>
+            }
+            else
+            {
+                <input aria-label="@(Operation == "Range" ? Label + (slot == 0 ? " start" : " end") : Label)" type="@InputType" step="any" value="@At(slot)" placeholder="@(Operation == "Range" ? (slot == 0 ? "From" : "To") : "Value")" @onchange="e => Change(slot, e.Value?.ToString() ?? string.Empty)" />
+            }
+        }
+    }
+</div>
+@code {
+    [Parameter] public string Kind { get; set; } = "Text";
+    [Parameter] public string Operation { get; set; } = "Equals";
+    [Parameter] public string Label { get; set; } = "Filter";
+    [Parameter] public IReadOnlyList<string> Values { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<string>> ValueChanged { get; set; }
+    private string InputType => Kind == "Date" ? "date" : Kind == "Number" ? "number" : "text";
+    private string At(int index) => index < Values.Count ? Values[index] : "";
+    private Task Change(int index, string value)
+    {
+        var next = Values.ToList(); while (next.Count <= index) next.Add(""); next[index] = value;
+        return ValueChanged.InvokeAsync(next.ToArray());
+    }
+    private Task Add() => ValueChanged.InvokeAsync(Values.Append("").ToArray());
+    private Task Remove(int index) => ValueChanged.InvokeAsync(Values.Where((_, i) => i != index).ToArray());
+}

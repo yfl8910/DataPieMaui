@@ -19,6 +19,7 @@ public sealed class ExcelExportOptions
     public int CalculationStartColumn { get; init; } = int.MaxValue;
     public IReadOnlyList<int> PercentageColumns { get; init; } = Array.Empty<int>();
     public object[] Totals { get; init; }
+    public IReadOnlyList<AnalysisNumberFormat> NumberFormats { get; init; } = Array.Empty<AnalysisNumberFormat>();
 }
 
 // Readers belong to the caller. Complete publishes the file; otherwise Dispose removes it.
@@ -29,6 +30,21 @@ public sealed class ExcelExporter : IDisposable
     private readonly string path, temporary;
     private readonly ZipArchive zip;
     private readonly List<string> sheets = new();
+    private readonly XDocument styles;
+    private readonly Dictionary<string, (int Normal, int Total)> customStyles = new(StringComparer.Ordinal);
+    private (int Normal, int Total) RegisterFormat(AnalysisNumberFormat format)
+    {
+        string code = format.Code();
+        if (customStyles.TryGetValue(code, out var existing)) return existing;
+        XNamespace ns = Ns;
+        var formats = styles.Root.Element(ns + "numFmts"); var cells = styles.Root.Element(ns + "cellXfs");
+        int formatId = 166 + customStyles.Count, normal = cells.Elements().Count();
+        formats.Add(new XElement(ns + "numFmt", new XAttribute("numFmtId", formatId), new XAttribute("formatCode", code)));
+        for (int total = 0; total < 2; total++) cells.Add(new XElement(ns + "xf", new XAttribute("numFmtId", formatId), new XAttribute("fontId", total),
+            new XAttribute("fillId", total == 0 ? 0 : 3), new XAttribute("borderId", total), new XAttribute("xfId", 0), new XAttribute("applyNumberFormat", 1), new XAttribute("applyFont", 1), new XAttribute("applyFill", 1), new XAttribute("applyBorder", 1)));
+        formats.SetAttributeValue("count", formats.Elements().Count()); cells.SetAttributeValue("count", cells.Elements().Count());
+        return customStyles[code] = (normal, normal + 1);
+    }
     private bool disposed, faulted;
     public ExcelExporter(string path)
     {
@@ -37,7 +53,7 @@ public sealed class ExcelExporter : IDisposable
         zip = ZipFile.Open(temporary, ZipArchiveMode.Create);
         try
         {
-            Part("xl/styles.xml", """
+            styles = XDocument.Parse("""
                 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
                 <numFmts count="2"><numFmt numFmtId="164" formatCode="0.0%"/><numFmt numFmtId="165" formatCode="yyyy-mm-dd hh:mm:ss"/></numFmts>
                 <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts>
@@ -75,6 +91,9 @@ public sealed class ExcelExporter : IDisposable
         if (options.Totals != null && options.Totals.Length != count) throw new ArgumentException("Totals must match the worksheet column count.");
         sheets.Add(SafeSheetName(name));
         var names = Enumerable.Range(0, count).Select(reader.GetName).ToArray();
+        var numberStyles = new Dictionary<int, (int Normal, int Total)>();
+        if (options.Formatted) for (int c = 0; c < Math.Min(count, options.NumberFormats.Count); c++)
+            if (options.NumberFormats[c] is { Kind: not "Auto" } format) numberStyles[c] = RegisterFormat(format);
         var sample = new List<object[]>();
         while (sample.Count < 200 && reader.Read()) { var values = new object[count]; reader.GetValues(values); sample.Add(values); }
         using var sheet = zip.CreateEntry($"xl/worksheets/sheet{sheets.Count}.xml").Open();
@@ -100,7 +119,7 @@ public sealed class ExcelExporter : IDisposable
             for (int c = 0; c < count; c++)
             {
                 int width = names[c].Length;
-                foreach (var row in sample) width = Math.Max(width, Display(row[c], options.PercentageColumns.Contains(c), c >= options.CalculationStartColumn).Length);
+                foreach (var row in sample) width = Math.Max(width, (Numeric(row[c]) && c < options.NumberFormats.Count && options.NumberFormats[c] is { Kind: not "Auto" } format ? ((IFormattable)row[c]).ToString(format.Code(), Invariant) : Display(row[c], options.PercentageColumns.Contains(c), c >= options.CalculationStartColumn)).Length);
                 Empty("col", ("min", c + 1), ("max", c + 1), ("width", Math.Clamp(width + 2, 12, 45)), ("customWidth", 1));
             }
             xml.WriteEndElement();
@@ -122,7 +141,8 @@ public sealed class ExcelExporter : IDisposable
                 if (Numeric(value) && !NeedsText(value) || value is DateTime || value is bool)
                 {
                     Start("c"); Attr("r", reference);
-                    int style = value is DateTime ? 4 : !options.Formatted ? 0 : Numeric(value) && options.PercentageColumns.Contains(c) ? 3 : Numeric(value) && c >= options.CalculationStartColumn ? 2 : 0; Attr("s", total && options.Formatted ? (style == 0 ? 5 : style + 4) : style);
+                    int style = value is DateTime ? 4 : !options.Formatted ? 0 : Numeric(value) && options.PercentageColumns.Contains(c) ? 3 : Numeric(value) && c >= options.CalculationStartColumn ? 2 : 0;
+                    Attr("s", Numeric(value) && numberStyles.TryGetValue(c, out var custom) ? (total ? custom.Total : custom.Normal) : total && options.Formatted ? (style == 0 ? 5 : style + 4) : style);
                     if (value is bool) Attr("t", "b");
                     Start("v"); xml.WriteString(value is DateTime date ? date.ToOADate().ToString("R", Invariant) : value is bool flag ? (flag ? "1" : "0") : Convert.ToString(value, Invariant));
                     xml.WriteEndElement(); xml.WriteEndElement();
@@ -142,6 +162,7 @@ public sealed class ExcelExporter : IDisposable
         if (disposed || faulted) throw new InvalidOperationException("Workbook is closed or a previous write failed.");
         if (sheets.Count == 0) throw new InvalidOperationException("Add at least one worksheet.");
         faulted = true;
+        Part("xl/styles.xml", styles.ToString());
         XNamespace content = "http://schemas.openxmlformats.org/package/2006/content-types";
         XNamespace rel = "http://schemas.openxmlformats.org/package/2006/relationships";
         XNamespace main = Ns;

@@ -1,0 +1,105 @@
+@using DataPieCore
+<div class="modal-overlay">
+    <section class="editor-dialog analysis-calculation-dialog advanced-search-dialog" role="dialog" aria-modal="true" aria-labelledby="filter-settings-title" tabindex="-1">
+        <div class="dialog-header"><h2 id="filter-settings-title">@(ShowParameters ? "Advanced search and parameters" : "Advanced search")</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close filter settings">×</button></div>
+        <div class="dialog-body">
+            <p>Conditions within each group use AND. Groups use OR. IsNull means database NULL, not empty text. @(ShowParameters ? "Empty optional parameter groups are ignored." : "")</p>
+            @foreach (var group in VisibleGroups)
+            {
+                <section class="analysis-config-panel" @key="group">
+                    <div class="toolbar"><strong>@(ReferenceEquals(group, commonRules) ? "AND applies to all groups" : groups.IndexOf(group) == 0 ? "Condition group" : "OR condition group")</strong><button @onclick="() => RemoveGroup(group)">Remove group</button></div>
+                    @foreach (var rule in group)
+                    {
+                        <div class="analysis-filter-rule" @key="rule.Id">
+                            <span>@(group.IndexOf(rule) == 0 ? "" : "AND")</span>
+                            <label>Field<select value="@rule.Column" @onchange="e => ChangeField(rule, e.Value?.ToString() ?? string.Empty)"><option value="">All text fields</option>@foreach (var field in AvailableFields) { <option value="@field.Name">@(string.IsNullOrEmpty(field.DisplayName) ? field.Name : field.DisplayName)</option> }</select></label>
+                            <label>Operator<select value="@rule.Operation" @onchange="e => ChangeOperation(rule, e.Value?.ToString() ?? string.Empty)">@foreach (string operation in Choices(rule)) { <option value="@operation">@OperationName(operation)</option> }</select></label>
+                            <button @onclick="() => group.Remove(rule)" aria-label="Remove condition">×</button>
+                            @if (rule.Operation is not ("IsNull" or "IsNotNull"))
+                            {
+                                @if (ShowParameters) { <label>Value source<select @bind="rule.ParameterId"><option value="">Fixed value</option>@foreach (var choice in parameters) { <option value="@choice.Id">@choice.Name</option> }</select></label> }
+                                @if (parameters.FirstOrDefault(p => p.Id == rule.ParameterId) is { } parameter)
+                                {
+                                    <label>Parameter name<input @bind="parameter.Name" @bind:event="oninput" maxlength="100" /></label>
+                                    <label><input type="checkbox" @bind="parameter.Required" /> Required</label>
+                                    @if (Kind(rule) == "Date" && rule.Operation == "Range")
+                                    {
+                                        <label>Default date range<select @bind="parameter.RelativeDate"><option value="">Fixed dates</option><option value="Today">Today</option><option value="ThisMonth">This month</option><option value="LastMonth">Last month</option></select></label>
+                                    }
+                                    @if (string.IsNullOrEmpty(parameter.RelativeDate))
+                                    {
+                                        <label>Default value<AnalysisFilterValues Kind="@Kind(rule)" Operation="@rule.Operation" Values="parameter.Values" ValueChanged="v => parameter.Values = v.ToList()" Label="@parameter.Name" /></label>
+                                    }
+                                    else { <p>Relative dates are resolved on Apply template or Reset parameters using your computer's local date.</p> }
+                                }
+                                else
+                                {
+                                    <AnalysisFilterValues Kind="@Kind(rule)" Operation="@rule.Operation" Values="rule.Values" ValueChanged="v => rule.Values = v.ToList()" Label="@rule.Column" />
+                                    @if (ShowParameters) { <button @onclick="() => AddParameter(rule)">Use parameter</button> }
+                                }
+                            }
+                        </div>
+                    }
+                    <button @onclick="() => AddRule(group)">Add AND condition</button>
+                </section>
+            }
+            <button @onclick="AddGroup">Add OR group</button>
+            @if (error.Length > 0) { <p class="dialog-error" role="alert">@error</p> }
+            @if (!string.IsNullOrEmpty(ExternalError)) { <p class="dialog-error" role="alert">@ExternalError</p> }
+        </div>
+        <div class="dialog-actions"><button @onclick="OnCancel">Cancel</button><button class="primary" @onclick="ApplyAsync">Apply</button></div>
+    </section>
+</div>
+@code {
+    [Parameter] public TableAnalysis? Source { get; set; }
+    [Parameter, EditorRequired] public AnalysisRequest Settings { get; set; } = default!;
+    [Parameter] public IReadOnlyList<AnalysisFilterField>? Fields { get; set; }
+    [Parameter] public bool ShowParameters { get; set; } = true;
+    [Parameter] public Action<AnalysisFilterConfig>? Validate { get; set; }
+    [Parameter] public string? ExternalError { get; set; }
+    [Parameter] public EventCallback<AnalysisFilterConfig> OnApply { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    private readonly List<List<Rule>> groups = [];
+    private readonly List<Rule> commonRules = [];
+    private IEnumerable<List<Rule>> VisibleGroups => commonRules.Count == 0 ? groups : new[] { commonRules }.Concat(groups);
+    private IReadOnlyList<AnalysisFilterField> AvailableFields => Fields ?? Source?.FilterFields ?? [];
+    private readonly List<Parameter> parameters = [];
+    private string error = "";
+    private sealed class Rule { public string Id = Guid.NewGuid().ToString("N"), Column = "", Operation = "Contains", ParameterId = ""; public List<string> Values = []; }
+    private sealed class Parameter { public string Id = "", Name = "", RelativeDate = ""; public bool Required; public List<string> Values = []; }
+    protected override void OnInitialized()
+    {
+        var config = AnalysisFilters.MergeLegacy(Settings.Filters, Settings.Conditions, AvailableFields);
+        groups.AddRange(config.Groups.Select(g => g.Rules.Select(r => new Rule { Id = r.Id, Column = r.Column, Operation = r.Operation, ParameterId = r.ParameterId, Values = r.Values.ToList() }).ToList()));
+        commonRules.AddRange((config.CommonRules ?? []).Select(r => new Rule { Id = r.Id, Column = r.Column, Operation = r.Operation, ParameterId = r.ParameterId, Values = r.Values.ToList() }));
+        parameters.AddRange(config.Parameters.Select(p => new Parameter { Id = p.Id, Name = p.Name, RelativeDate = p.RelativeDate, Required = p.Required, Values = p.Defaults.ToList() }));
+        if (groups.Count == 0 && commonRules.Count == 0) AddGroup();
+    }
+    private string Kind(Rule rule) => AvailableFields.FirstOrDefault(f => f.Name == rule.Column)?.Kind ?? "Text";
+    private IEnumerable<string> Choices(Rule rule) => string.IsNullOrEmpty(rule.Column) ? new[] { "Contains" } : AnalysisFilters.Operations.Where(o =>
+        (o != "Contains" || Kind(rule) == "Text") && (o != "Range" || Kind(rule) is "Number" or "Date"));
+    private static string OperationName(string op) => op switch { "Equals" => "Equals", "NotEquals" => "Not equal", "Contains" => "Contains", "Range" => "Range (inclusive)", "In" => "In multiple values", "IsNull" => "Is NULL", "IsNotNull" => "Is not NULL", "Greater" => ">", "GreaterOrEqual" => ">=", "Less" => "<", "LessOrEqual" => "<=", _ => op };
+    private void ChangeField(Rule rule, string field) { rule.Column = field; rule.Operation = Kind(rule) == "Text" ? "Contains" : "Equals"; rule.Values = []; rule.ParameterId = ""; }
+    private void ChangeOperation(Rule rule, string operation) { rule.Operation = operation; rule.Values = []; rule.ParameterId = ""; }
+    private void AddRule(List<Rule> group) => group.Add(new Rule());
+    private void RemoveGroup(List<Rule> group) { if (ReferenceEquals(group, commonRules)) commonRules.Clear(); else groups.Remove(group); }
+    private void AddGroup() { var group = new List<Rule>(); groups.Add(group); AddRule(group); }
+    private void AddParameter(Rule rule)
+    {
+        var parameter = new Parameter { Id = Guid.NewGuid().ToString("N"), Name = string.IsNullOrEmpty(rule.Column) ? "Search" : rule.Column, Values = rule.Values.ToList() };
+        parameters.Add(parameter); rule.ParameterId = parameter.Id;
+    }
+    public async Task ApplyAsync()
+    {
+        try
+        {
+            var rules = groups.Select(g => new AnalysisFilterGroup(g.Select(r => new AnalysisFilterRule(r.Id, r.Column, r.Operation, r.Values.ToArray(), r.ParameterId)).ToArray())).ToArray();
+            var common = commonRules.Select(r => new AnalysisFilterRule(r.Id, r.Column, r.Operation, r.Values.ToArray(), r.ParameterId)).ToArray();
+            var used = rules.SelectMany(g => g.Rules).Concat(common).Select(r => r.ParameterId).ToHashSet();
+            var config = new AnalysisFilterConfig(rules, parameters.Where(p => used.Contains(p.Id)).Select(p => new AnalysisParameter(p.Id, p.Name, p.Values.ToArray(), p.Required, p.RelativeDate)).ToArray(), common);
+            if (Validate != null) Validate(config); else Source?.ValidateRequest(Settings with { Filters = config, Conditions = null, ParameterValues = null });
+            await OnApply.InvokeAsync(config);
+        }
+        catch (ArgumentException ex) { error = ex.Message; }
+    }
+}

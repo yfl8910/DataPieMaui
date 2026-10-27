@@ -93,6 +93,9 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
     public bool Matches(AnalysisRequest request) => LastRequest is { } last && last.Groups.SequenceEqual(request.Groups)
         && last.Calculations.SequenceEqual(request.Calculations) && last.IncludeCount == request.IncludeCount
         && (last.SortBy ?? "") == (request.SortBy ?? "") && last.SortDescending == request.SortDescending
+        && System.Text.Json.JsonSerializer.Serialize(last.Filters) == System.Text.Json.JsonSerializer.Serialize(request.Filters)
+        && SameParameters(last, request)
+        && last.CountFormat == request.CountFormat
         && SameSearch(last, request)
         && (last.Formulas ?? []).SequenceEqual(request.Formulas ?? []);
     private static bool SameSearch(AnalysisRequest left, AnalysisRequest right)
@@ -106,6 +109,12 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         }
         return left.EffectiveSearchColumns.OrderBy(n => n, StringComparer.Ordinal).SequenceEqual(right.EffectiveSearchColumns.OrderBy(n => n, StringComparer.Ordinal)) && left.SearchText == right.SearchText;
     }
+    private static bool SameParameters(AnalysisRequest left, AnalysisRequest right)
+    {
+        if (left.Filters == null && right.Filters == null) return true;
+        var a = AnalysisFilters.Resolve(left.Filters, left.ParameterValues); var b = AnalysisFilters.Resolve(right.Filters, right.ParameterValues);
+        return a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var values) && pair.Value.SequenceEqual(values));
+    }
     public async Task AnalyzeAsync(AnalysisRequest request)
     {
         if (Busy) return;
@@ -115,10 +124,11 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         try
         {
             request = request with { Groups = request.Groups.ToArray(), Calculations = request.Calculations.ToArray(), Formulas = request.Formulas?.ToArray(), SearchColumns = request.SearchColumns?.ToArray(), Conditions = request.Conditions?.ToArray() };
+            request = request with { Filters = AnalysisFilters.Snapshot(request.Filters), ParameterValues = request.Filters == null ? null : AnalysisFilters.Resolve(request.Filters, request.ParameterValues) };
             var preview = await Task.Run(() => Source.AnalyzeWithTotals(request));
             var data = preview.Groups;
-            Result = new QueryResultSnapshot(data, ConnectionLabel, Source.TableName + " · Analysis");
-            Totals = preview.Totals == null ? null : new QueryResultSnapshot(preview.Totals, ConnectionLabel, Source.TableName + " · Overall totals");
+            Result = new QueryResultSnapshot(data, ConnectionLabel, Source.TableName + " · Analysis", TableAnalysis.ResultFormats(request));
+            Totals = preview.Totals == null ? null : new QueryResultSnapshot(preview.Totals, ConnectionLabel, Source.TableName + " · Overall totals", TableAnalysis.ResultFormats(request, true));
             LastRequest = request;
             Status = $"Analysis completed in {watch.Elapsed.TotalSeconds:F1} s · {data.RowCount:N0} groups";
         }

@@ -6,6 +6,7 @@ namespace DataPieMaui.Services;
 public sealed class QueryResultSnapshot
 {
     private readonly QueryPreviewResult data;
+    private readonly IReadOnlyList<AnalysisNumberFormat>? formats;
     public int RowCount => data.RowCount;
     public int ColumnCount => data.ColumnCount;
     public bool Truncated => data.Truncated;
@@ -14,20 +15,24 @@ public sealed class QueryResultSnapshot
     public string GetColumnName(int column) => data.GetColumnName(column);
     public Type GetColumnType(int column) => data.GetColumnType(column);
     public bool IsNull(int row, int column) => data.IsNull(row, column);
+    public object GetValue(int row, int column) => data.GetValue(row, column);
     public string FormatCell(int row, int column) => data.FormatDisplayCell(row, column);
     public string FormatGroupedCell(int row, int column) => data.GetValue(row, column) switch
     {
         byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal
-            => GetColumnName(column).Contains('%')
+            => formats != null && column < formats.Count && formats[column] is { Kind: not "Auto" } format
+                ? ((IFormattable)data.GetValue(row, column)).ToString(format.Code(), System.Globalization.CultureInfo.CurrentCulture)
+                : GetColumnName(column).Contains('%')
                 ? ((IFormattable)data.GetValue(row, column)).ToString("0.0%", System.Globalization.CultureInfo.CurrentCulture)
                 : ((IFormattable)data.GetValue(row, column)).ToString("N2", System.Globalization.CultureInfo.CurrentCulture),
         _ => FormatCell(row, column)
     };
 
     // The immutable result is shared, without copying rows or binary buffers.
-    public QueryResultSnapshot(QueryPreviewResult data, string connection, string source = "SQL query")
+    public QueryResultSnapshot(QueryPreviewResult data, string connection, string source = "SQL query", IReadOnlyList<AnalysisNumberFormat>? formats = null)
     {
         this.data = data;
+        this.formats = formats;
         Connection = connection;
         Source = source;
     }

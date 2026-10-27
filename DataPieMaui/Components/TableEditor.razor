@@ -8,7 +8,7 @@
 @implements IDisposable
 @if (Preview != null)
 {
-<main>
+<main inert="@searchDialogOpen">
     <header><div><p>@previewSnapshot?.Connection</p><p>@previewSnapshot?.Source</p></div><span class="badge">Read-only preview</span></header>
     @if (previewSnapshot is null)
     {
@@ -19,17 +19,17 @@
         <div class="toolbar">
             <strong>@previewSnapshot.RowCount.ToString("N0") rows · @previewSnapshot.ColumnCount columns</strong>
             <button @onclick="() => CopyAsync(false)" disabled="@(previewSelected is null)">Copy selected row</button>
-            <button @onclick="() => CopyAsync(true)" disabled="@(previewOrder.Length == 0)">@(previewConditions.Count > 0 ? "Copy matching rows" : "Copy all preview rows")</button>
+            <button @onclick="() => CopyAsync(true)" disabled="@(previewOrder.Length == 0)">@(PreviewHasFilter ? "Copy matching rows" : "Copy all preview rows")</button>
         </div>
-        <ConditionSearch Fields="PreviewSearchFields" Value="previewDraftConditions" ValueChanged="SetPreviewConditions" OnSearch="ApplyPreviewConditionsAsync" OnClear="ClearSearch"
-                         Notice="All conditions must match within the loaded preview only. Matching uses displayed text, ignoring case." />
+        <div class="toolbar"><button @onclick="OpenAdvancedSearch">Advanced search</button><button @onclick="ClearSearch">Clear search</button><span>@PreviewFilterSummary</span></div>
+        <p>Search covers loaded preview rows only. Text comparisons ignore case.</p>
         @if (previewSnapshot.Truncated)
         {
             <div class="notice">Showing the first 1,000 rows. Use export in the main window to retrieve the full result.</div>
         }
         <TableDataGrid TRow="int" Rows="@previewOrder.Skip(previewPage * PreviewPageSize).Take(PreviewPageSize)" ColumnCount="previewSnapshot.ColumnCount"
                        CellText="previewSnapshot.FormatCell" CellIsNull="previewSnapshot.IsNull" IsSelected="PreviewIsSelected" SelectRows="true" OnSelect="Select"
-                       SortState="PreviewSortState" EmptyText="@(previewConditions.Count > 0 ? "No matching records in the loaded preview." : "The query returned no rows.")">
+                       SortState="PreviewSortState" EmptyText="@(PreviewHasFilter ? "No matching records in the loaded preview." : "The query returned no rows.")">
             <LeadingHeader>#</LeadingHeader>
             <ColumnHeader Context="column"><button @onclick="() => Sort(column)" disabled="@(previewSnapshot.GetColumnType(column) == typeof(byte[]))">@previewSnapshot.GetColumnName(column) @(previewSortColumn == column ? (previewDescending ? "▼" : "▲") : "")</button></ColumnHeader>
             <LeadingCell Context="index">@(index + 1)</LeadingCell>
@@ -54,14 +54,13 @@ else
         <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">Delete selected</button>
         <button @onclick="() => LoadAsync(Session.Page)" disabled="@(Session.IsBusy || DialogOpen)">Refresh</button>
     </div>
-    <ConditionSearch Fields="EditorSearchFields" Value="editorConditions" ValueChanged="SetEditorConditions" OnSearch="ApplyEditorConditionsAsync" OnClear="ClearSearchAsync" Disabled="@(Session.IsBusy || DialogOpen)"
-                     Notice="All conditions must match across the full table. Text contains; numbers/booleans match exactly; dates use yyyy-MM-dd." />
+    <div class="toolbar"><button @onclick="OpenAdvancedSearch" disabled="@(Session.IsBusy || DialogOpen)">Advanced search</button><button @onclick="ClearAdvancedSearchAsync" disabled="@(Session.IsBusy || DialogOpen)">Clear search</button><span>@AnalysisFilters.Summary(Session.AdvancedFilters)</span></div>
     @if (Session.Conditions.Count > 0) { <p>Active conditions: @string.Join(" AND ", Session.Conditions.Select(c => c.Column + ": " + c.Text))</p> }
     @if (!Session.CanEdit) { <p class="notice">@Session.ReadOnlyReason</p> }
     @if (Session.CanEdit) { <p class="notice">@Session.IdentityNotice</p> }
     <TableDataGrid TRow="DataRow" Rows="@(Session.Data.Rows.Cast<DataRow>())" ColumnCount="Session.Data.Columns.Count"
                    CellText="EditorCellText" CellIsNull="EditorCellIsNull" IsSelected="selected.Contains"
-                   EmptyText="@(Session.SearchColumn != null ? "No matching records." : "No records.")">
+                   EmptyText="@(Session.SearchColumn != null || Session.AdvancedFilters != null ? "No matching records." : "No records.")">
         <LeadingHeader><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> Select all</label></LeadingHeader>
         <ColumnHeader Context="column">@Session.Data.Columns[column].ColumnName</ColumnHeader>
         <LeadingCell Context="row"><input type="checkbox" aria-label="Select record" checked="@selected.Contains(row)" @onchange="e => Select(row, e.Value is true)" disabled="@(Session.IsBusy || DialogOpen)" /></LeadingCell>
@@ -86,7 +85,7 @@ else
         </section>
     </div>
 }
-else if (DialogOpen)
+else if (DialogOpen && !searchDialogOpen)
 {
     <div class="modal-overlay">
         <section @key="DialogKey" class="editor-dialog" data-wide="@(!confirmDelete && Session.Data.Columns.Count > 10 ? "true" : "false")" data-movable="@(confirmDelete ? "false" : "true")" data-busy="@(Session.IsBusy ? "true" : "false")" role="@(confirmDelete ? "alertdialog" : "dialog")" aria-modal="true" aria-labelledby="editor-dialog-title" tabindex="-1">
@@ -149,6 +148,10 @@ else if (DialogOpen)
 }
 
 }
+@if (searchDialogOpen)
+{
+    <AnalysisFilterDialog Fields="AdvancedFields" Settings="AdvancedSettings" ShowParameters="false" Validate="ValidateAdvanced" ExternalError="dialogError" OnApply="ApplyAdvancedAsync" OnCancel="CloseAdvancedSearch" />
+}
 @code {
     [Parameter] public TableEditorSession Session { get; set; } = default!;
     [Parameter] public string ConnectionLabel { get; set; } = "";
@@ -156,7 +159,67 @@ else if (DialogOpen)
     private readonly Dictionary<string, string> draft = new();
     private DataRow? editing;
     private bool confirmDelete, confirmDiscard, adding;
-    private bool DialogOpen => editing != null || adding || confirmDelete || importOpen;
+    private bool DialogOpen => editing != null || adding || confirmDelete || importOpen || searchDialogOpen;
+    private bool searchDialogOpen;
+    private AnalysisFilterConfig? previewAdvanced;
+    private Func<Func<string, object>, bool>? previewMatcher;
+    private static bool SupportedPreviewType(Type type) => type == typeof(string) || type == typeof(bool) || type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan) || type == typeof(Guid) || type == typeof(byte) || type == typeof(sbyte) || type == typeof(short) || type == typeof(ushort) || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong) || type == typeof(float) || type == typeof(double) || type == typeof(decimal);
+    private IReadOnlyList<AnalysisFilterField> AdvancedFields => Preview == null ? Session.FilterFields : previewSnapshot == null ? [] : Enumerable.Range(0, previewSnapshot.ColumnCount).Where(i => SupportedPreviewType(previewSnapshot.GetColumnType(i)))
+        .Select(i => new AnalysisFilterField(i.ToString(CultureInfo.InvariantCulture), TableEditorSession.FilterKind(previewSnapshot.GetColumnType(i)), previewSnapshot.GetColumnName(i))).ToArray();
+    private AnalysisRequest AdvancedSettings => new([], [], Conditions: Preview == null ? Session.Conditions : previewConditions, Filters: Preview == null ? Session.AdvancedFilters : previewAdvanced);
+    private bool PreviewHasFilter => previewConditions.Count > 0 || (previewAdvanced?.Groups.Any(g => g.Rules.Count > 0) ?? false) || (previewAdvanced?.CommonRules?.Count > 0);
+    private string PreviewFilterSummary
+    {
+        get
+        {
+            if (previewAdvanced == null || previewSnapshot == null) return "";
+            AnalysisFilterRule Label(AnalysisFilterRule r) => r with { Column = int.TryParse(r.Column, out int i) && i >= 0 && i < previewSnapshot.ColumnCount ? previewSnapshot.GetColumnName(i) : r.Column };
+            return AnalysisFilters.Summary(previewAdvanced with { Groups = previewAdvanced.Groups.Select(g => new AnalysisFilterGroup(g.Rules.Select(Label).ToArray())).ToArray(), CommonRules = previewAdvanced.CommonRules?.Select(Label).ToArray() });
+        }
+    }
+    private SearchColumn ResolvePreviewColumn(string name)
+    {
+        if (previewSnapshot == null || !int.TryParse(name, out int index) || index < 0 || index >= previewSnapshot.ColumnCount || !SupportedPreviewType(previewSnapshot.GetColumnType(index))) throw new ArgumentException("Select a supported preview column.");
+        return new SearchColumn(name, previewSnapshot.GetColumnType(index), name);
+    }
+    private Func<Func<string, object>, bool> PreviewMatcher(AnalysisFilterConfig config) => AnalysisFilters.CreatePreviewMatcher(config, ResolvePreviewColumn,
+        AdvancedFields.Where(f => f.Kind == "Text").Select(f => ResolvePreviewColumn(f.Name)).ToArray());
+    public void OpenAdvancedSearch() { if (searchDialogOpen || (Preview == null && (Session.IsBusy || DialogOpen)) || (Preview != null && previewSnapshot == null)) return; dialogError = ""; searchDialogOpen = true; }
+    private void CloseAdvancedSearch() { searchDialogOpen = false; dialogError = ""; }
+    private void ValidateAdvanced(AnalysisFilterConfig config) { if (Preview == null) Session.ValidateAdvanced(config); else PreviewMatcher(config); }
+    public async Task ApplyAdvancedAsync(AnalysisFilterConfig config)
+    {
+        if (!searchDialogOpen) return;
+        try
+        {
+            if (Preview != null)
+            {
+                var matcher = PreviewMatcher(config);
+                var indices = previewSortColumn >= 0 ? previewSnapshot!.Sort(previewSortColumn, previewDescending) : Enumerable.Range(0, previewSnapshot!.RowCount).ToArray();
+                var filtered = indices.Where(i => matcher(name => previewSnapshot.GetValue(i, int.Parse(name, CultureInfo.InvariantCulture)))).ToArray();
+                previewAdvanced = AnalysisFilters.Snapshot(config); previewMatcher = matcher; previewOrder = filtered; previewPage = 0; previewSelected = null;
+                previewConditions = previewDraftConditions = []; previewMessage = "Advanced search applies to loaded preview rows only.";
+            }
+            else
+            {
+                if (Session.IsBusy) return;
+                Session.IsBusy = true;
+                try { await Task.Run(() => Session.SearchAdvanced(config)); editorConditions = []; selected.Clear(); message = "Advanced search applied to the entire table."; }
+                finally { Session.IsBusy = false; }
+            }
+            CloseAdvancedSearch();
+        }
+        catch (Exception ex) { dialogError = ex.Message; }
+    }
+    public async Task ClearAdvancedSearchAsync()
+    {
+        if (Preview != null) { ClearSearch(); return; }
+        if (Session.IsBusy || DialogOpen) return;
+        Session.IsBusy = true;
+        try { await Task.Run(() => Session.SearchAdvanced(null)); editorConditions = []; selected.Clear(); message = "Search cleared."; }
+        catch (Exception ex) { message = ex.Message; }
+        finally { Session.IsBusy = false; }
+    }
     private bool importOpen;
     private TableImportOptions? importOptions;
     public void BeginImport()
@@ -389,6 +452,7 @@ else if (DialogOpen)
         previewOrder = Enumerable.Range(0, previewSnapshot?.RowCount ?? 0).ToArray();
         previewPage = 0; previewSortColumn = -1; previewSelected = null; previewDescending = false;
         previewDraftConditions = previewConditions = Array.Empty<SearchCondition>();
+        previewAdvanced = null; previewMatcher = null;
         previewMessage = "Click a column to sort. Select a row to copy it.";
     }
     public void ApplySearch() => ApplyPreviewConditions(previewDraftConditions);
@@ -399,19 +463,21 @@ else if (DialogOpen)
         if (previewSnapshot == null) return;
         var active = value.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray();
         if (active.Any(c => !int.TryParse(c.Column, out int index) || index < 0 || index >= previewSnapshot.ColumnCount || previewSnapshot.GetColumnType(index) == typeof(byte[]))) return;
+        previewAdvanced = null; previewMatcher = null;
         previewDraftConditions = previewConditions = active;
         RebuildOrder(); previewMessage = "AND search covers loaded preview rows only. Matches displayed text, ignoring case.";
     }
     public void ClearSearch()
     {
         previewDraftConditions = previewConditions = Array.Empty<SearchCondition>();
+        previewAdvanced = null; previewMatcher = null;
         RebuildOrder(); previewMessage = "Search cleared.";
     }
     private void RebuildOrder()
     {
         if (previewSnapshot == null) return;
         var indices = previewSortColumn >= 0 ? previewSnapshot.Sort(previewSortColumn, previewDescending) : Enumerable.Range(0, previewSnapshot.RowCount).ToArray();
-        previewOrder = indices.Where(i => previewConditions.All(c =>
+        previewOrder = indices.Where(i => (previewMatcher == null || previewMatcher(name => previewSnapshot.GetValue(i, int.Parse(name, CultureInfo.InvariantCulture)))) && previewConditions.All(c =>
         {
             int column = int.Parse(c.Column, CultureInfo.InvariantCulture);
             return !previewSnapshot.IsNull(i, column) && previewSnapshot.FormatCell(i, column).Contains(c.Text, StringComparison.OrdinalIgnoreCase);

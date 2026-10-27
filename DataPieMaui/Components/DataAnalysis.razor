@@ -3,6 +3,7 @@
 @inject IJSRuntime JS
 <main class="analysis-page" inert="@(settingsDialog.Length > 0)">
     <header><div><h1>Data analysis</h1><p>@Session.ConnectionLabel · @Session.Source.TableName</p></div><span class="badge">@(Session.Busy ? "Working…" : "Read-only")</span></header>
+    <div class="analysis-settings-scroll" tabindex="0" aria-label="Analysis settings">
     <fieldset class="analysis-settings" disabled="@Session.Busy">
         @if (Session.TemplatesEnabled)
         {
@@ -20,18 +21,22 @@
             <span title="@string.Join(", ", groups)">@(groups.Count == 0 ? "Total (no grouping)" : string.Join(", ", groups))</span>
             <button @onclick="OpenCalculationSettings">Calculations (@(calculations.Count + formulas.Count + (includeCount ? 1 : 0)))</button>
             <span title="@CalculationSummary">@CalculationSummary</span>
-            @if (templateConditions.Count > 0)
+            <div class="analysis-filter-control"><button @onclick="OpenFilterSettings">Advanced search</button><span>@CurrentFilterSummary</span></div>
+            @if (templateConditions.Count > 0 || templateFilters != null)
             {
-                <div class="analysis-default-filters"><strong>Default filters</strong><span>@DefaultFilterSummary</span></div>
+                <div class="analysis-default-filters"><strong>Default filters (saved)</strong><span>@DefaultFilterSummary</span></div>
             }
         </div>
-        <ConditionSearch Fields="AnalysisSearchFields" Value="conditions" ValueChanged="SetConditions" OnSearch="AnalyzeConditionsAsync" OnClear="ClearConditionsAsync" AllowAllText="true" SearchLabel="Analyze" Disabled="Session.Busy"
-                         Notice="All conditions must match source rows before grouping. Empty values are ignored.">
-            <Actions><button type="button" @onclick="Reset">Reset</button><label><input type="checkbox" @bind="exportFormatted" /> Include formatting</label><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">Export Excel</button></Actions>
-        </ConditionSearch>
+        <div class="toolbar"><button class="primary" @onclick="AnalyzeAsync">Analyze</button><button @onclick="ClearAllFiltersAsync">Clear search</button><button @onclick="Reset">Reset</button><label><input type="checkbox" @bind="exportFormatted" /> Include formatting</label><button @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">Export Excel</button></div>
+        @if (filters?.Parameters.Count > 0)
+        {
+            <AnalysisParameterInputs Config="filters" Fields="Session.Source.FilterFields" Values="parameterValues" ValueChanged="SetParameterValues" Disabled="Session.Busy" />
+            <label><input type="checkbox" @bind="SaveParameterDefaults" /> Save current parameter values as defaults</label>
+        }
         <p>Analysis includes all matching source rows. NULL values are ignored by numeric calculations. Export reruns the same analysis against the current source data.</p>
         @if (Session.Source.Provider == "SQLITE") { <p>SQLite uses native numeric precision; nonnumeric values in calculation fields are rejected.</p> }
     </fieldset>
+    </div>
     @if (Session.Result is { } result)
     {
         @if (!Session.Matches(Request)) { <p class="notice">Settings changed. Analyze again to update these results.</p> }
@@ -65,7 +70,11 @@
     else { <div class="empty">Choose fields and click Analyze to view grouped results.</div> }
     <footer><span role="status" style="white-space:pre-wrap">@(clipboardMessage.Length > 0 ? clipboardMessage : Session.Status)</span></footer>
 </main>
-@if (settingsDialog == "groups")
+@if (settingsDialog == "filters")
+{
+    <AnalysisFilterDialog Source="Session.Source" Settings="Request" OnApply="ApplyAndAnalyzeFilters" OnCancel="CloseSettings" />
+}
+else if (settingsDialog == "groups")
 {
     <AnalysisGroupDialog Source="Session.Source" Selected="groups" OnApply="ApplyGroups" OnCancel="CloseSettings" />
 }
@@ -102,16 +111,47 @@ else if (settingsDialog == "save-template")
     private string settingsDialog = "";
     private long selectedTemplateId;
     private bool isNewTemplateDraft;
+    private AnalysisFilterConfig? filters, templateFilters;
+    private AnalysisNumberFormat? countFormat;
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> parameterValues = new Dictionary<string, IReadOnlyList<string>>();
+    public bool SaveParameterDefaults { get; set; }
+    public void OpenFilterSettings() { if (!Session.Busy) settingsDialog = "filters"; }
+    public void ApplyFilters(AnalysisFilterConfig value)
+    {
+        conditions = [];
+        filters = AnalysisFilters.Snapshot(value); parameterValues = AnalysisFilters.Resolve(filters); SaveParameterDefaults = false; CloseSettings();
+    }
+    private async Task ApplyAndAnalyzeFilters(AnalysisFilterConfig value) { ApplyFilters(value); await AnalyzeAsync(); }
+    public void SetParameterValues(IReadOnlyDictionary<string, IReadOnlyList<string>> value) => parameterValues = value;
+    public async Task ClearAllFiltersAsync() { if (Session.Busy) return; filters = null; conditions = []; parameterValues = new Dictionary<string, IReadOnlyList<string>>(); SaveParameterDefaults = false; await AnalyzeAsync(); }
+    private AnalysisRequest SaveRequest
+    {
+        get
+        {
+            var request = Request;
+            if (SaveParameterDefaults && request.Filters != null)
+                request = request with { Filters = request.Filters with { Parameters = request.Filters.Parameters.Select(p => p with { Defaults = parameterValues.TryGetValue(p.Id, out var value) ? value.ToArray() : p.Defaults, RelativeDate = "" }).ToArray() } };
+            return request;
+        }
+    }
     private IReadOnlyList<SearchCondition> templateConditions = [];
-    private string DefaultFilterSummary => string.Join(" AND ", templateConditions.Select(c => (string.IsNullOrEmpty(c.Column) ? "All text fields" : c.Column) + " contains \"" + c.Text + "\""));
-    private void SetTemplateConditions(AnalysisRequest request) => templateConditions = request.Conditions?.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray() ?? [];
+    private string DefaultFilterSummary => string.Join(" AND ", new[] { AnalysisFilters.Summary(templateFilters), string.Join(" AND ", templateConditions.Select(c => (string.IsNullOrEmpty(c.Column) ? "All text fields" : c.Column) + " contains \"" + c.Text + "\"")) }.Where(s => !string.IsNullOrEmpty(s)));
+    private string CurrentFilterSummary => AnalysisFilters.Summary(AnalysisFilters.MergeLegacy(filters, conditions, Session.Source.FilterFields));
+    private void SetTemplateConditions(AnalysisRequest request) { templateConditions = request.Conditions?.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray() ?? []; templateFilters = AnalysisFilters.Snapshot(request.Filters); }
     private async Task TemplateSelectionChangedAsync()
     {
         if (selectedTemplateId > 0) isNewTemplateDraft = false;
         templateConditions = [];
+        templateFilters = null;
         if (selectedTemplateId > 0 && await Session.LoadTemplateAsync(selectedTemplateId, false) is { } request) SetTemplateConditions(request);
     }
     public string NewTemplateName { get; set; } = "";
+    private void CommitSavedTemplate(AnalysisRequest saved)
+    {
+        SetTemplateConditions(saved);
+        if (SaveParameterDefaults) filters = AnalysisFilters.Snapshot(saved.Filters);
+        SaveParameterDefaults = false;
+    }
     public async Task NewTemplateAsync()
     {
         if (Session.Busy || settingsDialog.Length > 0) return;
@@ -122,8 +162,9 @@ else if (settingsDialog == "save-template")
             groups = request.Groups.ToList(); calculations = request.Calculations.ToList(); formulas = (request.Formulas ?? []).ToList(); includeCount = request.IncludeCount;
             defaultSort = request.SortBy ?? ""; defaultSortDescending = request.SortDescending;
             conditions = request.Conditions?.ToArray() ?? [];
+            filters = AnalysisFilters.Snapshot(request.Filters); parameterValues = AnalysisFilters.Resolve(filters); countFormat = request.CountFormat;
         }
-        selectedTemplateId = 0; templateConditions = []; NewTemplateName = ""; isNewTemplateDraft = true; clipboardMessage = "";
+        selectedTemplateId = 0; templateConditions = []; templateFilters = null; NewTemplateName = ""; isNewTemplateDraft = true; SaveParameterDefaults = false; clipboardMessage = "";
         Session.Reset(); displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
     }
     public async Task SaveCurrentTemplateAsync()
@@ -132,12 +173,14 @@ else if (settingsDialog == "save-template")
         clipboardMessage = "";
         var template = Session.Templates.FirstOrDefault(t => t.Id == selectedTemplateId);
         if (template == null) { NewTemplateName = ""; settingsDialog = "save-template"; return; }
-        if (await Session.SaveTemplateAsync(template.Name, Request) is { } id) { selectedTemplateId = id; SetTemplateConditions(Request); }
+        var saved = SaveRequest;
+        if (await Session.SaveTemplateAsync(template.Name, saved) is { } id) { selectedTemplateId = id; CommitSavedTemplate(saved); }
     }
     public async Task SaveNewTemplateAsync()
     {
         if (Session.Busy || settingsDialog != "save-template" || string.IsNullOrWhiteSpace(NewTemplateName)) return;
-        if (await Session.SaveTemplateAsync(NewTemplateName, Request, isNewTemplateDraft) is { } id) { selectedTemplateId = id; isNewTemplateDraft = false; SetTemplateConditions(Request); CloseSettings(); }
+        var saved = SaveRequest;
+        if (await Session.SaveTemplateAsync(NewTemplateName, saved, isNewTemplateDraft) is { } id) { selectedTemplateId = id; isNewTemplateDraft = false; CommitSavedTemplate(saved); CloseSettings(); }
     }
     public void OpenTemplateManager() { if (!Session.Busy) { clipboardMessage = ""; settingsDialog = "templates"; } }
     private async Task TemplateSelected(long id) { selectedTemplateId = id; await TemplateSelectionChangedAsync(); }
@@ -148,6 +191,9 @@ else if (settingsDialog == "save-template")
         var request = await Session.LoadTemplateAsync(templateId);
         if (request == null) return;
         if (request.Conditions is { Count: > 0 }) conditions = request.Conditions.ToArray();
+        if (request.Filters != null) { filters = AnalysisFilters.Snapshot(request.Filters); parameterValues = AnalysisFilters.Resolve(filters); conditions = request.Conditions?.ToArray() ?? []; }
+        else if (request.Conditions is { Count: > 0 }) { filters = null; parameterValues = new Dictionary<string, IReadOnlyList<string>>(); }
+        countFormat = request.CountFormat; SaveParameterDefaults = false;
         selectedTemplateId = templateId;
         isNewTemplateDraft = false;
         SetTemplateConditions(request);
@@ -165,6 +211,7 @@ else if (settingsDialog == "save-template")
     {
         calculations = value.Calculations.ToList(); formulas = value.Formulas.ToList(); includeCount = value.IncludeCount; CloseSettings();
         defaultSort = value.SortBy; defaultSortDescending = value.SortDescending;
+        countFormat = value.CountFormat;
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -174,10 +221,7 @@ else if (settingsDialog == "save-template")
     private bool includeCount = true, descending;
     private IReadOnlyList<SearchCondition> conditions = [];
     private string clipboardMessage = "";
-    private IReadOnlyList<SearchField> AnalysisSearchFields => Session.Source.TextColumns.Select(n => new SearchField(n, n)).ToArray();
     public void SetConditions(IReadOnlyList<SearchCondition> value) => conditions = value;
-    private async Task AnalyzeConditionsAsync(IReadOnlyList<SearchCondition> value) { conditions = value; await AnalyzeAsync(); }
-    private async Task ClearConditionsAsync() { conditions = []; await AnalyzeAsync(); }
     private int[] order = [];
     private int page, sortColumn = -1;
     private int? selected;
@@ -189,7 +233,7 @@ else if (settingsDialog == "save-template")
         order = Enumerable.Range(0, Session.Result?.RowCount ?? 0).ToArray(); page = 0; sortColumn = -1; selected = null;
     }
     private int PageCount => Math.Max(1, (order.Length + 99) / 100);
-    private AnalysisRequest Request => new(groups.ToArray(), calculations.ToArray(), includeCount, Formulas: formulas.ToArray(), Conditions: conditions.ToArray(), SortBy: defaultSort, SortDescending: defaultSortDescending);
+    private AnalysisRequest Request => new(groups.ToArray(), calculations.ToArray(), includeCount, Formulas: formulas.ToArray(), Conditions: conditions.ToArray(), SortBy: defaultSort, SortDescending: defaultSortDescending, Filters: filters, ParameterValues: filters == null ? null : AnalysisFilters.Resolve(filters, parameterValues), CountFormat: countFormat);
     public async Task AnalyzeAsync()
     {
         if (Session.Busy) return;
@@ -213,6 +257,7 @@ else if (settingsDialog == "save-template")
         selectedTemplateId = 0;
         isNewTemplateDraft = false;
         templateConditions = [];
+        templateFilters = null; filters = null; parameterValues = new Dictionary<string, IReadOnlyList<string>>(); countFormat = null; SaveParameterDefaults = false;
         Session.Reset(); displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
     }
     private bool IsSelected(int index) => selected == index;

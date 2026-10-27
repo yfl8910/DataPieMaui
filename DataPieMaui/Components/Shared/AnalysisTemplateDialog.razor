@@ -1,6 +1,10 @@
 @using DataPieCore
 @using DataPieMaui.Services.Shared
-@if (editing == "groups" && draft != null)
+@if (editing == "filters" && draft != null)
+{
+    <AnalysisFilterDialog Source="Session.Source" Settings="draft" OnApply="ApplyFilters" OnCancel="CloseEditor" />
+}
+else if (editing == "groups" && draft != null)
 {
     <AnalysisGroupDialog Source="Session.Source" Selected="draft.Groups" OnApply="ApplyGroups" OnCancel="CloseEditor" />
 }
@@ -38,8 +42,13 @@ else
                 </section>
                 <section class="analysis-config-panel" aria-label="Default search conditions">
                     <h3>Default search conditions</h3>
-                    <ConditionSearch Fields="SearchFields" Value="@(draft.Conditions ?? Array.Empty<SearchCondition>())" ValueChanged="SetFilters" OnSearch="SetFilters" OnClear="ClearFilters" AllowAllText="true" SearchLabel="Apply filters" Disabled="Session.Busy"
-                                     Notice="All conditions use AND. Nonempty values are saved with Update selected. No saved filters keeps the current search when applying this template." />
+                    <button @onclick='() => editing = "filters"'>Edit filters and parameter defaults</button>
+                    @if (draft.Filters != null)
+                    {
+                        <p>@AnalysisFilters.Summary(draft.Filters)</p>
+                        <ul>@foreach (var parameter in draft.Filters.Parameters) { <li>@parameter.Name: @(string.IsNullOrEmpty(parameter.RelativeDate) ? string.Join("; ", parameter.Defaults) : parameter.RelativeDate) @(parameter.Required ? "(required)" : "(optional)")</li> }</ul>
+                    }
+                    @if (draft.Conditions?.Count > 0) { <p>Existing search: @string.Join(" AND ", draft.Conditions.Select(c => c.Column + " contains " + c.Text))</p> }
                 </section>
                 <p>Changes are saved only when you click Update selected. Current analysis settings and results are kept.</p>
             }
@@ -90,10 +99,11 @@ else
         await SelectedIdChanged.InvokeAsync(selected);
     }
     private void CloseEditor() => editing = "";
+    public void ApplyFilters(AnalysisFilterConfig config) { if (draft != null) draft = draft with { Filters = AnalysisFilters.Snapshot(config), Conditions = null, ParameterValues = null }; CloseEditor(); }
     public void ApplyGroups(IReadOnlyList<string> groups) { if (draft != null) draft = draft with { Groups = groups.ToArray() }; CloseEditor(); }
     public void ApplyCalculations(AnalysisCalculationSettings settings)
     {
-        if (draft != null) draft = draft with { Calculations = settings.Calculations.ToArray(), Formulas = settings.Formulas.ToArray(), IncludeCount = settings.IncludeCount, SortBy = settings.SortBy, SortDescending = settings.SortDescending };
+        if (draft != null) draft = draft with { Calculations = settings.Calculations.ToArray(), Formulas = settings.Formulas.ToArray(), IncludeCount = settings.IncludeCount, SortBy = settings.SortBy, SortDescending = settings.SortDescending, CountFormat = settings.CountFormat };
         CloseEditor();
     }
     public async Task UpdateAsync()

@@ -93,7 +93,7 @@ internal static class CalculationSortInteractionChecks
     }
 
 #pragma warning disable BL0006 // Exercise actual rendered event handlers, rather than calling change handlers directly.
-    private sealed class EventRenderer(IServiceProvider services, ILoggerFactory logger) : Renderer(services, logger)
+    internal sealed class EventRenderer(IServiceProvider services, ILoggerFactory logger) : Renderer(services, logger)
     {
         public override Dispatcher Dispatcher { get; } = Dispatcher.CreateDefault();
         protected override void HandleException(Exception exception) => throw new InvalidOperationException("Component event failed", exception);

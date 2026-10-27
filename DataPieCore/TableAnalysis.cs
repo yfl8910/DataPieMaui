@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
@@ -8,17 +8,21 @@ using DBUtil;
 
 namespace DataPieCore;
 
-public sealed record AnalysisCalculation(string Column, string Operation, string Name = "", string Id = "")
+public sealed record AnalysisCalculation(string Column, string Operation, string Name = "", string Id = "", AnalysisNumberFormat Format = null)
 {
     public string Key => string.IsNullOrEmpty(Id) ? Operation + "|" + Column : Id;
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Operation + " " + Column : Name.Trim();
 }
-public sealed record AnalysisFormula(string Name, string Left, string Operation, string Right = "", decimal? Constant = null);
+public sealed record AnalysisFormula(string Name, string Left, string Operation, string Right = "", decimal? Constant = null, string Id = "", AnalysisNumberFormat Format = null)
+{
+    public string Key => string.IsNullOrEmpty(Id) ? Name.Trim() : Id;
+}
 public sealed record AnalysisField(string Name, string Type, bool CanGroup, string Notice);
 public sealed record AnalysisRequest(IReadOnlyList<string> Groups, IReadOnlyList<AnalysisCalculation> Calculations,
     bool IncludeCount = true, string SearchColumn = "", string SearchText = "", IReadOnlyList<AnalysisFormula> Formulas = null,
     IReadOnlyList<string> SearchColumns = null, IReadOnlyList<SearchCondition> Conditions = null,
-    string SortBy = "", bool SortDescending = false)
+    string SortBy = "", bool SortDescending = false, AnalysisFilterConfig Filters = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> ParameterValues = null, AnalysisNumberFormat CountFormat = null)
 {
     public IReadOnlyList<string> EffectiveSearchColumns => SearchColumns ?? (string.IsNullOrEmpty(SearchColumn) ? Array.Empty<string>() : new[] { SearchColumn });
 }
@@ -37,7 +41,13 @@ public sealed class TableAnalysis
     public IReadOnlyList<string> NumericColumns => table.Columns.Where(IsNumeric).Select(c => c.Name).ToArray();
     public IReadOnlyList<AnalysisField> Fields => table.Columns.Select(c => new AnalysisField(c.Name, c.Type, IsGroupable(c, provider), IsGroupable(c, provider) ? "" : string.IsNullOrWhiteSpace(c.Type) ? "Type unavailable; this field cannot be grouped or used for numeric calculations." : "Binary or unsupported grouping type.")).ToArray();
     public string Provider => provider;
-    public void ValidateRequest(AnalysisRequest request) => BuildQuery(table, provider, request);
+    public IReadOnlyList<AnalysisFilterField> FilterFields => table.Columns.Where(c => IsGroupable(c, provider)).Select(c => new AnalysisFilterField(c.Name, (FilterType(c) == typeof(DateTime) || FilterType(c) == typeof(DateTimeOffset)) ? "Date" : FilterType(c) == typeof(decimal) ? "Number" : FilterType(c) == typeof(bool) ? "Boolean" : FilterType(c) == typeof(Guid) ? "Guid" : FilterType(c) == typeof(TimeSpan) ? "Time" : "Text")).ToArray();
+    private static Type FilterType(Column c) => IsNumeric(c) ? typeof(decimal) : BaseType(c) is "date" or "datetime" or "datetime2" or "smalldatetime" or "timestamp" ? typeof(DateTime) : BaseType(c) == "datetimeoffset" ? typeof(DateTimeOffset) : BaseType(c) is "bit" or "bool" or "boolean" ? typeof(bool) : BaseType(c) is "uniqueidentifier" or "guid" ? typeof(Guid) : BaseType(c) == "time" ? typeof(TimeSpan) : typeof(string);
+    public void ValidateRequest(AnalysisRequest request) => BuildQuery(table, provider, request, true);
+    public static IReadOnlyList<AnalysisNumberFormat> ResultFormats(AnalysisRequest request, bool totals = false) =>
+        (totals ? Enumerable.Empty<AnalysisNumberFormat>() : request.Groups.Select(_ => (AnalysisNumberFormat)null))
+        .Concat(request.Calculations.Select(c => c.Format)).Concat(request.IncludeCount ? new[] { request.CountFormat } : Array.Empty<AnalysisNumberFormat>())
+        .Concat((request.Formulas ?? Array.Empty<AnalysisFormula>()).Select(f => f.Format)).ToArray();
 
     private TableAnalysis(string connectionString, string provider, TableStruct table, bool isView = false)
     { this.connectionString = connectionString; this.provider = provider; this.table = table; this.isView = isView; }
@@ -82,9 +92,10 @@ public sealed class TableAnalysis
         or "date" or "datetime" or "datetime2" or "smalldatetime" or "datetimeoffset" or "time" or "uniqueidentifier" or "guid";
     private static bool IsGroupable(Column c, string provider) => IsGroupable(c) || provider == "SQLITE" && BaseType(c) == "timestamp";
 
-    public static AnalysisQuery BuildQuery(TableStruct table, string provider, AnalysisRequest request)
+    public static AnalysisQuery BuildQuery(TableStruct table, string provider, AnalysisRequest request, bool validateOnly = false)
     {
         if (provider is not ("SQLSERVER" or "SQLITE")) throw new ArgumentException("Unsupported database type.");
+        foreach (var format in ResultFormats(request).Where(f => f != null)) format.Validate();
         string Q(string name) => SqlQueryBuilder.QuoteIdentifier(name, provider);
         var columns = table.Columns.ToDictionary(c => c.Name, StringComparer.Ordinal);
         Column Require(string name, bool numeric)
@@ -162,20 +173,32 @@ public sealed class TableAnalysis
             string expression = formula.Operation == "/" ? (provider == "SQLITE" ? "(1.0 * " + left + ")" : left) + " / NULLIF(" + right + ",0)"
                 : left + " " + formula.Operation + " " + right;
             output.Add("(" + expression + ") AS " + Alias(formula.Name.Trim()));
-            sortExpressions.Add("formula:" + formula.Name.Trim(), "(" + expression + ")");
+            sortExpressions.Add("formula:" + formula.Key, "(" + expression + ")");
+            if (formula.Key != formula.Name.Trim()) sortExpressions.TryAdd("formula:" + formula.Name.Trim(), "(" + expression + ")");
         }
         string tableName = provider == "SQLSERVER" ? Q(table.TableSchemaName) + "." + Q(table.Name) : Q("main") + "." + Q(table.Name);
         string filter = "", searchValue = null;
         IReadOnlyList<SearchParameter> searchParameters = null;
+        if (request.Filters != null)
+        {
+            var predicate = AnalysisFilters.Build(request.Filters, request.ParameterValues, provider,
+                name => { if (!columns.TryGetValue(name, out var c) || !IsGroupable(c, provider)) throw new ArgumentException("Select a supported filter field: " + name); return new SearchColumn(c.Name, FilterType(c), TextExpression(c)); },
+                table.Columns.Where(IsText).Select(c => new SearchColumn(c.Name, typeof(string), TextExpression(c))).ToArray(), validateOnly);
+            filter = predicate.Sql.Length == 0 ? "" : " WHERE (" + predicate.Sql + ")";
+            searchParameters = predicate.Parameters;
+        }
         if (request.Conditions != null)
         {
             var predicate = SearchConditions.BuildAnd(request.Conditions, provider,
                 name => { var c = Require(name, false); return new SearchColumn(c.Name, typeof(string), TextExpression(c)); },
                 table.Columns.Where(IsText).Select(c => new SearchColumn(c.Name, typeof(string), TextExpression(c))).ToArray());
-            filter = predicate.Sql.Length == 0 ? "" : " WHERE " + predicate.Sql;
-            searchParameters = predicate.Parameters;
+            if (predicate.Sql.Length > 0)
+                filter += filter.Length == 0 ? " WHERE (" + predicate.Sql + ")" : " AND (" + predicate.Sql + ")";
+            searchParameters = (searchParameters ?? Array.Empty<SearchParameter>()).Concat(predicate.Parameters).ToArray();
+            if (request.Filters != null && searchParameters.Count > (provider == "SQLITE" ? 900 : 1800))
+                throw new ArgumentException("Too many combined filter and search values.");
         }
-        else if (!string.IsNullOrEmpty(request.SearchText))
+        else if (request.Filters == null && !string.IsNullOrEmpty(request.SearchText))
         {
             var selectedSearchColumns = request.EffectiveSearchColumns;
             var searchColumns = selectedSearchColumns.Count == 0 ? table.Columns.Where(IsText).ToArray()
@@ -236,6 +259,7 @@ public sealed class TableAnalysis
     }
     public AnalysisPreview AnalyzeWithTotals(AnalysisRequest request)
     {
+        if (request.Filters != null) request = request with { ParameterValues = AnalysisFilters.Resolve(request.Filters, request.ParameterValues) };
         if (request.Groups.Count == 0) return new(Analyze(request), null);
         var grouped = BuildQuery(table, provider, request);
         var overall = BuildQuery(table, provider, request with { Groups = Array.Empty<string>() });
@@ -256,6 +280,7 @@ public sealed class TableAnalysis
     }
     public void Export(AnalysisRequest request, string path, bool formatted = true)
     {
+        if (request.Filters != null) request = request with { ParameterValues = AnalysisFilters.Resolve(request.Filters, request.ParameterValues) };
         var query = BuildQuery(table, provider, request);
         using var workbook = new ExcelExporter(path);
         using (var access = DbAccessFactory.Create(connectionString, provider))
@@ -277,6 +302,7 @@ public sealed class TableAnalysis
             workbook.WriteSheet("Analysis", reader, new ExcelExportOptions
             {
                 Formatted = formatted, CalculationStartColumn = request.Groups.Count, Totals = totals,
+                NumberFormats = ResultFormats(request),
                 PercentageColumns = Enumerable.Range(0, reader.FieldCount).Where(i => reader.GetName(i).Contains('%')).ToArray()
             });
             reader.Close(); transaction.Commit();

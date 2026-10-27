@@ -35,8 +35,13 @@ public sealed class TableEditorSession
     public string? SearchColumn { get; private set; }
     public string SearchText { get; private set; } = "";
     public IReadOnlyList<SearchCondition> Conditions { get; private set; } = Array.Empty<SearchCondition>();
+    public AnalysisFilterConfig AdvancedFilters { get; private set; }
     public bool IsSearchable(string column) => Data.Columns.Contains(column)
-        && Comparable(Data.Columns[column].DataType) && Data.Columns[column].DataType != typeof(byte[]);
+        && Comparable(Data.Columns[column].DataType) && Data.Columns[column].DataType != typeof(byte[])
+        && (!metadata.TryGetValue(column, out var field) || field.SqlType is not ("xml" or "geography" or "geometry" or "hierarchyid" or "sql_variant"));
+    public IReadOnlyList<AnalysisFilterField> FilterFields => Data.Columns.Cast<DataColumn>().Where(c => IsSearchable(c.ColumnName))
+        .Select(c => new AnalysisFilterField(c.ColumnName, FilterKind(c.DataType))).ToArray();
+    public static string FilterKind(Type type) => type == typeof(DateTime) || type == typeof(DateTimeOffset) ? "Date" : type == typeof(bool) ? "Boolean" : type == typeof(Guid) ? "Guid" : type == typeof(TimeSpan) ? "Time" : type == typeof(string) ? "Text" : "Number";
     public bool HasDraft { get; set; }
     public bool IsBusy { get; set; }
     public bool CanEdit => sqliteRowId != null || Data.Columns.Cast<DataColumn>().Any(CanCompare);
@@ -110,21 +115,31 @@ public sealed class TableEditorSession
     }
 
     public void LoadPage(int page)
-        => LoadPage(page, Conditions);
+        => LoadPage(page, Conditions, AdvancedFilters);
 
     public void Search(string? column, string text) => Search(string.IsNullOrEmpty(text) ? Array.Empty<SearchCondition>() : new[] { new SearchCondition(column, text) });
-    public void Search(IReadOnlyList<SearchCondition> conditions) => LoadPage(0, conditions.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray());
+    public void Search(IReadOnlyList<SearchCondition> conditions) => LoadPage(0, conditions.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray(), null);
+    public void SearchAdvanced(AnalysisFilterConfig config) => LoadPage(0, Array.Empty<SearchCondition>(), AnalysisFilters.Snapshot(config));
+    public void ValidateAdvanced(AnalysisFilterConfig config) => BuildPredicate(Array.Empty<SearchCondition>(), config);
 
-    private SearchPredicate BuildPredicate(IReadOnlyList<SearchCondition> conditions) => SearchConditions.BuildAnd(conditions, databaseType, name =>
+    private SearchColumn ResolveSearchColumn(string name)
     {
         if (string.IsNullOrEmpty(name) || !IsSearchable(name)) throw new ArgumentException("Select a searchable column: " + name);
-        return new SearchColumn(name, Data.Columns[name].DataType, Quote(name));
-    });
+        string expression = databaseType == "SQLSERVER" && metadata.TryGetValue(name, out var field) && field.SqlType is "text" or "ntext"
+            ? "CONVERT(nvarchar(max)," + Quote(name) + ")" : Quote(name);
+        return new SearchColumn(name, Data.Columns[name].DataType, expression);
+    }
+    private SearchPredicate BuildPredicate(IReadOnlyList<SearchCondition> conditions, AnalysisFilterConfig config)
+    {
+        if (config == null) return SearchConditions.BuildAnd(conditions, databaseType, ResolveSearchColumn);
+        var text = Data.Columns.Cast<DataColumn>().Where(c => c.DataType == typeof(string) && IsSearchable(c.ColumnName)).Select(c => ResolveSearchColumn(c.ColumnName)).ToArray();
+        return AnalysisFilters.Build(config, null, databaseType, ResolveSearchColumn, text);
+    }
 
     // Export every row matching the applied search, independently of the current page.
     public void ExportExcel(string path)
     {
-        var predicate = BuildPredicate(Conditions);
+        var predicate = BuildPredicate(Conditions, AdvancedFilters);
         path = System.IO.Path.GetFullPath(path);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".xlsx";
         try
@@ -146,7 +161,7 @@ public sealed class TableEditorSession
         finally { if (System.IO.File.Exists(temporary)) System.IO.File.Delete(temporary); }
     }
 
-    private void LoadPage(int page, IReadOnlyList<SearchCondition> conditions)
+    private void LoadPage(int page, IReadOnlyList<SearchCondition> conditions, AnalysisFilterConfig advanced)
     {
         if (page < 0) throw new ArgumentOutOfRangeException(nameof(page));
         long offset = checked((long)page * PageSize);
@@ -154,7 +169,7 @@ public sealed class TableEditorSession
         access.conn.Open();
         using var command = access.conn.CreateCommand();
         command.CommandTimeout = 30;
-        var predicate = BuildPredicate(conditions);
+        var predicate = BuildPredicate(conditions, advanced);
         SearchConditions.Bind(command, predicate.Parameters);
         string filter = predicate.Sql.Length == 0 ? "" : " WHERE " + predicate.Sql;
         string order = sqliteRowId != null ? Quote(sqliteRowId) : keys.Count > 0 ? string.Join(",", keys.Select(Quote)) : "(SELECT NULL)";
@@ -231,6 +246,7 @@ public sealed class TableEditorSession
         Page = page; HasNext = hasNext;
         TotalRows = totalRows;
         Conditions = conditions.ToArray();
+        AdvancedFilters = AnalysisFilters.Snapshot(advanced);
         SearchColumn = Conditions.FirstOrDefault()?.Column;
         SearchText = Conditions.FirstOrDefault()?.Text ?? "";
     }
