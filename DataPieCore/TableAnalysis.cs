@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
@@ -254,34 +254,33 @@ public sealed class TableAnalysis
         if (result.Truncated) command.Cancel();
         return result;
     }
-    public void Export(AnalysisRequest request, string path)
+    public void Export(AnalysisRequest request, string path, bool formatted = true)
     {
         var query = BuildQuery(table, provider, request);
-        path = Path.GetFullPath(path);
-        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".xlsx";
-        try
+        using var workbook = new ExcelExporter(path);
+        using (var access = DbAccessFactory.Create(connectionString, provider))
         {
-            using (var access = DbAccessFactory.Create(connectionString, provider))
+            access.conn.Open();
+            using var transaction = access.conn.BeginTransaction(IsolationLevel.Serializable);
+            Validate(access.conn, query, transaction);
+            object[] totals = null;
+            if (request.Groups.Count > 0)
             {
-                access.conn.Open();
-                using var transaction = access.conn.BeginTransaction(IsolationLevel.Serializable);
-                Validate(access.conn, query, transaction);
-                object[] totals = null;
-                if (request.Groups.Count > 0)
-                {
-                    var overall = BuildQuery(table, provider, request with { Groups = Array.Empty<string>() });
-                    var result = ReadPreview(access.conn, overall, transaction);
-                    totals = new object[request.Groups.Count + result.ColumnCount];
-                    totals[0] = "Total";
-                    for (int i = 0; i < result.ColumnCount; i++) totals[request.Groups.Count + i] = result.GetValue(0, i);
-                }
-                using var command = Command(access.conn, query.Sql, query.SearchValue, query.Parameters, transaction);
-                using var reader = command.ExecuteReader();
-                AnalysisExcelExport.Save(temporary, reader, request.Groups.Count, totals);
-                reader.Close(); transaction.Commit();
+                var overall = BuildQuery(table, provider, request with { Groups = Array.Empty<string>() });
+                var result = ReadPreview(access.conn, overall, transaction);
+                totals = new object[request.Groups.Count + result.ColumnCount];
+                totals[0] = "Total";
+                for (int i = 0; i < result.ColumnCount; i++) totals[request.Groups.Count + i] = result.GetValue(0, i);
             }
-            File.Move(temporary, path, true);
+            using var command = Command(access.conn, query.Sql, query.SearchValue, query.Parameters, transaction);
+            using var reader = command.ExecuteReader();
+            workbook.WriteSheet("Analysis", reader, new ExcelExportOptions
+            {
+                Formatted = formatted, CalculationStartColumn = request.Groups.Count, Totals = totals,
+                PercentageColumns = Enumerable.Range(0, reader.FieldCount).Where(i => reader.GetName(i).Contains('%')).ToArray()
+            });
+            reader.Close(); transaction.Commit();
         }
-        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        workbook.Complete();
     }
 }

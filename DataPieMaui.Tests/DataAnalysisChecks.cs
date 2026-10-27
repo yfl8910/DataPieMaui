@@ -26,6 +26,23 @@ internal static class DataAnalysisChecks
             + "INSERT INTO Sales VALUES('North','A',10.25,2,'literal %_''[',1),('North','A',20.75,4,'regular',0),('South','B',NULL,NULL,'regular',0),('North','B',5,1,'regular',1);"
             + "CREATE TABLE ManyGroups(Label TEXT, Value INTEGER); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1505) INSERT INTO ManyGroups SELECT 'group '||x,x FROM n;");
         var source = TableAnalysis.Open(cs, "SQLITE", "main", "Sales");
+        await test("Analysis plain export retains groups and totals without report formatting", () =>
+        {
+            var request = new AnalysisRequest(new[] { "Region" }, new[] { new AnalysisCalculation("Amount", "SUM") });
+            string styled = Path.Combine(root, "analysis-standard-styled.xlsx"), plain = Path.Combine(root, "analysis-standard-plain.xlsx");
+            source.Export(request, styled); source.Export(request, plain, formatted: false);
+            using var formatted = MiniExcelLibs.MiniExcel.QueryAsDataTable(styled, useHeaderRow: true);
+            using var raw = MiniExcelLibs.MiniExcel.QueryAsDataTable(plain, useHeaderRow: true);
+            Check(formatted.Rows.Count == raw.Rows.Count && raw.Rows.Count > 1, "Plain mode changed group count");
+            for (int r = 0; r < raw.Rows.Count; r++) for (int c = 0; c < raw.Columns.Count; c++)
+                Check(Equals(formatted.Rows[r][c], raw.Rows[r][c]), "Plain mode changed an analysis value");
+            Check(Convert.ToString(raw.Rows[raw.Rows.Count - 1][0]) == "Total", "Plain analysis lost totals");
+            using var zip = System.IO.Compression.ZipFile.OpenRead(plain);
+            using var stream = zip.GetEntry("xl/worksheets/sheet1.xml")!.Open();
+            var xml = System.Xml.Linq.XDocument.Load(stream); System.Xml.Linq.XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            Check(!xml.Descendants(ns + "autoFilter").Any() && !xml.Descendants(ns + "pane").Any(), "Plain analysis retained layout formatting");
+            return Task.CompletedTask;
+        });
         await test("View analysis uses view rows, typed fields and isolated templates", () =>
         {
             Sql("CREATE VIEW SalesView AS SELECT Region, Amount, Qty, Amount * Qty AS Extended FROM Sales WHERE Qty > 1;");
@@ -101,7 +118,7 @@ internal static class DataAnalysisChecks
             using (var input = zip.GetEntry("xl/styles.xml")!.Open())
             using (var text = new StreamReader(input)) Check(!text.ReadToEnd().Contains("FF334E68"), "Analysis formatting changed shared exports");
             string direct = Path.Combine(root, "styled-text.xlsx");
-            using (var reader = table.CreateDataReader()) AnalysisExcelExport.Save(direct, reader, 1);
+            using (var reader = table.CreateDataReader()) ExcelExporter.Save(direct, reader, "Analysis", new ExcelExportOptions { CalculationStartColumn = 1 });
             using (var zip = System.IO.Compression.ZipFile.OpenRead(direct))
             using (var input = zip.GetEntry("xl/worksheets/sheet1.xml")!.Open())
             {

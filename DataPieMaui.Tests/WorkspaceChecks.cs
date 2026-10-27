@@ -231,6 +231,35 @@ internal static class WorkspaceChecks
             exportPage.ChangeTab("Table"); exportPage.SelectAll(false); workspace.Navigate("Query");
             return Task.CompletedTask;
         });
+        await test("Batch standard export writes selected tables and views without formatting", async () =>
+        {
+            string output = Path.Combine(root, "batch-standard.xlsx");
+            var selected = workspace.Context.Exports.Where(x => x.Kind == "Table" && x.Name == "Items" || x.Kind == "View" && x.Name == "ItemNames").ToArray();
+            Check(selected.Length == 2, "Test table and view not found");
+            foreach (var item in workspace.Context.Exports) item.Selected = selected.Contains(item);
+            desktop.Save = () => Task.FromResult<string?>(output);
+            try
+            {
+                await exportPage.ExportBatchAsync("standard");
+                Check(File.Exists(output) && workspace.Context.State.Status.Contains(output), "Standard export did not complete");
+                using var zip = System.IO.Compression.ZipFile.OpenRead(output);
+                using var book = zip.GetEntry("xl/workbook.xml")!.Open();
+                System.Xml.Linq.XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+                var names = System.Xml.Linq.XDocument.Load(book).Descendants(ns + "sheet").Select(s => (string)s.Attribute("name")!).ToArray();
+                Check(names.OrderBy(n => n).SequenceEqual(new[] { "ItemNames", "Items" }), "Standard export lost selected table or view");
+                foreach (string name in new[] { "sheet1", "sheet2" })
+                {
+                    using var stream = zip.GetEntry("xl/worksheets/" + name + ".xml")!.Open();
+                    var xml = System.Xml.Linq.XDocument.Load(stream);
+                    Check(xml.Descendants(ns + "row").Count() == 3 && !xml.Descendants(ns + "autoFilter").Any(), "Batch data or plain mode incorrect");
+                }
+            }
+            finally
+            {
+                desktop.Save = () => Task.FromResult<string?>(null);
+                foreach (var item in workspace.Context.Exports) item.Selected = false;
+            }
+        });
         await test("Confirmation prevents execution and concurrent operations; cancel is safe", async () =>
         {
             workspace.Context.Form.Sql = "INSERT INTO Items VALUES(3, 'third')";

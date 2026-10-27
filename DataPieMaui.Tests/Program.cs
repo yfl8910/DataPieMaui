@@ -597,6 +597,7 @@ try
     await TableEditorChecks.Run(root, Test);
     await SqlServerScriptChecks.Run(root, Test);
     await DataAnalysisChecks.Run(root, Test);
+    await ExcelExporterChecks.Run(root, Test);
     await AnalysisTemplateChecks.Run(root, Test);
     await SearchConditionChecks.Run(root, Test);
     await WorkspaceChecks.Run(root, Test, args.Contains("--render-ui"));

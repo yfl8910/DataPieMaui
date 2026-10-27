@@ -125,7 +125,7 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         catch (Exception ex) { Status = ex.ToString(); }
         finally { Busy = false; }
     }
-    public async Task ExportAsync(IDesktopServices desktop, string templateName = "")
+    public async Task ExportAsync(IDesktopServices desktop, string templateName = "", bool formatted = true)
     {
         if (Busy || LastRequest == null) return;
         Busy = true;
@@ -135,7 +135,7 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
             var path = await desktop.SaveAsync(string.IsNullOrWhiteSpace(templateName) ? "Analysis" : templateName.Trim(), ".xlsx");
             if (path == null) { Status = "Export canceled."; return; }
             Status = "Exporting all analysis groups…";
-            await Task.Run(() => Source.Export(request, path));
+            await Task.Run(() => Source.Export(request, path, formatted));
             Status = "Analysis exported · File: " + Path.GetFullPath(path);
         }
         catch (Exception ex) { Status = ex.ToString(); }

@@ -13,7 +13,7 @@
         <div class="actions"><button @onclick="() => SelectAll(true)">Select all</button><button @onclick="() => SelectAll(false)">Clear selection</button></div>
     </div>
     <ObjectSelection Items="VisibleItems" Label="@(Model.Form.ExportTab == "Table" ? "Tables" : "Views")" OnPreviewItem="PreviewItemAsync" OnDefinition="Context.Definitions.ShowAsync" OnSelectionChanged="SelectionChanged" />
-    <div class="actions"><button class="primary" @onclick='() => ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => ExportBatchAsync("epplus")'>Excel (EPPlus)</button><button @onclick='() => ExportBatchAsync("csv")'>CSV folder</button></div>
+    <div class="actions"><button @onclick='() => ExportBatchAsync("standard")' title="Export all selected objects without formatting">Excel (Standard)</button><button class="primary" @onclick='() => ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => ExportBatchAsync("epplus")'>Excel (EPPlus)</button><button @onclick='() => ExportBatchAsync("csv")'>CSV folder</button></div>
 </section>
 
 @code {
@@ -53,7 +53,17 @@
         await Task.Run(() =>
         {
             using var access = Database.OpenAccess();
-            if (mode == "epplus") ExcelIO.ExportSheetsWithEpplus(names, path, access, type);
+            if (mode == "standard")
+            {
+                using var workbook = new ExcelExporter(path);
+                foreach (string name in names)
+                {
+                    using var reader = access.GetDataReader(SqlQueryBuilder.BuildSelectAll(name, type));
+                    workbook.WriteSheet(name, reader, new ExcelExportOptions { Formatted = false });
+                }
+                workbook.Complete();
+            }
+            else if (mode == "epplus") ExcelIO.ExportSheetsWithEpplus(names, path, access, type);
             else if (mode == "mini") ExcelIO.ExportSheetsWithMiniExcel(names, path, access, type);
             else
             {

@@ -27,7 +27,7 @@
         </div>
         <ConditionSearch Fields="AnalysisSearchFields" Value="conditions" ValueChanged="SetConditions" OnSearch="AnalyzeConditionsAsync" OnClear="ClearConditionsAsync" AllowAllText="true" SearchLabel="Analyze" Disabled="Session.Busy"
                          Notice="All conditions must match source rows before grouping. Empty values are ignored.">
-            <Actions><button type="button" @onclick="Reset">Reset</button><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">Export Excel</button></Actions>
+            <Actions><button type="button" @onclick="Reset">Reset</button><label><input type="checkbox" @bind="exportFormatted" /> Include formatting</label><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">Export Excel</button></Actions>
         </ConditionSearch>
         <p>Analysis includes all matching source rows. NULL values are ignored by numeric calculations. Export reruns the same analysis against the current source data.</p>
         @if (Session.Source.Provider == "SQLITE") { <p>SQLite uses native numeric precision; nonnumeric values in calculation fields are rejected.</p> }
@@ -198,11 +198,12 @@ else if (settingsDialog == "save-template")
         displayedResult = Session.Result;
         order = Enumerable.Range(0, Session.Result?.RowCount ?? 0).ToArray(); page = 0; sortColumn = -1; selected = null;
     }
+    private bool exportFormatted = true;
     private async Task ExportAsync()
     {
         clipboardMessage = "";
         string name = Session.Templates.FirstOrDefault(t => t.Id == selectedTemplateId)?.Name ?? "";
-        await Session.ExportAsync(Desktop, name);
+        await Session.ExportAsync(Desktop, name, exportFormatted);
     }
     private void Reset()
     {
