@@ -29,7 +29,51 @@
     <MauiFont Include="Resources\Fonts\*" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="11.0.0-rc.2.26505.5" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="11.0.0-rc.2.26505.5" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="11.0.0-rc.2.26504.105" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView" Version="11.0.0-rc.3.26522.148" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="11.0.0-rc.3.26522.148" />
     <ProjectReference Include="..\DataPieCore\DataPieCore.csproj" />
   </ItemGroup>
+  <!-- The static-web-assets publisher also copies assets outside the managed bundle. -->
+  <Target Name="IncludeUntrimmedSingleFileWebAssets" BeforeTargets="_ComputeFilesToBundle"
+          DependsOnTargets="CopyStaticWebAssetsToPublishDirectory;_SplitPublishStaticWebAssetsByCopyOptions"
+          Condition="'$(_DataPiePublishProfileName)' == 'SingleFileProfile'">
+    <ItemGroup>
+      <_SingleFileWebAssets Include="@(_PublishStaticWebAssetsTargetPath)" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.Extension)' == '.pdb'" />
+      <ResolvedFileToPublish Remove="@(_SingleFileWebAssets)" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.RelativePath)' == '$(TargetName).staticwebassets.endpoints.json'" />
+      <ResolvedFileToPublish Include="@(_SingleFileWebAssets)">
+        <RelativePath>%(_SingleFileWebAssets.TargetPath)</RelativePath>
+        <ExcludeFromSingleFile>false</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+      <ResolvedFileToPublish Include="$(StaticWebAssetEndpointsPublishManifestPath)" Condition="Exists('$(StaticWebAssetEndpointsPublishManifestPath)')">
+        <RelativePath>$(TargetName).staticwebassets.endpoints.json</RelativePath>
+        <ExcludeFromSingleFile>false</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+  <Target Name="DeduplicateUntrimmedSingleFileAssets" AfterTargets="_IncludeComputedStaticWebAssetsInSingleFileBundle"
+          BeforeTargets="PrepareForBundle" Condition="'$(_DataPiePublishProfileName)' == 'SingleFileProfile'">
+    <ItemGroup>
+      <_FilesToBundle Remove="@(_FilesToBundle)" Condition="'%(_FilesToBundle.Filename)' == 'staticwebassets.build.endpoints'" />
+    </ItemGroup>
+    <RemoveDuplicates Inputs="@(_FilesToBundle)">
+      <Output TaskParameter="Filtered" ItemName="_UniqueSingleFileAssets" />
+    </RemoveDuplicates>
+    <ItemGroup>
+      <_FilesToBundle Remove="@(_FilesToBundle)" />
+      <_FilesToBundle Include="@(_UniqueSingleFileAssets)" />
+    </ItemGroup>
+  </Target>
+  <Target Name="RemoveBundledSingleFileAssetCopies" AfterTargets="Publish"
+          Condition="'$(_DataPiePublishProfileName)' == 'SingleFileProfile'">
+    <PropertyGroup>
+      <_SingleFilePublishRoot>$([System.IO.Path]::GetFullPath('$(PublishDir)'))</_SingleFilePublishRoot>
+    </PropertyGroup>
+    <ItemGroup>
+      <_SingleFileLooseCopies Include="@(_SingleFileWebAssets->'$(PublishDir)%(TargetPath)');$(PublishDir)$(TargetName).staticwebassets.endpoints.json" />
+    </ItemGroup>
+    <Error Condition="!$([System.String]::Copy('%(_SingleFileLooseCopies.FullPath)').StartsWith('$(_SingleFilePublishRoot)'))" Text="Refusing to remove an auxiliary asset outside the publish directory." />
+    <Delete Files="@(_SingleFileLooseCopies)" />
+  </Target>
 </Project>

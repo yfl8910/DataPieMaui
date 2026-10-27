@@ -23,12 +23,12 @@
 ## 开发与运行要求
 
 - Windows x64；项目声明的最低系统版本为 Windows 10 1809。
-- `global.json` 指定的 .NET SDK：`11.0.100-rc.1.26425.128`，以及匹配的 `maui-windows` 工作负载。
+- `global.json` 指定的 .NET SDK：`11.0.100-rc.3.26522.148`，以及匹配的 `maui-windows` 工作负载。
 - 当前目标框架为 `net11.0-windows10.0.19041.0`；MAUI Controls 和 Blazor WebView 包版本为 `11.0.0-rc.1.26451.6`。
 - Microsoft Edge WebView2 Runtime。开发和发布版本都需要；缺少时原生宿主会显示安装提示。
 - 首次还原依赖需要访问 NuGet。
 
-项目当前仅面向 Windows。.NET 11 RC1 属于预发布版本；Visual Studio 必须支持该 SDK，并在需要时启用预览 SDK。`global.json` 只选择已安装的 SDK，不负责安装。Visual Studio 通常使用系统目录 `C:\Program Files\dotnet` 下的 SDK，临时目录中的独立 SDK 不会自动被发现。
+项目当前仅面向 Windows。.NET 11 RC3 属于预发布版本；Visual Studio 必须支持该 SDK，并在需要时启用预览 SDK。`global.json` 只选择已安装的 SDK，不负责安装。Visual Studio 通常使用系统目录 `C:\Program Files\dotnet` 下的 SDK，临时目录中的独立 SDK 不会自动被发现。
 
 在仓库根目录执行：
 
@@ -39,7 +39,7 @@ dotnet build DataPieMaui\DataPieMaui.csproj -c Debug
 dotnet build DataPieMaui\DataPieMaui.csproj -t:Run -c Debug
 ```
 
-也可以在支持 .NET 11 RC1 和 MAUI 的 Visual Studio 中打开 `DataPieMaui.sln`，将 DataPieMaui 设为启动项目，选择 Windows Machine 运行。如果提示无法面向 .NET 11，请检查仓库根目录的 `dotnet --version` 和 `dotnet --list-sdks`，安装指定 SDK 及工作负载后重新启动 Visual Studio。
+也可以在支持 .NET 11 RC3 和 MAUI 的 Visual Studio 中打开 `DataPieMaui.sln`，将 DataPieMaui 设为启动项目，选择 Windows Machine 运行。如果提示无法面向 .NET 11，请检查仓库根目录的 `dotnet --version` 和 `dotnet --list-sdks`，安装指定 SDK 及工作负载后重新启动 Visual Studio。
 
 ## 使用说明
 
@@ -251,3 +251,13 @@ Database migration 读取当前 StoredProcedures/*.txt 正文转换为 SQL Serve
 类型映射需审核：INTEGER → BIGINT、TEXT/CHAR/CLOB 根据抽样最大 UTF-16 长度选择 NVARCHAR(255)（≤255）或 NVARCHAR(MAX)（>255）；忽略 NULL、空字符串和纯空格，混合内容仍保留文本类型。空表或空列默认 NVARCHAR(255)。抽样无显式排序，范围外的数据可能需要更长字段、BLOB → VARBINARY(MAX)、REAL → FLOAT、日期时间声明 → DATETIME2，其他数值声明 → DECIMAL(38,10)。默认值、CHECK/UNIQUE 约束、级联动作、视图、触发器和附加索引需要人工转换，报告中会列出；虚拟表和包含生成列的表会跳过。脚本使用 GO 分隔批次，过程使用 CREATE OR ALTER；核对类型、架构、权限和依赖后，在目标 SQL Server 数据库中手动执行。
 
 支持 SELECT、INSERT、UPDATE、DELETE、WITH、常见字符串和日期函数，以及 DataPie 参数和局部变量元数据。动态 SUBSTR 边界、SQLite 专用选项和未知函数需人工转换。生成后请审核类型、排序规则和 NULL 语义。仅保存 .sql 结构脚本，不复制数据、不执行生成的 SQL。
+
+### 单文件发布（不裁剪）
+
+在 Visual Studio 中选择 **SingleFileProfile**，或执行：
+
+```powershell
+dotnet publish DataPieMaui/DataPieMaui.csproj -c Release -p:PublishProfile=SingleFileProfile
+```
+
+输出为 `publish/win-x64-single-file-untrimmed/DataPieMaui.exe`。使用标准 .NET 自包含、压缩单文件，关闭裁剪及 Native AOT。运行框架、Windows App SDK、程序程序集和本地网页资源均打包在 EXE 中，无需另带 wwwroot 文件夹；运行时会解压所需文件。仍需 WebView2 Runtime。开发用 PDB 不随包分发。此 Windows App SDK 配置需要完整解压，因此 SDK 会提示兼容模式警告。

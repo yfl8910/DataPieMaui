@@ -1,0 +1,16 @@
+<Project>
+  <!-- Single-file properties must be set before the Windows App SDK targets are imported. -->
+  <PropertyGroup>
+    <_DataPiePublishProfileName>$([System.IO.Path]::GetFileNameWithoutExtension('$(PublishProfile)'))</_DataPiePublishProfileName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'DataPieMaui' and '$(_DataPiePublishProfileName)' == 'SingleFileProfile'">
+    <PublishAot>false</PublishAot>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+  </PropertyGroup>
+</Project>
