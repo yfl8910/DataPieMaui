@@ -28,12 +28,13 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
         var result = await Task.Run(() =>
         {
             using var access = Database.OpenAccess();
-            var data = QueryPreview.Load(access, sql, 1000);
-            return new QueryResultSnapshot(data, State.Connection, source);
+            var (data, archive) = QueryPreview.LoadFull(access, sql, 1000);
+            try { return new QueryResultSnapshot(data, State.Connection, source, archive: archive); }
+            catch { archive.Dispose(); throw; }
         });
         watch.Stop();
         Results.Set(result);
-        QuerySummary = $"{source} · {result.RowCount:N0} rows / {result.ColumnCount} columns" + (result.Truncated ? " · First 1,000 rows only. Export to retrieve the full result." : "");
+        QuerySummary = $"{source} · {result.TotalRows:N0} rows / {result.ColumnCount} columns" + (result.Truncated ? " · Showing the first 1,000 rows; search covers the full result." : "");
         await Desktop.ShowTablePreviewAsync(Results);
         State.Status = $"Query completed in {watch.Elapsed.TotalSeconds:F1} s: " + QuerySummary;
     }

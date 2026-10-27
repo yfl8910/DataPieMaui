@@ -35,13 +35,14 @@ internal static class AdvancedAnalysisUiChecks
             main!.ApplyGroups(request.Groups); main.ApplyFilters(config); main.Render();
             Check(mainView.ToHtmlString().Contains("Reset parameters") && mainView.ToHtmlString().Contains("Save current parameter values as defaults"), "Runtime parameter controls missing");
             Check(mainView.ToHtmlString().Split("Clear search").Length == 2 && !mainView.ToHtmlString().Contains("Clear filters"), "Data analysis did not use a single clear-search action");
-            Check(mainView.ToHtmlString().Contains("Advanced search"), "Search field disappeared while advanced filters were active");
+            Check(mainView.ToHtmlString().Contains("Search conditions"), "Search field disappeared while advanced filters were active");
             main.SetParameterValues(new Dictionary<string, IReadOnlyList<string>> { ["period"] = new[] { "2026-02-01", "2026-02-01" } });
+            main.ApplyFilters(config); // Inline Analyze reapplies edited filter definitions.
             main.SetConditions(new[] { new SearchCondition("Note", "x") });
             await main.AnalyzeAsync(); main.Render();
             Check(session.Result!.RowCount == 1 && session.Result.FormatCell(0, 0) == "B" && session.LastRequest!.Filters != null && session.LastRequest.Conditions!.Single().Text == "x" && session.LastRequest.ParameterValues!["period"][0] == "2026-02-01", "Quick search discarded advanced filters or runtime dates");
             main.SetConditions(Array.Empty<SearchCondition>()); await main.AnalyzeAsync(); main.Render();
-            Check(session.LastRequest!.Filters != null && session.LastRequest.Conditions!.Count == 0 && mainView.ToHtmlString().Contains("Advanced search"), "Clearing the search removed advanced filters or hid search");
+            Check(session.LastRequest!.Filters != null && session.LastRequest.Conditions!.Count == 0 && mainView.ToHtmlString().Contains("Search conditions"), "Clearing the search removed advanced filters or hid search");
             var store = new AnalysisTemplateStore(Path.Combine(root, "visible-search-manager.db"));
             long templateId = store.Save(source.TemplateTableName, "Advanced and search", request with { Conditions = new[] { new SearchCondition("Note", "x") } });
             var managerSession = new DataAnalysisSession(source, "Test", store); await managerSession.RefreshTemplatesAsync();

@@ -53,9 +53,9 @@ internal static class UnifiedAdvancedSearchChecks
             using var preview = new PreviewHarness { Preview = previewSession, Desktop = desktop }; preview.Initialize();
             var filter = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("a", "0", "Equals", "a"), Rule("n", "1", "Range", "10", "20") }),
                 new AnalysisFilterGroup(new[] { Rule("b", "0", "Equals", "B"), Rule("d", "2", "Range", "2026-01-31", "2026-01-31") }) }, Array.Empty<AnalysisParameter>());
-            preview.OpenAdvancedSearch(); await preview.ApplyAdvancedAsync(filter); await preview.CopyAsync(true);
+            await preview.ApplyAdvancedAsync(filter); await preview.CopyAsync(true);
             Check(desktop.Text == snapshot.CopyText(new[] { 0, 2 }), "Preview did not apply typed OR/date conditions");
-            preview.OpenAdvancedSearch(); await preview.ApplyAdvancedAsync(filter with { Groups = new[] { new AnalysisFilterGroup(new[] { Rule("invalid", "1", "Range", "bad", "20") }) } });
+            await preview.ApplyAdvancedAsync(filter with { Groups = new[] { new AnalysisFilterGroup(new[] { Rule("invalid", "1", "Range", "bad", "20") }) } });
             await preview.CopyAsync(true); Check(desktop.Text == snapshot.CopyText(new[] { 0, 2 }), "Invalid preview search changed active results");
             await preview.ApplyAdvancedAsync(filter);
             preview.ClearSearch(); await preview.CopyAsync(true); Check(desktop.Text == snapshot.CopyText(new[] { 0, 1, 2, 3, 4 }), "Single clear did not restore preview rows");
@@ -72,7 +72,7 @@ internal static class UnifiedAdvancedSearchChecks
                     EditorHarness? component = null;
                     var view = await renderer.RenderComponentAsync<EditorHarness>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = session, ["Desktop"] = new Desktop(), ["Capture"] = (Action<EditorHarness>)(c => component = c) }));
                     string html = view.ToHtmlString();
-                    Check(html.Contains("Advanced search") && html.Split("Clear search").Length == 2 && !html.Contains("Clear filters"), "Editor does not display one clear-search action");
+                    Check(html.Contains("Search conditions") && html.Contains("aria-label=\"Search value\"") && html.Split("Clear search").Length == 2 && !html.Contains("Clear filters") && !html.Contains("modal-overlay"), "Editor does not display simple inline search and one clear action");
                     component!.OpenAdvancedSearch(); component.Render(); html = view.ToHtmlString();
                     Check(html.Contains("Qty") && html.Contains("Add OR group") && !html.Contains("Use parameter"), "Editor did not open the shared field-aware dialog");
                 });
@@ -90,6 +90,37 @@ internal static class UnifiedAdvancedSearchChecks
             var after = source.Analyze(request with { Filters = merged, Conditions = null });
             Check(before.RowCount == 0 && after.RowCount == 0 && merged.CommonRules!.Count == 1, "Migrated search broadened an optional OR group");
             return Task.CompletedTask;
+        });
+        await test("Read-only search finds matches after row 1000 without rerunning the original query", async () =>
+        {
+            using (var db = new SQLiteConnection(cs))
+            {
+                db.Open(); using var cmd = new SQLiteCommand("CREATE TABLE LargeRows(Id INTEGER, Name TEXT); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1505) INSERT INTO LargeRows SELECT x,'row '||x FROM n", db); cmd.ExecuteNonQuery();
+            }
+            using var access = DBUtil.DbAccessFactory.Create(cs, "SQLITE");
+            var (data, archive) = QueryPreview.LoadFull(access, "SELECT Id,Name,random() AS Nonce FROM LargeRows ORDER BY Id", 1000);
+            string temporary = archive.StoragePath;
+            var snapshot = new QueryResultSnapshot(data, "Test", archive: archive);
+            var previewSession = new QueryResultSession(); previewSession.Set(snapshot); var desktop = new Desktop();
+            var preview = new PreviewHarness { Preview = previewSession, Desktop = desktop }; preview.Initialize();
+            try
+            {
+                Check(snapshot.TotalRows == 1505 && snapshot.RowCount == 1000 && snapshot.Truncated, "Initial query did not capture all rows with a bounded preview");
+                await preview.ApplyPreviewConditionsAsync(new[] { new SearchCondition("1", "row 1505") }); await preview.CopyAsync(true);
+                Check(desktop.Text!.Contains("1505\trow 1505") && desktop.Text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 2, "Simple search did not find rows beyond the initial preview");
+                var config = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("last", "0", "Greater", "1500") }) }, Array.Empty<AnalysisParameter>());
+                await preview.ApplyAdvancedAsync(config); await preview.CopyAsync(true);
+                Check(desktop.Text!.Contains("1505\trow 1505") && desktop.Text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 6, "Search did not find matching rows beyond the initial preview");
+                await preview.ApplyAdvancedAsync(config with { Groups = new[] { new AnalysisFilterGroup(new[] { Rule("first", "0", "Equals", "1") }) } });
+                await preview.CopyAsync(true);
+                Check(desktop.Text == snapshot.CopyText(new[] { 0 }), "Search reran the original query instead of using its snapshot");
+                await preview.ApplyAdvancedAsync(config with { Groups = new[] { new AnalysisFilterGroup(new[] { Rule("many", "0", "Greater", "500") }) } });
+                await preview.CopyAsync(true);
+                Check(desktop.Text!.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 1001 && desktop.Text.Contains("1500\trow 1500") && !desktop.Text.Contains("1501\trow 1501"), "Matching preview was not capped at 1000 after scanning the full result");
+                preview.ClearSearch(); await preview.CopyAsync(true); Check(desktop.Text!.Contains("1000\trow 1000") && !desktop.Text.Contains("1001\trow 1001"), "Clear did not restore the initial preview");
+            }
+            finally { preview.Dispose(); previewSession.Set(null); }
+            Check(!File.Exists(temporary), "Temporary query snapshot was not deleted");
         });
         await test("Data analysis single clear removes both legacy and advanced conditions", async () =>
         {

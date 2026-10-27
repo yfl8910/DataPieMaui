@@ -3,13 +3,16 @@ using System.Text;
 
 namespace DataPieMaui.Services;
 
-public sealed class QueryResultSnapshot
+public sealed class QueryResultSnapshot : IDisposable
 {
     private readonly QueryPreviewResult data;
     private readonly IReadOnlyList<AnalysisNumberFormat>? formats;
+    private readonly QueryResultArchive? archive;
     public int RowCount => data.RowCount;
     public int ColumnCount => data.ColumnCount;
     public bool Truncated => data.Truncated;
+    public bool HasFullResult => archive != null || !data.Truncated;
+    public long TotalRows => archive?.RowCount ?? data.RowCount;
     public string Connection { get; }
     public string Source { get; }
     public string GetColumnName(int column) => data.GetColumnName(column);
@@ -29,13 +32,21 @@ public sealed class QueryResultSnapshot
     };
 
     // The immutable result is shared, without copying rows or binary buffers.
-    public QueryResultSnapshot(QueryPreviewResult data, string connection, string source = "SQL query", IReadOnlyList<AnalysisNumberFormat>? formats = null)
+    public QueryResultSnapshot(QueryPreviewResult data, string connection, string source = "SQL query", IReadOnlyList<AnalysisNumberFormat>? formats = null, QueryResultArchive? archive = null)
     {
         this.data = data;
         this.formats = formats;
+        this.archive = archive;
         Connection = connection;
         Source = source;
     }
+    public QueryResultSnapshot SearchFull(Func<Func<string, object>, bool> matcher)
+    {
+        if (archive == null) throw new InvalidOperationException("The full query result is not available. Run the query again to enable full-result search.");
+        return new QueryResultSnapshot(archive.Search(matcher), Connection, Source, formats, archive);
+    }
+    public bool HasArchive => archive != null;
+    public void Dispose() => archive?.Dispose();
 
     public string CopyText(IEnumerable<int> indices)
     {
@@ -60,5 +71,10 @@ public sealed class QueryResultSession
 {
     public QueryResultSnapshot? Current { get; private set; }
     public event Action? Changed;
-    public void Set(QueryResultSnapshot? snapshot) { Current = snapshot; Changed?.Invoke(); }
+    public void Set(QueryResultSnapshot? snapshot)
+    {
+        var previous = Current; Current = snapshot;
+        try { Changed?.Invoke(); }
+        finally { if (!ReferenceEquals(previous, snapshot)) previous?.Dispose(); }
+    }
 }

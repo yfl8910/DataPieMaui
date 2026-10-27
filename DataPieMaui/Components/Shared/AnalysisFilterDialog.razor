@@ -1,8 +1,11 @@
 @using DataPieCore
-<div class="modal-overlay">
-    <section class="editor-dialog analysis-calculation-dialog advanced-search-dialog" role="dialog" aria-modal="true" aria-labelledby="filter-settings-title" tabindex="-1">
+<div class="@(Inline ? "advanced-search-inline-container" : "modal-overlay")">
+    <section class="@(Inline ? "advanced-search-inline advanced-search-dialog" : "editor-dialog analysis-calculation-dialog advanced-search-dialog")" role="@(Inline ? "region" : "dialog")" aria-modal="@(Inline ? null : "true")" aria-label="@(Inline ? "Search conditions" : null)" aria-labelledby="@(Inline ? null : "filter-settings-title")" tabindex="@(Inline ? null : "-1")">
+        @if (!Inline) {
         <div class="dialog-header"><h2 id="filter-settings-title">@(ShowParameters ? "Advanced search and parameters" : "Advanced search")</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close filter settings">×</button></div>
-        <div class="dialog-body">
+        }
+        <div class="@(Inline ? "advanced-search-inline-body" : "dialog-body")">
+            <fieldset class="advanced-search-fields" disabled="@Disabled">
             <p>Conditions within each group use AND. Groups use OR. IsNull means database NULL, not empty text. @(ShowParameters ? "Empty optional parameter groups are ignored." : "")</p>
             @foreach (var group in VisibleGroups)
             {
@@ -46,8 +49,13 @@
             <button @onclick="AddGroup">Add OR group</button>
             @if (error.Length > 0) { <p class="dialog-error" role="alert">@error</p> }
             @if (!string.IsNullOrEmpty(ExternalError)) { <p class="dialog-error" role="alert">@ExternalError</p> }
+            </fieldset>
         </div>
-        <div class="dialog-actions"><button @onclick="OnCancel">Cancel</button><button class="primary" @onclick="ApplyAsync">Apply</button></div>
+        <div class="@(Inline ? "toolbar advanced-search-actions" : "dialog-actions")">
+            @if (!Inline) { <button @onclick="OnCancel" disabled="@Disabled">Cancel</button> }
+            <button class="primary" @onclick="ApplyAsync" disabled="@Disabled">@ApplyLabel</button>
+            @if (Inline) { <button @onclick="OnClear" disabled="@Disabled">Clear search</button> @Actions }
+        </div>
     </section>
 </div>
 @code {
@@ -57,6 +65,11 @@
     [Parameter] public bool ShowParameters { get; set; } = true;
     [Parameter] public Action<AnalysisFilterConfig>? Validate { get; set; }
     [Parameter] public string? ExternalError { get; set; }
+    [Parameter] public bool Inline { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string ApplyLabel { get; set; } = "Apply";
+    [Parameter] public EventCallback OnClear { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
     [Parameter] public EventCallback<AnalysisFilterConfig> OnApply { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
     private readonly List<List<Rule>> groups = [];
@@ -93,8 +106,9 @@
     {
         try
         {
-            var rules = groups.Select(g => new AnalysisFilterGroup(g.Select(r => new AnalysisFilterRule(r.Id, r.Column, r.Operation, r.Values.ToArray(), r.ParameterId)).ToArray())).ToArray();
-            var common = commonRules.Select(r => new AnalysisFilterRule(r.Id, r.Column, r.Operation, r.Values.ToArray(), r.ParameterId)).ToArray();
+            bool Active(Rule r) => !string.IsNullOrEmpty(r.ParameterId) || r.Operation != "Contains" || r.Values.Any(v => !string.IsNullOrEmpty(v));
+            var rules = groups.Select(g => new AnalysisFilterGroup(g.Where(Active).Select(r => new AnalysisFilterRule(r.Id, r.Column, r.Operation, r.Values.ToArray(), r.ParameterId)).ToArray())).Where(g => g.Rules.Count > 0).ToArray();
+            var common = commonRules.Where(Active).Select(r => new AnalysisFilterRule(r.Id, r.Column, r.Operation, r.Values.ToArray(), r.ParameterId)).ToArray();
             var used = rules.SelectMany(g => g.Rules).Concat(common).Select(r => r.ParameterId).ToHashSet();
             var config = new AnalysisFilterConfig(rules, parameters.Where(p => used.Contains(p.Id)).Select(p => new AnalysisParameter(p.Id, p.Name, p.Values.ToArray(), p.Required, p.RelativeDate)).ToArray(), common);
             if (Validate != null) Validate(config); else Source?.ValidateRequest(Settings with { Filters = config, Conditions = null, ParameterValues = null });

@@ -1,4 +1,10 @@
 .advanced-search-dialog { width: min(1100px, 100%); }
+.advanced-search-inline { width: 100%; border: 1px solid #d8e0e9; border-radius: 6px; padding: 8px 12px; }
+.advanced-search-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.advanced-search-inline-body > .advanced-search-fields > p { margin: 0 0 6px; font-size: 12px; }
+.advanced-search-inline .analysis-config-panel { margin-top: 6px; padding: 6px 8px; }
+.advanced-search-inline .analysis-filter-rule { padding: 6px 0; }
+.advanced-search-actions { margin-top: 8px; }
 .advanced-search-dialog .analysis-config-panel { min-width: 0; border: 1px solid #d8e0e9; border-radius: 6px; padding: 8px 12px; margin-top: 10px; overflow-wrap: anywhere; }
 .advanced-search-dialog .analysis-filter-rule { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; border-bottom: 1px solid #d8e0e9; padding: 10px 0; }
 .advanced-search-dialog .analysis-filter-rule > label { display: grid; gap: 4px; flex: 1 1 160px; min-width: 0; }

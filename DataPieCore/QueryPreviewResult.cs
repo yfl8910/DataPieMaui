@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
+using System.Linq;
 
 namespace DataPieCore;
 
@@ -37,6 +38,8 @@ public sealed class QueryPreviewResult
     {
         this.columns = columns; this.types = types; this.rows = rows; Truncated = truncated;
     }
+    internal static QueryPreviewResult FromRows(string[] columns, Type[] types, IEnumerable<object[]> rows, bool truncated)
+        => new(columns, types, rows.ToArray(), truncated);
 
     // Borrows the reader; the caller disposes it. Reads one extra row to detect truncation.
     public static QueryPreviewResult Read(IDataReader reader, int limit)
