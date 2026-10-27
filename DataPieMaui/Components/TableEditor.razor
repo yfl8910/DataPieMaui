@@ -21,9 +21,9 @@
             <button @onclick="() => CopyAsync(false)" disabled="@(previewSelected is null)">Copy selected row</button>
             <button @onclick="() => CopyAsync(true)" disabled="@(previewOrder.Length == 0)">@(PreviewHasFilter ? "Copy matching rows" : "Copy all preview rows")</button>
         </div>
-        <ConditionSearch Fields="PreviewSearchFields" Value="previewDraftConditions" ValueChanged="SetPreviewConditions" OnSearch="ApplyPreviewConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="previewBusy">
+        <SimpleSearch Fields="PreviewSearchFields" Value="previewDraftConditions" ValueChanged="SetPreviewConditions" OnSearch="ApplyPreviewConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="previewBusy">
             <Actions><button type="button" @onclick="OpenAdvancedSearch">Advanced filters</button></Actions>
-        </ConditionSearch>
+        </SimpleSearch>
         @if (previewAdvanced != null) { <p>Advanced filters are applied.</p> }
         @if (!string.IsNullOrEmpty(dialogError)) { <p class="notice" role="alert">@dialogError</p> }
         <p>@(previewSnapshot.HasFullResult ? "Search covers the complete query result. Text comparisons ignore case." : "Search is limited to the available preview rows. Run the query again for full-result search.")</p>
@@ -58,9 +58,9 @@ else
         <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">Delete selected</button>
         <button @onclick="() => LoadAsync(Session.Page)" disabled="@(Session.IsBusy || DialogOpen)">Refresh</button>
     </div>
-    <ConditionSearch Fields="EditorSearchFields" Value="editorConditions" ValueChanged="SetEditorConditions" OnSearch="ApplyEditorConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="@(Session.IsBusy || DialogOpen)">
+    <SimpleSearch Fields="EditorSearchFields" Value="editorConditions" ValueChanged="SetEditorConditions" OnSearch="ApplyEditorConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="@(Session.IsBusy || DialogOpen)">
         <Actions><button type="button" @onclick="OpenAdvancedSearch">Advanced filters</button></Actions>
-    </ConditionSearch>
+    </SimpleSearch>
     @if (Session.AdvancedFilters != null) { <p>Advanced filters are applied. A simple search replaces them.</p> }
     @if (!string.IsNullOrEmpty(dialogError)) { <p class="notice" role="alert">@dialogError</p> }
     @if (Session.Conditions.Count > 0) { <p>Active conditions: @string.Join(" AND ", Session.Conditions.Select(c => c.Column + ": " + c.Text))</p> }
@@ -158,7 +158,7 @@ else if (DialogOpen)
 }
 @if (searchDialogOpen)
 {
-    <AnalysisFilterDialog Fields="AdvancedFields" Settings="AdvancedSettings" ShowParameters="false" Validate="ValidateAdvanced" ExternalError="dialogError" OnApply="ApplyAdvancedAsync" OnCancel="CloseAdvancedSearch" />
+    <AdvancedSearch Fields="AdvancedFields" Settings="AdvancedSettings" Validate="ValidateAdvanced" ExternalError="@dialogError" OnApply="ApplyAdvancedAsync" OnCancel="CloseAdvancedSearch" />
 }
 @code {
     [Parameter] public TableEditorSession Session { get; set; } = default!;

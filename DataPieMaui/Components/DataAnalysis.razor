@@ -26,9 +26,10 @@
                 <div class="analysis-default-filters"><strong>Default filters (saved)</strong><span>@DefaultFilterSummary</span></div>
             }
         </div>
-        <ConditionSearch Fields="SearchFields" Value="conditions" ValueChanged="SetConditions" OnSearch="AnalyzeConditionsAsync" OnClear="ClearAllFiltersAsync" Disabled="Session.Busy" AllowAllText="true" SearchLabel="Analyze">
-            <Actions><button type="button" @onclick="OpenFilterSettings">Advanced filters</button><button type="button" @onclick="Reset">Reset</button><label><input type="checkbox" @bind="exportFormatted" /> Include formatting</label><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">Export Excel</button></Actions>
-        </ConditionSearch>
+        <SimpleSearch Fields="SearchFields" Value="conditions" ValueChanged="SetConditions" OnSearch="AnalyzeConditionsAsync" OnClear="ClearAllFiltersAsync" Disabled="Session.Busy" AllowAllText="true" SearchLabel="Analyze">
+            <Actions><button type="button" @onclick="OpenFilterSettings">Advanced search</button><button type="button" @onclick="Reset">Reset</button><label><input type="checkbox" @bind="exportFormatted" /> Format</label><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">Export</button></Actions>
+        </SimpleSearch>
+
         @if (filters != null && (filters.Groups.Any(g => g.Rules.Count > 0) || filters.CommonRules?.Count > 0)) { <p>Advanced filters: @AnalysisFilters.Summary(filters)</p> }
         @if (filters?.Parameters.Count > 0)
         {
@@ -82,7 +83,7 @@ else if (settingsDialog == "calculations")
 }
 else if (settingsDialog == "filters")
 {
-    <AnalysisFilterDialog Source="Session.Source" Settings="Request" OnApply="ApplyFilters" OnCancel="CloseSettings" />
+    <AdvancedSearch Source="Session.Source" Settings="Request" Disabled="Session.Busy" OnApply="SearchAdvancedAsync" OnCancel="CloseSettings" />
 }
 else if (settingsDialog == "templates")
 {
@@ -123,6 +124,7 @@ else if (settingsDialog == "save-template")
         conditions = [];
         filters = AnalysisFilters.Snapshot(value); parameterValues = AnalysisFilters.Resolve(filters, parameterValues); filterEditorVersion++; CloseSettings();
     }
+    private async Task SearchAdvancedAsync(AnalysisFilterConfig value) { ApplyFilters(value); await AnalyzeAsync(); }
     private IReadOnlyList<SearchField> SearchFields => Session.Source.TextColumns.Select(n => new SearchField(n, n)).ToArray();
     private async Task AnalyzeConditionsAsync(IReadOnlyList<SearchCondition> value) { conditions = value; await AnalyzeAsync(); }
     public void SetParameterValues(IReadOnlyDictionary<string, IReadOnlyList<string>> value) => parameterValues = value;

@@ -379,7 +379,7 @@ internal static class DataAnalysisChecks
             {
                 var component = await renderer.RenderComponentAsync<DataAnalysis>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = session, ["Desktop"] = desktop }));
                 var html = component.ToHtmlString();
-                Check(html.Contains("Group by") && html.Contains("Calculations") && html.Contains("Search conditions") && html.Contains("Export Excel") && html.Contains("SUM Amount") && html.Contains("North"), "Analysis controls or shared grid rows missing");
+                Check(html.Contains("Group by") && html.Contains("Calculations") && html.Contains("Search conditions") && html.Contains(">Export</button>") && html.Contains("SUM Amount") && html.Contains("North"), "Analysis controls or shared grid rows missing");
                 Check(!html.Contains("Add record") && !html.Contains("Delete selected"), "Analysis exposed write actions");
             });
         });

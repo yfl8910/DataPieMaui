@@ -1,0 +1,16 @@
+@using DataPieCore
+
+<AnalysisFilterDialog Source="Source" Settings="Settings" Fields="Fields" ShowParameters="false"
+                      Validate="Validate" ExternalError="@ExternalError" Disabled="Disabled"
+                      OnApply="OnApply" OnCancel="OnCancel" ApplyLabel="Search" />
+
+@code {
+    [Parameter] public TableAnalysis? Source { get; set; }
+    [Parameter, EditorRequired] public AnalysisRequest Settings { get; set; } = default!;
+    [Parameter] public IReadOnlyList<AnalysisFilterField>? Fields { get; set; }
+    [Parameter] public Action<AnalysisFilterConfig>? Validate { get; set; }
+    [Parameter] public string? ExternalError { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<AnalysisFilterConfig> OnApply { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+}

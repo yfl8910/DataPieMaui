@@ -96,7 +96,7 @@ internal static class SearchConditionChecks
             IReadOnlyList<SearchCondition>? updated = null;
             IReadOnlyList<SearchCondition>? applied = null;
             bool cleared = false;
-            var component = new ConditionSearch
+            var component = new SimpleSearch
             {
                 Fields = new[] { new SearchField("Customer", "Customer"), new("Product", "Product") }, Value = conditions,
                 ValueChanged = EventCallback.Factory.Create<IReadOnlyList<SearchCondition>>(new object(), value => updated = value),

@@ -2,7 +2,7 @@
 <div class="@(Inline ? "advanced-search-inline-container" : "modal-overlay")">
     <section class="@(Inline ? "advanced-search-inline advanced-search-dialog" : "editor-dialog analysis-calculation-dialog advanced-search-dialog")" role="@(Inline ? "region" : "dialog")" aria-modal="@(Inline ? null : "true")" aria-label="@(Inline ? "Search conditions" : null)" aria-labelledby="@(Inline ? null : "filter-settings-title")" tabindex="@(Inline ? null : "-1")">
         @if (!Inline) {
-        <div class="dialog-header"><h2 id="filter-settings-title">@(ShowParameters ? "Advanced search and parameters" : "Advanced search")</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close filter settings">×</button></div>
+        <div class="dialog-header"><h2 id="filter-settings-title">@(ShowParameters ? "Template parameters and default conditions" : "Advanced search")</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close filter settings">×</button></div>
         }
         <div class="@(Inline ? "advanced-search-inline-body" : "dialog-body")">
             <fieldset class="advanced-search-fields" disabled="@Disabled">
@@ -23,6 +23,12 @@
                                 @if (ShowParameters) { <label>Value source<select @bind="rule.ParameterId"><option value="">Fixed value</option>@foreach (var choice in parameters) { <option value="@choice.Id">@choice.Name</option> }</select></label> }
                                 @if (parameters.FirstOrDefault(p => p.Id == rule.ParameterId) is { } parameter)
                                 {
+                                    @if (!ShowParameters)
+                                    {
+                                        <p>Parameter: @parameter.Name. Change its value in the parameter inputs; configure defaults in template settings.</p>
+                                    }
+                                    else
+                                    {
                                     <label>Parameter name<input @bind="parameter.Name" @bind:event="oninput" maxlength="100" /></label>
                                     <label><input type="checkbox" @bind="parameter.Required" /> Required</label>
                                     @if (Kind(rule) == "Date" && rule.Operation == "Range")
@@ -34,11 +40,12 @@
                                         <label>Default value<AnalysisFilterValues Kind="@Kind(rule)" Operation="@rule.Operation" Values="parameter.Values" ValueChanged="v => parameter.Values = v.ToList()" Label="@parameter.Name" /></label>
                                     }
                                     else { <p>Relative dates are resolved on Apply template or Reset parameters using your computer's local date.</p> }
+                                    }
                                 }
                                 else
                                 {
                                     <AnalysisFilterValues Kind="@Kind(rule)" Operation="@rule.Operation" Values="rule.Values" ValueChanged="v => rule.Values = v.ToList()" Label="@rule.Column" />
-                                    @if (ShowParameters) { <button @onclick="() => AddParameter(rule)">Use parameter</button> }
+                                    @if (ShowParameters) { <button @onclick="() => AddParameter(rule)">Add default parameter</button> }
                                 }
                             }
                         </div>
@@ -51,11 +58,14 @@
             @if (!string.IsNullOrEmpty(ExternalError)) { <p class="dialog-error" role="alert">@ExternalError</p> }
             </fieldset>
         </div>
+        @if (ShowActions)
+        {
         <div class="@(Inline ? "toolbar advanced-search-actions" : "dialog-actions")">
             @if (!Inline) { <button @onclick="OnCancel" disabled="@Disabled">Cancel</button> }
             <button class="primary" @onclick="ApplyAsync" disabled="@Disabled">@ApplyLabel</button>
-            @if (Inline) { <button @onclick="OnClear" disabled="@Disabled">Clear search</button> @Actions }
+            @if (Inline) { @if (ShowClear) { <button @onclick="OnClear" disabled="@Disabled">Clear search</button> } @Actions }
         </div>
+        }
     </section>
 </div>
 @code {
@@ -66,6 +76,8 @@
     [Parameter] public Action<AnalysisFilterConfig>? Validate { get; set; }
     [Parameter] public string? ExternalError { get; set; }
     [Parameter] public bool Inline { get; set; }
+    [Parameter] public bool ShowClear { get; set; } = true;
+    [Parameter] public bool ShowActions { get; set; } = true;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string ApplyLabel { get; set; } = "Apply";
     [Parameter] public EventCallback OnClear { get; set; }
@@ -102,8 +114,11 @@
         var parameter = new Parameter { Id = Guid.NewGuid().ToString("N"), Name = string.IsNullOrEmpty(rule.Column) ? "Search" : rule.Column, Values = rule.Values.ToList() };
         parameters.Add(parameter); rule.ParameterId = parameter.Id;
     }
-    public async Task ApplyAsync()
+    public async Task ApplyAsync() => await TryApplyAsync();
+    public async Task<bool> TryApplyAsync()
     {
+        if (Disabled) return false;
+        error = "";
         try
         {
             bool Active(Rule r) => !string.IsNullOrEmpty(r.ParameterId) || r.Operation != "Contains" || r.Values.Any(v => !string.IsNullOrEmpty(v));
@@ -111,9 +126,10 @@
             var common = commonRules.Where(Active).Select(r => new AnalysisFilterRule(r.Id, r.Column, r.Operation, r.Values.ToArray(), r.ParameterId)).ToArray();
             var used = rules.SelectMany(g => g.Rules).Concat(common).Select(r => r.ParameterId).ToHashSet();
             var config = new AnalysisFilterConfig(rules, parameters.Where(p => used.Contains(p.Id)).Select(p => new AnalysisParameter(p.Id, p.Name, p.Values.ToArray(), p.Required, p.RelativeDate)).ToArray(), common);
-            if (Validate != null) Validate(config); else Source?.ValidateRequest(Settings with { Filters = config, Conditions = null, ParameterValues = null });
+            if (Validate != null) Validate(config); else Source?.ValidateRequest(Settings with { Filters = config, Conditions = null, ParameterValues = ShowParameters ? null : Settings.ParameterValues });
             await OnApply.InvokeAsync(config);
+            return true;
         }
-        catch (ArgumentException ex) { error = ex.Message; }
+        catch (ArgumentException ex) { error = ex.Message; StateHasChanged(); return false; }
     }
 }

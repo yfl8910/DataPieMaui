@@ -1,6 +1,7 @@
 @using DataPieCore
-<form class="condition-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+<form class="condition-search" aria-label="Simple search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
     <fieldset disabled="@Disabled" aria-label="Search conditions (AND)">
+        <legend>Simple search</legend>
         @for (int index = 0; index < DisplayConditions.Count; index++)
         {
             int position = index;

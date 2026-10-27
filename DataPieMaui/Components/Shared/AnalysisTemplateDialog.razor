@@ -1,10 +1,6 @@
 @using DataPieCore
 @using DataPieMaui.Services.Shared
-@if (editing == "filters" && draft != null)
-{
-    <AnalysisFilterDialog Source="Session.Source" Settings="draft" OnApply="ApplyFilters" OnCancel="CloseEditor" />
-}
-else if (editing == "groups" && draft != null)
+@if (editing == "groups" && draft != null)
 {
     <AnalysisGroupDialog Source="Session.Source" Selected="draft.Groups" OnApply="ApplyGroups" OnCancel="CloseEditor" />
 }
@@ -28,7 +24,7 @@ else
                 <section class="analysis-config-panel" aria-label="Group by settings">
                 <h3>Group by</h3>
                 <p>@(draft.Groups.Count == 0 ? "Total (no grouping)" : string.Join(", ", draft.Groups))</p>
-                <button @onclick='() => editing = "groups"'>Edit Group by</button>
+                <button @onclick='() => OpenEditorAsync("groups")'>Edit Group by</button>
                 </section>
                 <section class="analysis-config-panel" aria-label="Calculation settings">
                 <h3>Calculations</h3>
@@ -37,18 +33,14 @@ else
                     @if (draft.IncludeCount) { <li>Record count</li> }
                     @foreach (var formula in draft.Formulas ?? []) { <li>@formula.Name = @AggregateName(formula.Left) @formula.Operation @(formula.Constant?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? AggregateName(formula.Right))</li> }
                 </ul>
-                <button @onclick='() => editing = "calculations"'>Edit Calculations</button>
+                <button @onclick='() => OpenEditorAsync("calculations")'>Edit Calculations</button>
                 <p>Default sort: @(string.IsNullOrEmpty(draft.SortBy) ? "None" : (draft.SortBy.StartsWith("aggregate:") ? AggregateName(draft.SortBy.Substring(10)) : draft.SortBy.StartsWith("formula:") ? draft.SortBy.Substring(8) : "Record count") + (draft.SortDescending ? " · Descending" : " · Ascending"))</p>
                 </section>
-                <section class="analysis-config-panel" aria-label="Default search conditions">
-                    <h3>Default search conditions</h3>
-                    <button @onclick='() => editing = "filters"'>Edit filters and parameter defaults</button>
-                    @if (draft.Filters != null)
-                    {
-                        <p>@AnalysisFilters.Summary(draft.Filters)</p>
-                        <ul>@foreach (var parameter in draft.Filters.Parameters) { <li>@parameter.Name: @(string.IsNullOrEmpty(parameter.RelativeDate) ? string.Join("; ", parameter.Defaults) : parameter.RelativeDate) @(parameter.Required ? "(required)" : "(optional)")</li> }</ul>
-                    }
-                    @if (draft.Conditions?.Count > 0) { <p>Existing search: @string.Join(" AND ", draft.Conditions.Select(c => c.Column + " contains " + c.Text))</p> }
+                <section class="analysis-config-panel" aria-label="Template parameters">
+                    <h3>Template parameters</h3>
+                    <p>Configure default conditions, parameter names, required values and date defaults for this template.</p>
+                    <AnalysisFilterDialog @key="selected" @ref="parameterEditor" Source="Session.Source" Settings="draft" Inline="true" ShowActions="false" ShowClear="false" Disabled="Session.Busy" OnApply="ApplyFilters" />
+                    <p>Click Update selected to save these parameter defaults with the template.</p>
                 </section>
                 <p>Changes are saved only when you click Update selected. Current analysis settings and results are kept.</p>
             }
@@ -81,6 +73,7 @@ else
     private AnalysisRequest? draft;
     private bool confirmDelete;
     private string editing = "";
+    private AnalysisFilterDialog? parameterEditor;
     private IReadOnlyList<SearchField> SearchFields => Session.Source.TextColumns.Select(n => new SearchField(n, n)).ToArray();
     public void SetFilters(IReadOnlyList<SearchCondition> value) { if (draft != null && !Session.Busy) draft = draft with { Conditions = value.ToArray() }; }
     private void ClearFilters() => SetFilters(Array.Empty<SearchCondition>());
@@ -88,7 +81,7 @@ else
     public async Task LoadAsync(long id)
     {
         if (Session.Busy) return;
-        selected = id; draft = null; confirmDelete = false;
+        selected = id; draft = null; confirmDelete = false; editing = ""; parameterEditor = null;
         TemplateName = Session.Templates.FirstOrDefault(t => t.Id == id)?.Name ?? "";
         if (id != 0) draft = await Session.LoadTemplateAsync(id, false);
     }
@@ -99,6 +92,12 @@ else
         await SelectedIdChanged.InvokeAsync(selected);
     }
     private void CloseEditor() => editing = "";
+    private async Task OpenEditorAsync(string editor)
+    {
+        if (Session.Busy || (parameterEditor != null && !await parameterEditor.TryApplyAsync())) return;
+        parameterEditor = null;
+        editing = editor;
+    }
     public void ApplyFilters(AnalysisFilterConfig config) { if (draft != null) draft = draft with { Filters = AnalysisFilters.Snapshot(config), Conditions = null, ParameterValues = null }; CloseEditor(); }
     public void ApplyGroups(IReadOnlyList<string> groups) { if (draft != null) draft = draft with { Groups = groups.ToArray() }; CloseEditor(); }
     public void ApplyCalculations(AnalysisCalculationSettings settings)
@@ -109,6 +108,7 @@ else
     public async Task UpdateAsync()
     {
         if (Session.Busy || draft == null || Session.Templates.FirstOrDefault(t => t.Id == selected) is not { } item) return;
+        if (parameterEditor != null && !await parameterEditor.TryApplyAsync()) return;
         if (await Session.UpdateTemplateAsync(selected, TemplateName, draft)) { TemplateName = TemplateName.Trim(); await SelectedIdChanged.InvokeAsync(selected); }
     }
     public async Task DeleteAsync()
