@@ -92,7 +92,7 @@ internal static class QueryResultsChecks
                 using var reader = data.CreateDataReader();
                 session.Set(new QueryResultSnapshot(QueryPreviewResult.Read(reader, 1000), "Test", "Table preview"));
                 var html = root.ToHtmlString();
-                Check(!html.Contains("<h1>Table editor</h1>") && html.Contains("Read-only preview") && html.Contains("Table preview") && html.Contains("Copy all preview rows") && !html.Contains("<script>unsafe</script>"), "Unified preview missing or cell rendered as markup");
+                Check(!html.Contains("<h1>Table editor</h1>") && html.Contains("Read-only") && html.Contains("Table preview") && !html.Contains("Export Excel") && !html.Contains("Copy all preview rows") && !html.Contains("Copy selected row") && !html.Contains("<script>unsafe</script>"), "Unified preview missing, unexpected controls remain or cell rendered as markup");
                 Check(!html.Contains("Add record") && !html.Contains("Delete selected") && !html.Contains("data-dialog-resize"), "Read-only preview exposed write controls");
                 session.Set(null);
                 Check(root.ToHtmlString().Contains("Run a query"), "Cleared result remained visible");

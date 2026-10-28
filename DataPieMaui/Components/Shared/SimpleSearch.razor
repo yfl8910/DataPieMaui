@@ -28,7 +28,7 @@
                 }
             </div>
         }
-        <p>@Notice</p>
+        @if (!string.IsNullOrEmpty(Notice)) { <p>@Notice</p> }
     </fieldset>
 </form>
 @code {

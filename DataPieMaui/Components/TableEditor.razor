@@ -8,31 +8,26 @@
 @implements IDisposable
 @if (Preview != null)
 {
-<main inert="@searchDialogOpen">
-    <header><div><p>@previewSnapshot?.Connection</p><p>@previewSnapshot?.Source</p></div><span class="badge">Read-only preview</span></header>
+<main class="preview-page" inert="@searchDialogOpen">
+    <header class="preview-header"><span title="@previewSnapshot?.Connection">@previewSnapshot?.Connection</span><span title="@previewSnapshot?.Source">@previewSnapshot?.Source</span><span class="badge">Read-only</span>@if (previewSnapshot != null) { <span>@previewSnapshot.RowCount.ToString("N0") rows · @previewSnapshot.ColumnCount columns</span> }</header>
     @if (previewSnapshot is null)
     {
         <div class="empty">Run a query in the main window to view results.</div>
     }
     else
     {
-        <div class="toolbar">
-            <strong>@previewSnapshot.RowCount.ToString("N0") rows · @previewSnapshot.ColumnCount columns</strong>
-            <button @onclick="() => CopyAsync(false)" disabled="@(previewSelected is null)">Copy selected row</button>
-            <button @onclick="() => CopyAsync(true)" disabled="@(previewOrder.Length == 0)">@(PreviewHasFilter ? "Copy matching rows" : "Copy all preview rows")</button>
-        </div>
-        <SimpleSearch Fields="PreviewSearchFields" Value="previewDraftConditions" ValueChanged="SetPreviewConditions" OnSearch="ApplyPreviewConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="previewBusy">
+        <SimpleSearch Fields="PreviewSearchFields" Value="previewDraftConditions" ValueChanged="SetPreviewConditions" OnSearch="ApplyPreviewConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="previewBusy" Notice="">
             <Actions><button type="button" @onclick="OpenAdvancedSearch">Advanced filters</button></Actions>
         </SimpleSearch>
         @if (previewAdvanced != null) { <p>Advanced filters are applied.</p> }
         @if (!string.IsNullOrEmpty(dialogError)) { <p class="notice" role="alert">@dialogError</p> }
-        <p>@(previewSnapshot.HasFullResult ? "Search covers the complete query result. Text comparisons ignore case." : "Search is limited to the available preview rows. Run the query again for full-result search.")</p>
+        @if (!previewSnapshot.HasFullResult) { <p class="notice">Full-result search is unavailable. Run the query again.</p> }
         @if (previewSnapshot.Truncated)
         {
             <div class="notice">Showing the first 1,000 matching rows. Search covers @(previewSnapshot.HasFullResult ? "the complete query result" : "the available preview only").</div>
         }
         <TableDataGrid TRow="int" Rows="@previewOrder.Skip(previewPage * PreviewPageSize).Take(PreviewPageSize)" ColumnCount="previewSnapshot.ColumnCount"
-                       CellText="previewSnapshot.FormatCell" CellIsNull="previewSnapshot.IsNull" IsSelected="PreviewIsSelected" SelectRows="true" OnSelect="Select"
+                       CellText="previewSnapshot.FormatCell" CellIsNull="previewSnapshot.IsNull" IsSelected="@(_ => false)"
                        SortState="PreviewSortState" EmptyText="@(PreviewHasFilter ? "No matching records in the loaded preview." : "The query returned no rows.")">
             <LeadingHeader>#</LeadingHeader>
             <ColumnHeader Context="column"><button @onclick="() => Sort(column)" disabled="@(previewSnapshot.GetColumnType(column) == typeof(byte[]))">@previewSnapshot.GetColumnName(column) @(previewSortColumn == column ? (previewDescending ? "▼" : "▲") : "")</button></ColumnHeader>
@@ -460,7 +455,7 @@ else if (DialogOpen)
     private void SetPreviewConditions(IReadOnlyList<SearchCondition> value) => previewDraftConditions = value;
     private int? previewSelected;
     private bool previewDescending, previewDisposed;
-    private string previewMessage = "Click a column to sort. Select a row to copy it.";
+    private string previewMessage = "Click a column to sort.";
     private int PreviewPageCount => Math.Max(1, (previewOrder.Length + PreviewPageSize - 1) / PreviewPageSize);
 
     protected override void OnInitialized() { if (Preview != null) { Preview.Changed += RefreshPreview; LoadPreview(); } else editorConditions = Session.Conditions.ToArray(); }
@@ -473,7 +468,7 @@ else if (DialogOpen)
         previewDraftConditions = previewConditions = Array.Empty<SearchCondition>();
         previewAdvanced = null; previewMatcher = null;
         filterEditorVersion++; dialogError = "";
-        previewMessage = "Click a column to sort. Select a row to copy it.";
+        previewMessage = "Click a column to sort.";
     }
     public void ApplySearch() => ApplyPreviewConditions(previewDraftConditions);
     public async Task ApplyPreviewConditionsAsync(IReadOnlyList<SearchCondition> value)

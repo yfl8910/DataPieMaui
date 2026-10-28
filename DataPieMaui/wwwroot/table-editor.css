@@ -44,3 +44,9 @@ button.danger { color: #a62b20; border-color: #daaca7; }
 .import-source-row input { width: 100%; padding: 8px; font: inherit; }
 .tabs { display: flex; gap: 8px; margin: 12px 0; }
 .tabs .active { background: #e1f1ec; border-color: #176b64; }
+.preview-page { gap: 8px; padding: 12px 16px; }
+.preview-header { justify-content: flex-start; gap: 8px 12px; min-width: 0; font-size: 13px; }
+.preview-header > span:not(.badge) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 38%; }
+.preview-header .badge { padding: 3px 8px; }
+.preview-page .condition-search fieldset { padding: 4px 8px 6px; }
+.preview-page .notice { padding: 5px 8px; }
