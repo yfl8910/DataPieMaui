@@ -8,6 +8,44 @@ internal static class SQLiteImportChecks
 {
     public static async Task Run(string root, Func<string, Func<Task>, Task> test)
     {
+        await test("SQLite Excel import maps only common columns without case sensitivity", () =>
+        {
+            var path = Path.Combine(root, "excel-column-mapping.db");
+            using var target = DbAccessFactory.Create(new SQLiteConnectionStringBuilder { DataSource = path }.ToString(), "SQLITE");
+            target.ExecuteSql("CREATE TABLE Products(Id INTEGER PRIMARY KEY, ProductName TEXT NOT NULL, Quantity INTEGER, Note TEXT DEFAULT 'default note')");
+            var excel = Path.Combine(root, "excel-column-mapping.xlsx");
+            MiniExcelLibs.MiniExcel.SaveAs(excel, new[]
+            {
+                new Dictionary<string, object?> { ["PRODUCTNAME"] = "Apple", ["quantity"] = 5, ["Extra"] = "ignored", ["ID"] = 500 },
+                new Dictionary<string, object?> { ["PRODUCTNAME"] = "Pear", ["quantity"] = "", ["Extra"] = "ignored", ["ID"] = 501 }
+            }, sheetName: "Products");
+            DatabaseOperations.Import(excel, "Products", target);
+            ExcelIO.ExcelDataReaderImport(excel, "Products", target);
+            using (var rows = target.GetDataReader("SELECT Id,ProductName,Quantity,Note FROM Products ORDER BY Id"))
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    Check(rows.Read() && Convert.ToInt64(rows[0]) == i + 1 && Convert.ToString(rows[1]) == (i % 2 == 0 ? "Apple" : "Pear") && Convert.ToString(rows[3]) == "default note", "Common columns, generated IDs or destination defaults were not preserved");
+                    Check(i % 2 == 0 ? Convert.ToInt64(rows[2]) == 5 : rows.IsDBNull(2), "Numeric blanks were not normalized");
+                }
+                Check(!rows.Read(), "Unexpected import rows");
+            }
+            using var noMatch = new DataTable(); noMatch.Columns.Add("Unrelated"); noMatch.Rows.Add("value");
+            using (var reader = noMatch.CreateDataReader())
+            {
+                try { target.BulkInsert("Products", reader); throw new Exception("Expected missing-column error"); }
+                catch (InvalidOperationException ex) { Check(ex.Message.Contains("No matching columns"), "Missing-column error was not clear"); }
+            }
+            using var duplicate = new DataTable(); duplicate.Columns.Add("ProductName"); duplicate.Columns.Add("productname"); duplicate.Rows.Add("one", "two");
+            using (var reader = duplicate.CreateDataReader())
+            {
+                try { target.BulkInsert("Products", reader); throw new Exception("Expected ambiguous-column error"); }
+                catch (InvalidOperationException ex) { Check(ex.Message.Contains("Multiple source columns"), "Ambiguous source columns were not rejected"); }
+            }
+            using var count = target.GetDataReader("SELECT COUNT(*) FROM Products"); count.Read();
+            Check(Convert.ToInt64(count[0]) == 4, "Rejected imports inserted rows");
+            return Task.CompletedTask;
+        });
         await test("SQLite import handles numeric blanks and preserves text and mixed values", () =>
         {
             var path = Path.Combine(root, "numeric-blanks.db");

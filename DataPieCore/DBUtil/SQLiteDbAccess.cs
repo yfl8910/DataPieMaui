@@ -128,6 +128,7 @@ namespace DBUtil
             using var transaction = connection.BeginTransaction();
             var blankAsNull = new bool[names.Length];
             var primaryKeys = new List<(string Name, string Type)>();
+            var destinationColumns = new Dictionary<string, (string Name, string Type)>(StringComparer.OrdinalIgnoreCase);
             using (var schema = connection.CreateCommand())
             {
                 schema.Transaction = transaction;
@@ -135,9 +136,10 @@ namespace DBUtil
                 using var columns = schema.ExecuteReader();
                 while (columns.Read())
                 {
-                    if (Convert.ToInt32(columns[5]) > 0) primaryKeys.Add((Convert.ToString(columns[1]), Convert.ToString(columns[2])));
-                    int index = Array.FindIndex(names, n => string.Equals(n, Convert.ToString(columns[1]), StringComparison.OrdinalIgnoreCase));
-                    if (index >= 0) blankAsNull[index] = NumericOrDateColumn(Convert.ToString(columns[2]) ?? "");
+                    string name = Convert.ToString(columns[1]);
+                    string type = Convert.ToString(columns[2]) ?? "";
+                    if (Convert.ToInt32(columns[5]) > 0) primaryKeys.Add((name, type));
+                    destinationColumns.Add(name, (name, type));
                 }
             }
             bool hasPrimaryIndex = false;
@@ -150,12 +152,22 @@ namespace DBUtil
             }
             string identity = primaryKeys.Count == 1 && primaryKeys[0].Type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase) && !hasPrimaryIndex
                 ? primaryKeys[0].Name : null;
-            var ordinals = Enumerable.Range(0, names.Length).Where(i => !string.Equals(names[i], identity, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var matched = new List<int>();
+            var matchedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (!destinationColumns.TryGetValue(names[i], out var destination)) continue;
+                if (!matchedNames.Add(destination.Name)) throw new InvalidOperationException($"Multiple source columns match destination column '{destination.Name}'.");
+                matched.Add(i);
+                blankAsNull[i] = NumericOrDateColumn(destination.Type);
+            }
+            if (matched.Count == 0) throw new InvalidOperationException("No matching columns were found in the destination table.");
+            var ordinals = matched.Where(i => !string.Equals(names[i], identity, StringComparison.OrdinalIgnoreCase)).ToArray();
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = ordinals.Length == 0 ? "INSERT INTO " + QuoteIdentifier(tableName) + " DEFAULT VALUES"
                 : "INSERT INTO " + QuoteIdentifier(tableName) + " (" +
-                string.Join(",", ordinals.Select(i => QuoteIdentifier(names[i]))) + ") VALUES (" +
+                string.Join(",", ordinals.Select(i => QuoteIdentifier(destinationColumns[names[i]].Name))) + ") VALUES (" +
                 string.Join(",", Enumerable.Range(0, ordinals.Length).Select(i => "@p" + i)) + ")";
             var parameters = new SQLiteParameter[ordinals.Length];
             for (int i = 0; i < parameters.Length; i++)
