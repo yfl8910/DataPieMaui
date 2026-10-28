@@ -13,6 +13,29 @@ internal static class TableEditorChecks
     {
         string path = Path.Combine(root, "editor.db"); SQLiteConnection.CreateFile(path);
         string cs = new SQLiteConnectionStringBuilder { DataSource = path, FailIfMissing = true }.ToString();
+        await test("SQLite editor loads overlength and case-distinct records without inferred constraints", () =>
+        {
+            using var access = DBUtil.DbAccessFactory.Create(cs, "SQLITE");
+            access.ExecuteSql("CREATE TABLE LooseValues(Code VARCHAR(3), Label TEXT NOT NULL); INSERT INTO LooseValues VALUES('longer','first'),('longer','first'),('ABC','case'),('abc','case'); CREATE TABLE LoosePrimary(Code TEXT PRIMARY KEY, Label TEXT); INSERT INTO LoosePrimary VALUES(NULL,'one'),(NULL,'two'),('ABC','upper'),('abc','lower')");
+            var session = TableEditorSession.Open(cs, "SQLITE", "", "LooseValues");
+            try
+            {
+                if (session.Data.Rows.Count != 4 || session.TotalRows != 4 || (string)session.Data.Rows[0]["Code"] != "longer") throw new Exception("Valid SQLite rows were rejected or merged");
+                if (!session.IsRequiredForInsert("Label")) throw new Exception("SQLite NOT NULL metadata was lost");
+                var original = session.Data.Rows[0];
+                var value = session.Parse("Code", "much longer", false);
+                session.Save(original, new Dictionary<string, object> { ["Code"] = value });
+                session.LoadPage(0);
+                if ((string)session.Data.Rows[0]["Code"] != "much longer" || (string)session.Data.Rows[1]["Code"] != "longer") throw new Exception("Editing did not target the chosen rowid");
+                session.Delete(new[] { session.Data.Rows[1] }); session.LoadPage(0);
+                if (session.TotalRows != 3 || session.Data.Rows.Cast<DataRow>().Count(r => (string)r["Label"] == "first") != 1) throw new Exception("Deletion did not target the chosen rowid");
+            }
+            finally { session.Data.Dispose(); }
+            var withKey = TableEditorSession.Open(cs, "SQLITE", "", "LoosePrimary");
+            try { if (withKey.Data.Rows.Count != 4 || withKey.Data.Rows.Cast<DataRow>().Count(r => r.IsNull("Code")) != 2) throw new Exception("SQLite nullable or case-distinct keys were rejected or merged"); }
+            finally { withKey.Data.Dispose(); }
+            return Task.CompletedTask;
+        });
         await test("Import ignores generated IDs but preserves manual and composite keys", () =>
         {
             using var access = DBUtil.DbAccessFactory.Create(cs, "SQLITE");

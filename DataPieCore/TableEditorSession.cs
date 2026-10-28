@@ -194,10 +194,25 @@ public sealed class TableEditorSession
                 nextInsertable.Add(reader.GetName(i));
             nextMetadata.Add(reader.GetName(i), (type, Flag("IsReadOnly") || Flag("IsExpression") || Flag("IsAutoIncrement")
                 || keys.Contains(reader.GetName(i)) || type is "timestamp" or "rowversion" || !Comparable(reader.GetFieldType(i))
-                || reader.GetFieldType(i) == typeof(byte[]), Convert.ToInt32(info["ColumnSize"])));
+                || reader.GetFieldType(i) == typeof(byte[]), databaseType == "SQLITE" ? 0 : Convert.ToInt32(info["ColumnSize"])));
         }
         var next = new DataTable();
-        try { next.Load(reader); }
+        try
+        {
+            if (databaseType == "SQLITE")
+            {
+                // DataTable.Load imports provider constraints, including VARCHAR(n) lengths
+                // and key comparisons that need not match SQLite's rules. Preserve every row.
+                for (int i = 0; i < reader.FieldCount; i++) next.Columns.Add(reader.GetName(i), reader.GetFieldType(i));
+                while (reader.Read())
+                {
+                    var values = new object[reader.FieldCount];
+                    reader.GetValues(values);
+                    next.Rows.Add(values);
+                }
+            }
+            else next.Load(reader);
+        }
         catch { next.Dispose(); throw; }
         reader.Close();
         if (databaseType == "SQLITE")
@@ -210,6 +225,7 @@ public sealed class TableEditorSession
             while (columnReader.Read())
             {
                 string name = columnReader.GetString(1);
+                if (next.Columns.Contains(name)) next.Columns[name].AllowDBNull = Convert.ToInt32(columnReader.GetValue(3)) == 0;
                 if (!columnReader.IsDBNull(4)) defaults.Add(name);
                 else defaults.Remove(name);
                 if (Convert.ToInt32(columnReader.GetValue(5)) > 0) sqliteKeys.Add((name, columnReader.GetString(2)));
