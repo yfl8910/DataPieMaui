@@ -68,9 +68,11 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
             var unavailable = request.Groups.Where(n => !Source.Fields.Any(f => f.Name == n && f.CanGroup))
                 .Concat(request.Calculations.Where(c => !Source.NumericColumns.Contains(c.Column)).Select(c => c.Column)).Distinct().ToArray();
             if (unavailable.Length > 0) throw new InvalidOperationException("Template fields are missing or incompatible: " + string.Join(", ", unavailable));
-            Source.ValidateRequest(request);
+            if (clearResults || !AnalysisFilters.NeedsReview(request.Filters)) Source.ValidateRequest(request);
             if (clearResults) { Result = null; Totals = null; LastRequest = null; }
-            Status = "Template settings loaded.";
+            Status = AnalysisFilters.NeedsReview(request.Filters)
+                ? "Legacy parameters need review. Enter fixed values or dates in Default filter conditions, then Update selected."
+                : "Template settings loaded.";
             return request;
         }
         catch (Exception ex) { Status = ex.ToString(); return null; }

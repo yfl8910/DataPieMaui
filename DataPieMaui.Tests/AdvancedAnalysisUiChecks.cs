@@ -27,27 +27,38 @@ internal static class AdvancedAnalysisUiChecks
                 ["OnApply"] = EventCallback.Factory.Create<AnalysisFilterConfig>(new object(), value => applied = value)
             }));
             string markup = rendered.ToHtmlString();
-            Check(markup.Contains("OR condition group") && markup.Contains("Period") && markup.Contains("2026-01-31") && markup.Contains("type=\"date\""), "Filter dialog omitted OR groups, defaults or date inputs");
+            Check(markup.Contains("All conditions must match (AND)") && markup.Contains("SoldAt") && markup.Contains("2026-01-31") && markup.Contains("type=\"date\""), "Filter dialog omitted AND conditions, defaults or date inputs");
             await dialog!.ApplyAsync();
-            Check(applied?.Groups.Count == 2 && applied.Parameters.Single().Required && !ReferenceEquals(applied, config), "Filter dialog did not publish an isolated valid configuration");
+            Check(applied?.Groups.Count == 1 && applied.Parameters.Count == 0 && !ReferenceEquals(applied, config), "Filter dialog did not publish an isolated valid configuration");
             var search = await html.RenderComponentAsync<AdvancedSearch>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Source"] = source, ["Settings"] = request }));
             string searchMarkup = search.ToHtmlString();
             Check(!searchMarkup.Contains("role=\"alert\"") && !searchMarkup.Contains("ExternalError"), "Advanced search displayed an error when none was supplied");
             var failedSearch = await html.RenderComponentAsync<AdvancedSearch>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Source"] = source, ["Settings"] = request, ["ExternalError"] = "Search failed: invalid value" }));
             Check(failedSearch.ToHtmlString().Contains("role=\"alert\">Search failed: invalid value</p>"), "Advanced search did not forward the actual error message");
-            Check(searchMarkup.Contains("Advanced search") && searchMarkup.Contains("OR condition group") && searchMarkup.Contains("Period"), "Independent advanced search omitted search groups or parameter references");
+            Check(searchMarkup.Contains("Advanced search") && searchMarkup.Contains("All conditions must match (AND)") && searchMarkup.Contains("SoldAt"), "Independent advanced search omitted AND conditions or parameter references");
+            Check(!searchMarkup.Contains("Add OR group") && !searchMarkup.Contains("Remove group") && !searchMarkup.Contains("OR condition group"), "Advanced search still exposes OR groups");
+            FilterHarness? andEditor = null; AnalysisFilterConfig? andConfig = null;
+            await html.RenderComponentAsync<FilterHarness>(ParameterView.FromDictionary(new Dictionary<string, object?>
+            {
+                ["Source"] = source, ["Settings"] = request,
+                ["Capture"] = (Action<FilterHarness>)(c => andEditor = c),
+                ["OnApply"] = EventCallback.Factory.Create<AnalysisFilterConfig>(new object(), value => andConfig = value)
+            }));
+            await andEditor!.ApplyAsync();
+            Check(andConfig?.Groups.Count == 1 && andConfig.Groups[0].Rules.Count == 2 && andConfig.Parameters.Count == 0, "AND search did not preserve all rules and parameter references in one group");
+            Check(config.Groups.Count == 2, "Opening AND search mutated the original configuration");
             Check(!searchMarkup.Contains("Parameter name") && !searchMarkup.Contains("Default value") && !searchMarkup.Contains("Use parameter") && !searchMarkup.Contains("Value source"), "Advanced search still exposes template default configuration");
             var session = new DataAnalysisSession(source, "Test"); MainHarness? main = null;
             var mainView = await html.RenderComponentAsync<MainHarness>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = session, ["Capture"] = (Action<MainHarness>)(c => main = c) }));
             main!.ApplyGroups(request.Groups); main.ApplyFilters(config); main.Render();
-            Check(mainView.ToHtmlString().Contains("Reset parameters") && mainView.ToHtmlString().Contains("Save current parameter values as defaults"), "Runtime parameter controls missing");
+            Check(!mainView.ToHtmlString().Contains("Reset parameters") && !mainView.ToHtmlString().Contains("Save current parameter values as defaults"), "Removed parameter controls still visible");
             Check(mainView.ToHtmlString().Split("Clear search").Length == 2 && !mainView.ToHtmlString().Contains("Clear filters"), "Data analysis did not use a single clear-search action");
             Check(mainView.ToHtmlString().Contains("Search conditions"), "Search field disappeared while advanced filters were active");
-            main.SetParameterValues(new Dictionary<string, IReadOnlyList<string>> { ["period"] = new[] { "2026-02-01", "2026-02-01" } });
+            config = config with { Parameters = new[] { config.Parameters.Single() with { Defaults = new[] { "2026-02-01", "2026-02-01" } } } };
             main.ApplyFilters(config); // Inline Analyze reapplies edited filter definitions.
             main.SetConditions(new[] { new SearchCondition("Note", "x") });
             await main.AnalyzeAsync(); main.Render();
-            Check(session.Result!.RowCount == 1 && session.Result.FormatCell(0, 0) == "B" && session.LastRequest!.Filters != null && session.LastRequest.Conditions!.Single().Text == "x" && session.LastRequest.ParameterValues!["period"][0] == "2026-02-01", "Quick search discarded advanced filters or runtime dates");
+            Check(session.Result!.RowCount == 1 && session.Result.FormatCell(0, 0) == "B" && session.LastRequest!.Filters != null && session.LastRequest.Conditions!.Single().Text == "x" && session.LastRequest.Filters.Parameters.Count == 0, "Quick search discarded advanced filters or runtime dates");
             main.SetConditions(Array.Empty<SearchCondition>()); await main.AnalyzeAsync(); main.Render();
             Check(session.LastRequest!.Filters != null && session.LastRequest.Conditions!.Count == 0 && mainView.ToHtmlString().Contains("Search conditions"), "Clearing the search removed advanced filters or hid search");
             var store = new AnalysisTemplateStore(Path.Combine(root, "visible-search-manager.db"));
@@ -55,16 +66,16 @@ internal static class AdvancedAnalysisUiChecks
             var managerSession = new DataAnalysisSession(source, "Test", store); await managerSession.RefreshTemplatesAsync();
             ManagerHarness? managerComponent = null;
             var manager = await html.RenderComponentAsync<ManagerHarness>(ParameterView.FromDictionary(new Dictionary<string, object?> { ["Session"] = managerSession, ["SelectedId"] = templateId, ["Capture"] = (Action<ManagerHarness>)(c => managerComponent = c) }));
-            Check(manager.ToHtmlString().Contains("Note") && manager.ToHtmlString().Contains("Period"), "Manager did not display both advanced filters and saved search");
+            Check(manager.ToHtmlString().Contains("Note") && manager.ToHtmlString().Contains("SoldAt"), "Manager did not display both advanced filters and saved search");
             string managerMarkup = manager.ToHtmlString();
-            Check(managerMarkup.Contains("aria-label=\"Template parameters\"") && managerMarkup.Contains("Parameter name") && managerMarkup.Contains("Default value") && !managerMarkup.Contains("Use these defaults") && !managerMarkup.Contains("Configure template parameters"), "Template parameters were not immediately editable on opening the manager");
+            Check(managerMarkup.Contains("aria-label=\"Default filter conditions\"") && !managerMarkup.Contains("Parameter name") && !managerMarkup.Contains("Value source") && !managerMarkup.Contains("Use these defaults") && !managerMarkup.Contains("Configure template parameters"), "Template parameters were not immediately editable on opening the manager");
             Check(managerMarkup.Split("role=\"dialog\"").Length == 2 && !managerMarkup.Contains("Clear search") && !managerMarkup.Contains("Advanced search and parameters"), "Template defaults opened another dialog or exposed search actions");
             await managerComponent!.UpdateAsync();
             var savedDefaults = store.Load(source.TemplateTableName, templateId);
-            Check(savedDefaults.Filters!.Parameters.Single().Defaults.SequenceEqual(new[] { "2026-01-01", "2026-01-31" }) && savedDefaults.Filters.CommonRules!.Single().Values.Single() == "x", "Update selected did not capture the inline defaults and legacy conditions");
+            Check(savedDefaults.Filters!.Parameters.Count == 0 && savedDefaults.Filters.Groups.SelectMany(g => g.Rules).Any(r => r.Column == "Note" && r.Values.Single() == "x"), "Update selected did not capture the inline defaults and legacy conditions");
             var managerEditor = new AnalysisTemplateDialog { Session = managerSession };
             await managerEditor.LoadAsync(templateId); managerEditor.ApplyFilters(AnalysisFilters.MergeLegacy(config, new[] { new SearchCondition("Note", "x") }, source.FilterFields)); await managerEditor.UpdateAsync();
-            Check(store.Load(source.TemplateTableName, templateId).Filters.CommonRules!.Single().Values.Single() == "x", "Editing advanced filters removed the saved quick search");
+            Check(store.Load(source.TemplateTableName, templateId).Filters.Groups.SelectMany(g => g.Rules).Any(r => r.Column == "Note" && r.Values.Single() == "x"), "Editing advanced filters removed the saved quick search");
         });
         using var renderer = new CalculationSortInteractionChecks.EventRenderer(services, services.GetRequiredService<ILoggerFactory>());
         await renderer.Dispatcher.InvokeAsync(async () =>

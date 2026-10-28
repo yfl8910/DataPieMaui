@@ -261,3 +261,7 @@ dotnet publish DataPieMaui/DataPieMaui.csproj -c Release -p:PublishProfile=Singl
 ```
 
 输出为 `publish/win-x64-single-file-untrimmed/DataPieMaui.exe`。使用标准 .NET 自包含、压缩单文件，关闭裁剪及 Native AOT。运行框架、Windows App SDK、程序程序集和本地网页资源均打包在 EXE 中，无需另带 wwwroot 文件夹；运行时会解压所需文件。仍需 WebView2 Runtime。开发用 PDB 不随包分发。此 Windows App SDK 配置需要完整解压，因此 SDK 会提示兼容模式警告。
+
+### 模板固定筛选条件
+
+模板仅保存固定 AND 筛选条件，不再提供参数名称、必填、运行时参数输入或相对日期设置。在模板管理的“Default filter conditions”中直接编辑固定值。新模板使用版本 4，不保存参数定义或运行时值。旧版本 1–3 可读取：固定默认值转换为普通条件，空可选参数对应的条件被移除；空必填参数和相对日期须在模板管理中补充固定值后才能执行或保存。

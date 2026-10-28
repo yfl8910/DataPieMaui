@@ -31,15 +31,15 @@ internal static class ParameterAnalysisChecks
         AnalysisFilterConfig Config(params AnalysisFilterRule[] rules) => new(new[] { new AnalysisFilterGroup(rules) }, Array.Empty<AnalysisParameter>());
         var basic = new AnalysisRequest(new[] { "Customer" }, new[] { new AnalysisCalculation("Amount", "SUM", "Revenue", "revenue") });
         long Count(AnalysisFilterConfig config) => Convert.ToInt64(source.Analyze(basic with { Groups = Array.Empty<string>(), Filters = config }).GetValue(0, 1));
-        await test("Quick search combines with advanced OR groups across totals, export and saved templates", async () =>
+        await test("Quick search combines with advanced AND conditions across totals, export and saved templates", async () =>
         {
-            var filters = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("Customer", "Equals", "A") }), new AnalysisFilterGroup(new[] { Rule("Customer", "Equals", "B") }) }, Array.Empty<AnalysisParameter>());
+            var filters = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("Customer", "In", "A", "B") }), new AnalysisFilterGroup(new[] { Rule("Amount", "Greater", "0") }) }, Array.Empty<AnalysisParameter>());
             var request = basic with { Filters = filters, Conditions = new[] { new SearchCondition("Note", "x") } };
             var result = source.AnalyzeWithTotals(request);
-            Check(result.Groups.RowCount == 1 && (string)result.Groups.GetValue(0, 0) == "B" && Convert.ToDouble(result.Totals.GetValue(0, 0)) == 300 && Convert.ToInt64(result.Totals.GetValue(0, 1)) == 1, "Search was not ANDed with the entire OR expression");
+            Check(result.Groups.RowCount == 1 && (string)result.Groups.GetValue(0, 0) == "B" && Convert.ToDouble(result.Totals.GetValue(0, 0)) == 300 && Convert.ToInt64(result.Totals.GetValue(0, 1)) == 1, "Search was not ANDed with the entire AND expression");
             var serverTable = new DBUtil.TableStruct { Name = "Sales", TableSchemaName = "dbo", Columns = new() { new() { Name = "Customer", Type = "nvarchar(100)" }, new() { Name = "Note", Type = "nvarchar(100)" }, new() { Name = "Amount", Type = "numeric" } } };
             var serverQuery = TableAnalysis.BuildQuery(serverTable, "SQLSERVER", request);
-            Check(serverQuery.Parameters.Count == 3 && serverQuery.Parameters.Select(p => p.Name).Distinct().Count() == 3 && serverQuery.Sql.Contains("@filter0") && serverQuery.Sql.Contains("@af0"), "Combined SQL Server parameters collided");
+            Check(serverQuery.Parameters.Count == 4 && serverQuery.Parameters.Select(p => p.Name).Distinct().Count() == 4 && serverQuery.Sql.Contains("@filter0") && serverQuery.Sql.Contains("@af0"), "Combined SQL Server parameters collided");
             string output = Path.Combine(root, "combined-search.xlsx"); source.Export(request, output);
             using (var rows = MiniExcelLibs.MiniExcel.QueryAsDataTable(output, useHeaderRow: true))
                 Check(rows.Rows.Count == 2 && Convert.ToDouble(rows.Rows[1]["Revenue"]) == 300, "Combined filter was not used by the exported total");
@@ -47,22 +47,22 @@ internal static class ParameterAnalysisChecks
             long id = store.Save("Sales", "Combined", request);
             var session = new DataAnalysisSession(source, "Source", store); var component = new DataAnalysis { Session = session };
             await component.ApplyTemplateAsync(id);
-            Check(session.LastRequest!.Filters?.Groups.Count == 2 && session.LastRequest.Conditions!.Single().Text == "x" && session.Result!.RowCount == 1, "Template did not restore both search and advanced filters");
+            Check(session.LastRequest!.Filters?.Groups.Count == 1 && session.LastRequest.Conditions!.Single().Text == "x" && session.Result!.RowCount == 1, "Template did not restore both search and advanced filters");
             component.SetConditions(new[] { new SearchCondition("Customer", "A") }); await component.AnalyzeAsync();
-            Check(session.LastRequest!.Filters?.Groups.Count == 2 && session.Result!.RowCount == 1 && session.Result.FormatCell(0, 0) == "A", "Editing quick search discarded the advanced filters");
+            Check(session.LastRequest!.Filters?.Groups.Count == 1 && session.Result!.RowCount == 1 && session.Result.FormatCell(0, 0) == "A", "Editing quick search discarded the advanced filters");
             component.SetConditions(Array.Empty<SearchCondition>()); await component.AnalyzeAsync();
-            Check(session.LastRequest!.Filters?.Groups.Count == 2 && session.Result!.RowCount == 2, "Clearing quick search discarded advanced filters");
+            Check(session.LastRequest!.Filters?.Groups.Count == 1 && session.Result!.RowCount == 2, "Clearing quick search discarded advanced filters");
         });
-        await test("Typed analysis filters support inclusive dates, every operator and grouped OR without interpreting SQL text", () =>
+        await test("Typed analysis filters support inclusive dates, every operator and AND conditions without interpreting SQL text", () =>
         {
             var config = new AnalysisFilterConfig(new[] {
-                new AnalysisFilterGroup(new[] { Rule("Customer", "Equals", "A"), Rule("SoldAt", "Range", "2026-01-01", "2026-01-31") }),
-                new AnalysisFilterGroup(new[] { Rule("Customer", "Equals", "B"), Rule("Amount", "GreaterOrEqual", "350") }) }, Array.Empty<AnalysisParameter>());
+                new AnalysisFilterGroup(new[] { Rule("Customer", "In", "A", "B"), Rule("SoldAt", "Range", "2026-01-01", "2026-01-31") }),
+                new AnalysisFilterGroup(new[] { Rule("Amount", "GreaterOrEqual", "100") }) }, Array.Empty<AnalysisParameter>());
             var result = source.AnalyzeWithTotals(basic with { Filters = config });
             var serverTable = new DBUtil.TableStruct { Name = "Sales", TableSchemaName = "dbo", Columns = new() { new() { Name = "Customer", Type = "nvarchar(100)" }, new() { Name = "SoldAt", Type = "datetime2" }, new() { Name = "Amount", Type = "numeric" } } };
             var serverQuery = TableAnalysis.BuildQuery(serverTable, "SQLSERVER", basic with { Filters = config });
-            Check(serverQuery.Parameters.Count == 5 && serverQuery.Parameters.Select(p => p.Name).Distinct().Count() == 5 && serverQuery.Parameters.Count(p => p.Value is DateTime) == 2 && serverQuery.Sql.Contains(" OR "), "SQL Server typed OR parameters collided or dates lost their type");
-            Check(Convert.ToDouble(result.Totals.GetValue(0, 0)) == 700 && Convert.ToInt64(result.Totals.GetValue(0, 1)) == 3, "OR precedence or inclusive end-date failed");
+            Check(serverQuery.Parameters.Count == 5 && serverQuery.Parameters.Select(p => p.Name).Distinct().Count() == 5 && serverQuery.Parameters.Count(p => p.Value is DateTime) == 2 && !serverQuery.Sql.Contains(" OR "), "SQL Server typed AND parameters collided or dates lost their type");
+            Check(Convert.ToDouble(result.Totals.GetValue(0, 0)) == 700 && Convert.ToInt64(result.Totals.GetValue(0, 1)) == 3, "AND matching or inclusive end-date failed");
             Check(Count(Config(Rule("SoldAt", "Range", "2026-01-01", "2026-01-31"))) == 5, "End day omitted or next day included");
             Check(Count(Config(Rule("Customer", "In", "A", "B"), Rule("Amount", "Range", "150", "350"))) == 2, "Numeric range or multi-value AND failed");
             Check(Count(Config(Rule("Note", "In", "A,B"))) == 1, "Multi-value input split a literal comma");
@@ -75,12 +75,12 @@ internal static class ParameterAnalysisChecks
             try { Count(Config(Rule("Amount", "Range", "200", "100"))); throw new Exception("Expected reversed range rejection"); } catch (ArgumentException) { }
             return Task.CompletedTask;
         });
-        await test("Optional parameters remove empty OR groups, required values validate at runtime and relative defaults resolve per calendar", () =>
+        await test("Optional parameters remove empty conditions, required values validate at runtime and relative defaults resolve per calendar", () =>
         {
             var parameter = new AnalysisParameter("customer", "Customer", Array.Empty<string>());
             var config = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("Customer", "Equals", "A") }),
                 new AnalysisFilterGroup(new[] { Rule("Customer", "Equals") with { ParameterId = parameter.Id } }) }, new[] { parameter });
-            Check(Count(config) == 2, "Empty optional OR group broadened the filter to all records");
+            Check(Count(config) == 2, "Empty optional condition broadened the filter to all records");
             var required = config with { Parameters = new[] { parameter with { Required = true } } };
             source.ValidateRequest(basic with { Filters = required }); // Required values may be entered when running a template.
             try { Count(required); throw new Exception("Expected required-parameter rejection"); } catch (ArgumentException) { }
@@ -92,7 +92,7 @@ internal static class ParameterAnalysisChecks
             try { Count(incompatible); throw new Exception("Expected incompatible shared-parameter rejection"); } catch (ArgumentException) { }
             return Task.CompletedTask;
         });
-        await test("Parameterized templates retain defaults, isolate runtime values and freeze analysis/export parameters", async () =>
+        await test("Templates migrate legacy defaults to fixed values and omit parameter definitions", async () =>
         {
             string settings = Path.Combine(root, "parameter-templates.db"); var store = new AnalysisTemplateStore(settings);
             var config = Config(Rule("Customer", "Equals") with { ParameterId = "customer" }) with { Parameters = new[] { new AnalysisParameter("customer", "Customer", new[] { "A" }, true) } };
@@ -100,11 +100,11 @@ internal static class ParameterAnalysisChecks
             var request = basic with { Filters = config, ParameterValues = values };
             long id = store.Save("Sales", "Parameterized", request);
             var loaded = store.Load("Sales", id);
-            Check(loaded.ParameterValues == null && loaded.Filters.Parameters[0].Defaults.Single() == "A", "Runtime inputs overwrote saved defaults");
+            Check(loaded.ParameterValues == null && loaded.Filters.Parameters.Count == 0 && loaded.Filters.Groups.Single().Rules.Single().Values.Single() == "A", "Runtime inputs overwrote saved defaults");
             long oldId = store.Save("Sales", "Old AND", basic with { Conditions = new[] { new SearchCondition("Customer", "A") } });
             using (var oldConnection = new SQLiteConnection(new SQLiteConnectionStringBuilder { DataSource = settings }.ToString()))
             {
-                oldConnection.Open(); using var upgrade = new SQLiteCommand("UPDATE AnalysisTemplates SET ConfigJson=replace(ConfigJson,'\"Version\":3','\"Version\":1') WHERE Id=@id", oldConnection);
+                oldConnection.Open(); using var upgrade = new SQLiteCommand("UPDATE AnalysisTemplates SET ConfigJson=replace(ConfigJson,'\"Version\":4','\"Version\":1') WHERE Id=@id", oldConnection);
                 upgrade.Parameters.AddWithValue("@id", oldId); upgrade.ExecuteNonQuery();
                 using var verify = new SQLiteCommand("SELECT ConfigJson FROM AnalysisTemplates WHERE Id=@id", oldConnection); verify.Parameters.AddWithValue("@id", oldId);
                 Check(((string)verify.ExecuteScalar()).Contains("\"Version\":1"), "Legacy version-1 fixture was not prepared");
@@ -115,12 +115,12 @@ internal static class ParameterAnalysisChecks
             long oldV2 = store.Save("Sales", "Old v2", request);
             using (var oldConnection = new SQLiteConnection(new SQLiteConnectionStringBuilder { DataSource = settings }.ToString()))
             {
-                oldConnection.Open(); using var upgrade = new SQLiteCommand("UPDATE AnalysisTemplates SET ConfigJson=replace(ConfigJson,'\"Version\":3','\"Version\":2') WHERE Id=@id", oldConnection);
+                oldConnection.Open(); using var upgrade = new SQLiteCommand("UPDATE AnalysisTemplates SET ConfigJson=replace(ConfigJson,'\"Version\":4','\"Version\":2') WHERE Id=@id", oldConnection);
                 upgrade.Parameters.AddWithValue("@id", oldV2); upgrade.ExecuteNonQuery();
                 using var verify = new SQLiteCommand("SELECT ConfigJson FROM AnalysisTemplates WHERE Id=@id", oldConnection); verify.Parameters.AddWithValue("@id", oldV2);
                 Check(((string)verify.ExecuteScalar()).Contains("\"Version\":2"), "Legacy version-2 fixture was not prepared");
             }
-            Check(store.Load("Sales", oldV2).Filters.Parameters[0].Defaults.Single() == "A", "Version-2 template could not be loaded");
+            Check(store.Load("Sales", oldV2).Filters.Groups.Single().Rules.Single().Values.Single() == "A", "Version-2 template could not be loaded");
             var session = new DataAnalysisSession(source, "Test", store);
             await session.AnalyzeAsync(request);
             Check(session.Result!.FormatCell(0, 0) == "B" && session.Matches(request), "Runtime parameter did not drive analysis or match its result");
@@ -133,17 +133,44 @@ internal static class ParameterAnalysisChecks
             await session.RefreshTemplatesAsync();
             await component.ApplyTemplateAsync(id);
             Check(session.Result!.FormatCell(0, 0) == "A", "Applying template failed to initialize default parameters");
-            component.SetParameterValues(new Dictionary<string, IReadOnlyList<string>> { ["customer"] = new[] { "B" } });
+            component.ApplyFilters(Config(Rule("Customer", "Equals", "B")));
             await component.SaveCurrentTemplateAsync();
-            Check(store.Load("Sales", id).Filters.Parameters.Single().Defaults.Single() == "A", "Saving runtime input implicitly replaced defaults");
-            component.SaveParameterDefaults = true; await component.SaveCurrentTemplateAsync();
-            Check(store.Load("Sales", id).Filters.Parameters.Single().Defaults.Single() == "B" && !component.SaveParameterDefaults, "Explicit save-as-default did not update/reset the setting");
+            Check(store.Load("Sales", id).Filters.Groups.Single().Rules.Single().Values.Single() == "B", "Fixed condition edits were not saved");
             await component.NewTemplateAsync(); await component.SaveCurrentTemplateAsync(); component.NewTemplateName = "Parameterized copy"; await component.SaveNewTemplateAsync();
             long copiedId = store.List("Sales").Single(t => t.Name == "Parameterized copy").Id;
-            Check(store.Load("Sales", copiedId).Filters.Parameters.Single().Defaults.Single() == "B" && store.Load("Sales", copiedId).ParameterValues == null, "Copying a parameterized template lost defaults or stored runtime state");
+            Check(store.Load("Sales", copiedId).Filters.Groups.Single().Rules.Single().Values.Single() == "B" && store.Load("Sales", copiedId).ParameterValues == null, "Copying a parameterized template lost defaults or stored runtime state");
             using var connection = new SQLiteConnection(new SQLiteConnectionStringBuilder { DataSource = settings }.ToString()); connection.Open();
             using var command = new SQLiteCommand("SELECT ConfigJson FROM AnalysisTemplates WHERE Id=@id", connection); command.Parameters.AddWithValue("@id", id);
-            using var json = JsonDocument.Parse((string)command.ExecuteScalar()); Check(json.RootElement.GetProperty("Version").GetInt32() == 3, "New template version not written");
+            using var json = JsonDocument.Parse((string)command.ExecuteScalar()); Check(json.RootElement.GetProperty("Version").GetInt32() == 4, "New template version not written");
+            Check(!json.RootElement.GetProperty("Settings").TryGetProperty("ParameterValues", out _) && !json.RootElement.GetProperty("Settings").GetProperty("Filters").TryGetProperty("Parameters", out _), "New templates still store parameter definitions");
+        });
+        await test("Legacy parameter templates require explicit repair for missing values and relative dates", async () =>
+        {
+            string legacyPath = Path.Combine(root, "legacy-fixed-migration.db");
+            var store = new AnalysisTemplateStore(legacyPath);
+            long id = store.Save("Sales", "Legacy", basic);
+            var oldFilters = Config(
+                Rule("Customer", "Equals") with { ParameterId = "customer" },
+                Rule("Note", "Contains") with { ParameterId = "optional" },
+                Rule("SoldAt", "Range") with { ParameterId = "dates" }) with
+            { Parameters = new[] { new AnalysisParameter("customer", "Customer", Array.Empty<string>(), true),
+                new AnalysisParameter("optional", "Note", Array.Empty<string>()), new AnalysisParameter("dates", "Period", Array.Empty<string>(), false, "Today") } };
+            using (var db = new SQLiteConnection(new SQLiteConnectionStringBuilder { DataSource = legacyPath }.ToString()))
+            {
+                db.Open(); using var update = new SQLiteCommand("UPDATE AnalysisTemplates SET ConfigJson=@json WHERE Id=@id", db);
+                update.Parameters.AddWithValue("@json", JsonSerializer.Serialize(new { Version = 3, Settings = basic with { Filters = oldFilters } }));
+                update.Parameters.AddWithValue("@id", id); update.ExecuteNonQuery();
+            }
+            var migrated = store.Load("Sales", id);
+            Check(migrated.Filters.Parameters.Count == 0 && migrated.Filters.Groups.Single().Rules.Count == 2 && AnalysisFilters.NeedsReview(migrated.Filters), "Legacy optional conditions were not removed or review markers were lost");
+            try { source.Analyze(migrated); throw new Exception("Unreviewed legacy template executed"); } catch (ArgumentException) { }
+            try { store.Update("Sales", id, "Legacy", migrated); throw new Exception("Unreviewed template was saved"); } catch (InvalidDataException) { }
+            var session = new DataAnalysisSession(source, "Test", store);
+            Check(await session.LoadTemplateAsync(id) == null && await session.LoadTemplateAsync(id, false) != null, "Legacy template must open for repair but not execute");
+            var repaired = migrated with { Filters = Config(Rule("Customer", "Equals", "B"), Rule("SoldAt", "Range", "2026-01-01", "2026-01-31")) };
+            store.Update("Sales", id, "Legacy", repaired);
+            var loaded = store.Load("Sales", id);
+            Check(!AnalysisFilters.NeedsReview(loaded.Filters) && source.Analyze(loaded).RowCount == 1, "Repaired fixed template did not execute");
         });
         await test("Independent numeric formats persist by indicator identity and agree between preview, totals and Excel", () =>
         {

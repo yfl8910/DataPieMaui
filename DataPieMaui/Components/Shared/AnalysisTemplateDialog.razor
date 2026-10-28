@@ -36,11 +36,11 @@ else
                 <button @onclick='() => OpenEditorAsync("calculations")'>Edit Calculations</button>
                 <p>Default sort: @(string.IsNullOrEmpty(draft.SortBy) ? "None" : (draft.SortBy.StartsWith("aggregate:") ? AggregateName(draft.SortBy.Substring(10)) : draft.SortBy.StartsWith("formula:") ? draft.SortBy.Substring(8) : "Record count") + (draft.SortDescending ? " · Descending" : " · Ascending"))</p>
                 </section>
-                <section class="analysis-config-panel" aria-label="Template parameters">
-                    <h3>Template parameters</h3>
-                    <p>Configure default conditions, parameter names, required values and date defaults for this template.</p>
-                    <AnalysisFilterDialog @key="selected" @ref="parameterEditor" Source="Session.Source" Settings="draft" Inline="true" ShowActions="false" ShowClear="false" Disabled="Session.Busy" OnApply="ApplyFilters" />
-                    <p>Click Update selected to save these parameter defaults with the template.</p>
+                <section class="analysis-config-panel" aria-label="Default filter conditions">
+                    <h3>Default filter conditions</h3>
+                    <p>Configure fixed values for this template. All conditions must match.</p>
+                    <AnalysisFilterDialog @key="selected" @ref="filterEditor" Source="Session.Source" Settings="draft" Title="Default filter conditions" Inline="true" ShowActions="false" ShowClear="false" Disabled="Session.Busy" OnApply="ApplyFilters" />
+                    <p>Click Update selected to save these fixed conditions with the template.</p>
                 </section>
                 <p>Changes are saved only when you click Update selected. Current analysis settings and results are kept.</p>
             }
@@ -73,7 +73,7 @@ else
     private AnalysisRequest? draft;
     private bool confirmDelete;
     private string editing = "";
-    private AnalysisFilterDialog? parameterEditor;
+    private AnalysisFilterDialog? filterEditor;
     private IReadOnlyList<SearchField> SearchFields => Session.Source.TextColumns.Select(n => new SearchField(n, n)).ToArray();
     public void SetFilters(IReadOnlyList<SearchCondition> value) { if (draft != null && !Session.Busy) draft = draft with { Conditions = value.ToArray() }; }
     private void ClearFilters() => SetFilters(Array.Empty<SearchCondition>());
@@ -81,7 +81,7 @@ else
     public async Task LoadAsync(long id)
     {
         if (Session.Busy) return;
-        selected = id; draft = null; confirmDelete = false; editing = ""; parameterEditor = null;
+        selected = id; draft = null; confirmDelete = false; editing = ""; filterEditor = null;
         TemplateName = Session.Templates.FirstOrDefault(t => t.Id == id)?.Name ?? "";
         if (id != 0) draft = await Session.LoadTemplateAsync(id, false);
     }
@@ -94,8 +94,8 @@ else
     private void CloseEditor() => editing = "";
     private async Task OpenEditorAsync(string editor)
     {
-        if (Session.Busy || (parameterEditor != null && !await parameterEditor.TryApplyAsync())) return;
-        parameterEditor = null;
+        if (Session.Busy || (filterEditor != null && !await filterEditor.TryApplyAsync())) return;
+        filterEditor = null;
         editing = editor;
     }
     public void ApplyFilters(AnalysisFilterConfig config) { if (draft != null) draft = draft with { Filters = AnalysisFilters.Snapshot(config), Conditions = null, ParameterValues = null }; CloseEditor(); }
@@ -108,7 +108,7 @@ else
     public async Task UpdateAsync()
     {
         if (Session.Busy || draft == null || Session.Templates.FirstOrDefault(t => t.Id == selected) is not { } item) return;
-        if (parameterEditor != null && !await parameterEditor.TryApplyAsync()) return;
+        if (filterEditor != null && !await filterEditor.TryApplyAsync()) return;
         if (await Session.UpdateTemplateAsync(selected, TemplateName, draft)) { TemplateName = TemplateName.Trim(); await SelectedIdChanged.InvokeAsync(selected); }
     }
     public async Task DeleteAsync()

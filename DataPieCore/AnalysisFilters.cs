@@ -5,7 +5,9 @@ using System.Linq;
 
 namespace DataPieCore;
 
-public sealed record AnalysisFilterRule(string Id, string Column, string Operation, IReadOnlyList<string> Values, string ParameterId = "");
+public sealed record AnalysisFilterRule(string Id, string Column, string Operation, IReadOnlyList<string> Values, string ParameterId = "", string ReviewReason = "");
+// Retained for reading existing template JSON. All rules, including those in
+// separate legacy groups and CommonRules, are now combined exclusively with AND.
 public sealed record AnalysisFilterGroup(IReadOnlyList<AnalysisFilterRule> Rules);
 public sealed record AnalysisParameter(string Id, string Name, IReadOnlyList<string> Defaults, bool Required = false, string RelativeDate = "");
 public sealed record AnalysisFilterConfig(IReadOnlyList<AnalysisFilterGroup> Groups, IReadOnlyList<AnalysisParameter> Parameters, IReadOnlyList<AnalysisFilterRule> CommonRules = null);
@@ -13,11 +15,34 @@ public sealed record AnalysisFilterField(string Name, string Kind, string Displa
 
 public static class AnalysisFilters
 {
+    // Legacy parameter definitions are read only to migrate templates to fixed conditions.
+    public static AnalysisFilterConfig ToFixedConditions(AnalysisFilterConfig config)
+    {
+        if (config == null) return null;
+        config = Snapshot(config);
+        var rules = new List<AnalysisFilterRule>();
+        foreach (var rule in config.Groups.SelectMany(g => g.Rules).Concat(config.CommonRules ?? Array.Empty<AnalysisFilterRule>()))
+        {
+            if (string.IsNullOrEmpty(rule.ParameterId)) { rules.Add(rule); continue; }
+            var parameter = config.Parameters.FirstOrDefault(p => p.Id == rule.ParameterId)
+                ?? throw new ArgumentException("Missing legacy parameter: " + rule.ParameterId);
+            if (rule.Operation is "IsNull" or "IsNotNull") { rules.Add(rule with { ParameterId = "" }); continue; }
+            bool relative = !string.IsNullOrEmpty(parameter.RelativeDate);
+            bool empty = parameter.Defaults.Count == 0 || parameter.Defaults.All(string.IsNullOrEmpty);
+            if (empty && !parameter.Required && !relative) continue;
+            string review = relative ? "Select fixed dates to replace the legacy relative date: " + parameter.Name
+                : empty ? "Enter a fixed value for the legacy required parameter: " + parameter.Name : "";
+            rules.Add(rule with { ParameterId = "", Values = relative ? Array.Empty<string>() : parameter.Defaults.ToArray(), ReviewReason = review });
+        }
+        return new(rules.Count == 0 ? Array.Empty<AnalysisFilterGroup>() : new[] { new AnalysisFilterGroup(rules) }, Array.Empty<AnalysisParameter>());
+    }
+    public static bool NeedsReview(AnalysisFilterConfig config) => config != null && config.Groups.SelectMany(g => g.Rules)
+        .Concat(config.CommonRules ?? Array.Empty<AnalysisFilterRule>()).Any(r => !string.IsNullOrEmpty(r.ReviewReason));
     public static string Summary(AnalysisFilterConfig config)
     {
         if (config == null) return "";
         string Describe(AnalysisFilterRule r) => (string.IsNullOrEmpty(r.Column) ? "All text fields" : r.Column) + " " + r.Operation + (r.Operation is "IsNull" or "IsNotNull" ? "" : string.IsNullOrEmpty(r.ParameterId) ? " [" + string.Join("; ", r.Values) + "]" : " @" + (config.Parameters.FirstOrDefault(p => p.Id == r.ParameterId)?.Name ?? r.ParameterId));
-        string grouped = string.Join(" OR ", config.Groups.Where(g => g.Rules.Count > 0).Select(g => "(" + string.Join(" AND ", g.Rules.Select(Describe)) + ")"));
+        string grouped = string.Join(" AND ", config.Groups.Where(g => g.Rules.Count > 0).Select(g => "(" + string.Join(" AND ", g.Rules.Select(Describe)) + ")"));
         string common = string.Join(" AND ", (config.CommonRules ?? Array.Empty<AnalysisFilterRule>()).Select(Describe));
         return string.Join(" AND ", new[] { grouped.Length > 0 && common.Length > 0 ? "(" + grouped + ")" : grouped, common }.Where(s => s.Length > 0));
     }
@@ -106,14 +131,15 @@ public static class AnalysisFilters
         };
         var groups = config.Groups.Select(g => g.Rules.Select(compile).Where(f => f != null).ToArray()).Where(g => g.Length > 0).ToArray();
         var common = (config.CommonRules ?? Array.Empty<AnalysisFilterRule>()).Select(compile).Where(f => f != null).ToArray();
-        return get => common.All(f => f(get)) && (groups.Length == 0 || groups.Any(g => g.All(f => f(get))));
+        return get => common.All(f => f(get)) && (groups.Length == 0 || groups.All(g => g.All(f => f(get))));
     }
     public static SearchPredicate Build(AnalysisFilterConfig config, IReadOnlyDictionary<string, IReadOnlyList<string>> values,
         string provider, Func<string, SearchColumn> resolve, IReadOnlyList<SearchColumn> allText = null, bool validateOnly = false, string parameterPrefix = "@af")
     {
+        if (NeedsReview(config)) throw new ArgumentException("This legacy template needs fixed values or dates. Open Manage templates, review Default filter conditions, then save.");
         if (config?.Groups == null || config.Parameters == null || config.Groups.Any(g => g?.Rules == null || g.Rules.Any(r => r == null)) || config.CommonRules?.Any(r => r == null) == true
             || config.Parameters.Any(p => p == null || string.IsNullOrWhiteSpace(p.Id) || string.IsNullOrWhiteSpace(p.Name))) throw new ArgumentException("Invalid filter configuration.");
-        if (config.Groups.Count > 30 || config.Groups.Sum(g => g.Rules.Count) + (config.CommonRules?.Count ?? 0) > 100) throw new ArgumentException("Use at most 30 OR groups and 100 conditions.");
+        if (config.Groups.Sum(g => g.Rules.Count) + (config.CommonRules?.Count ?? 0) > 100) throw new ArgumentException("Use at most 100 conditions.");
         if (config.Parameters.Select(p => p.Id).Distinct(StringComparer.Ordinal).Count() != config.Parameters.Count) throw new ArgumentException("Duplicate parameter IDs.");
         var definitions = config.Parameters.ToDictionary(p => p.Id, StringComparer.Ordinal);
         var actual = Resolve(config, values);
@@ -206,10 +232,10 @@ public static class AnalysisFilters
                 string op = rule.Operation switch { "Equals" => "=", "NotEquals" => "<>", "Greater" => ">", "GreaterOrEqual" => ">=", "Less" => "<", "LessOrEqual" => "<=", _ => throw new ArgumentException("Invalid filter operator.") };
                 clauses.Add(expression + op + Add(Parse(input[0])));
             }
-            // An optional, empty OR group is removed, never turned into TRUE.
+            // Empty optional conditions do not restrict the search.
             if (clauses.Count > 0) groups.Add("(" + string.Join(" AND ", clauses) + ")");
         }
-        string sql = string.Join(" OR ", groups);
+        string sql = string.Join(" AND ", groups);
         if (config.CommonRules?.Count > 0)
         {
             var common = Build(new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(config.CommonRules) }, config.Parameters), values, provider, resolve, allText, validateOnly, "@ac");

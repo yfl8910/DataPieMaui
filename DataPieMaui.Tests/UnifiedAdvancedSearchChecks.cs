@@ -21,9 +21,9 @@ internal static class UnifiedAdvancedSearchChecks
         {
             db.Open(); using var cmd = new SQLiteCommand("CREATE TABLE Orders(Id INTEGER PRIMARY KEY, Customer TEXT, Qty INTEGER, SoldAt DATETIME); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<205) INSERT INTO Orders SELECT x,CASE WHEN x%2=0 THEN 'A' ELSE 'B' END,x,'2026-01-31 12:00:00' FROM n", db); cmd.ExecuteNonQuery();
         }
-        var config = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("a", "Customer", "Equals", "A"), Rule("n", "Qty", "Range", "1", "204") }),
-            new AnalysisFilterGroup(new[] { Rule("b", "Customer", "Equals", "B"), Rule("m", "Qty", "Greater", "200") }) }, Array.Empty<AnalysisParameter>());
-        await test("Table editor advanced OR search applies to all pages, refresh, edit and export", () =>
+        var config = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("a", "Customer", "In", "A", "B"), Rule("n", "Qty", "Range", "1", "105") }),
+            new AnalysisFilterGroup(new[] { Rule("m", "Qty", "Greater", "0") }) }, Array.Empty<AnalysisParameter>());
+        await test("Table editor advanced AND search applies to all pages, refresh, edit and export", () =>
         {
             var session = TableEditorSession.Open(cs, "SQLITE", "", "Orders");
             try
@@ -43,7 +43,7 @@ internal static class UnifiedAdvancedSearchChecks
             finally { session.Data.Dispose(); }
             return Task.CompletedTask;
         });
-        await test("Read-only preview advanced search uses typed values, OR and date ranges within the snapshot", async () =>
+        await test("Read-only preview advanced search uses typed values, AND and date ranges within the snapshot", async () =>
         {
             using var table = new DataTable(); table.Columns.Add("Customer", typeof(string)); table.Columns.Add("Amount", typeof(decimal)); table.Columns.Add("Date", typeof(DateTime));
             table.Rows.Add("A", 12m, new DateTime(2026, 1, 1)); table.Rows.Add("A", 21m, new DateTime(2026, 1, 31));
@@ -51,12 +51,12 @@ internal static class UnifiedAdvancedSearchChecks
             using var reader = table.CreateDataReader(); var snapshot = new QueryResultSnapshot(QueryPreviewResult.Read(reader, 1000), "Test");
             var previewSession = new QueryResultSession(); previewSession.Set(snapshot); var desktop = new Desktop();
             using var preview = new PreviewHarness { Preview = previewSession, Desktop = desktop }; preview.Initialize();
-            var filter = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("a", "0", "Equals", "a"), Rule("n", "1", "Range", "10", "20") }),
-                new AnalysisFilterGroup(new[] { Rule("b", "0", "Equals", "B"), Rule("d", "2", "Range", "2026-01-31", "2026-01-31") }) }, Array.Empty<AnalysisParameter>());
+            var filter = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("a", "0", "In", "a", "B"), Rule("n", "1", "Range", "10", "99") }),
+                new AnalysisFilterGroup(new[] { Rule("d", "2", "Range", "2026-01-31", "2026-01-31") }) }, Array.Empty<AnalysisParameter>());
             await preview.ApplyAdvancedAsync(filter); await preview.CopyAsync(true);
-            Check(desktop.Text == snapshot.CopyText(new[] { 0, 2 }), "Preview did not apply typed OR/date conditions");
+            Check(desktop.Text == snapshot.CopyText(new[] { 1, 2 }), "Preview did not apply typed AND/date conditions");
             await preview.ApplyAdvancedAsync(filter with { Groups = new[] { new AnalysisFilterGroup(new[] { Rule("invalid", "1", "Range", "bad", "20") }) } });
-            await preview.CopyAsync(true); Check(desktop.Text == snapshot.CopyText(new[] { 0, 2 }), "Invalid preview search changed active results");
+            await preview.CopyAsync(true); Check(desktop.Text == snapshot.CopyText(new[] { 1, 2 }), "Invalid preview search changed active results");
             await preview.ApplyAdvancedAsync(filter);
             preview.ClearSearch(); await preview.CopyAsync(true); Check(desktop.Text == snapshot.CopyText(new[] { 0, 1, 2, 3, 4 }), "Single clear did not restore preview rows");
         });
@@ -74,12 +74,12 @@ internal static class UnifiedAdvancedSearchChecks
                     string html = view.ToHtmlString();
                     Check(html.Contains("Search conditions") && html.Contains("aria-label=\"Search value\"") && html.Split("Clear search").Length == 2 && !html.Contains("Clear filters") && !html.Contains("modal-overlay"), "Editor does not display simple inline search and one clear action");
                     component!.OpenAdvancedSearch(); component.Render(); html = view.ToHtmlString();
-                    Check(html.Contains("Qty") && html.Contains("Add OR group") && !html.Contains("Use parameter"), "Editor did not open the shared field-aware dialog");
+                    Check(html.Contains("Qty") && html.Contains("All conditions must match (AND)") && !html.Contains("Add OR group") && !html.Contains("Add default parameter"), "Editor did not open the shared AND-only dialog");
                 });
             }
             finally { session.Data.Dispose(); }
         });
-        await test("Legacy search migrates without broadening optional OR groups", () =>
+        await test("Legacy search migrates without broadening optional conditions", () =>
         {
             var advanced = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("a", "Customer", "Equals", "A") }),
                 new AnalysisFilterGroup(new[] { Rule("b", "Customer", "Equals") with { ParameterId = "optional" } }) }, new[] { new AnalysisParameter("optional", "Customer", Array.Empty<string>()) });
@@ -88,7 +88,7 @@ internal static class UnifiedAdvancedSearchChecks
             var before = source.Analyze(request);
             var merged = AnalysisFilters.MergeLegacy(advanced, request.Conditions, source.FilterFields);
             var after = source.Analyze(request with { Filters = merged, Conditions = null });
-            Check(before.RowCount == 0 && after.RowCount == 0 && merged.CommonRules!.Count == 1, "Migrated search broadened an optional OR group");
+            Check(before.RowCount == 0 && after.RowCount == 0 && merged.CommonRules!.Count == 1, "Migrated search broadened an optional condition");
             return Task.CompletedTask;
         });
         await test("Read-only search finds matches after row 1000 without rerunning the original query", async () =>

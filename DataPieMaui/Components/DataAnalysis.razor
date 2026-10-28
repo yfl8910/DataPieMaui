@@ -31,11 +31,6 @@
         </SimpleSearch>
 
         @if (filters != null && (filters.Groups.Any(g => g.Rules.Count > 0) || filters.CommonRules?.Count > 0)) { <p>Advanced filters: @AnalysisFilters.Summary(filters)</p> }
-        @if (filters?.Parameters.Count > 0)
-        {
-            <AnalysisParameterInputs Config="filters" Fields="Session.Source.FilterFields" Values="parameterValues" ValueChanged="SetParameterValues" Disabled="Session.Busy" />
-            <label><input type="checkbox" @bind="SaveParameterDefaults" /> Save current parameter values as defaults</label>
-        }
         <p>Analysis includes all matching source rows. NULL values are ignored by numeric calculations. Export reruns the same analysis against the current source data.</p>
         @if (Session.Source.Provider == "SQLITE") { <p>SQLite uses native numeric precision; nonnumeric values in calculation fields are rejected.</p> }
     </fieldset>
@@ -117,28 +112,16 @@ else if (settingsDialog == "save-template")
     private int filterEditorVersion;
     private AnalysisFilterConfig? filters, templateFilters;
     private AnalysisNumberFormat? countFormat;
-    private IReadOnlyDictionary<string, IReadOnlyList<string>> parameterValues = new Dictionary<string, IReadOnlyList<string>>();
-    public bool SaveParameterDefaults { get; set; }
     public void ApplyFilters(AnalysisFilterConfig value)
     {
         conditions = [];
-        filters = AnalysisFilters.Snapshot(value); parameterValues = AnalysisFilters.Resolve(filters, parameterValues); filterEditorVersion++; CloseSettings();
+        filters = AnalysisFilters.ToFixedConditions(value); filterEditorVersion++; CloseSettings();
     }
     private async Task SearchAdvancedAsync(AnalysisFilterConfig value) { ApplyFilters(value); await AnalyzeAsync(); }
     private IReadOnlyList<SearchField> SearchFields => Session.Source.TextColumns.Select(n => new SearchField(n, n)).ToArray();
     private async Task AnalyzeConditionsAsync(IReadOnlyList<SearchCondition> value) { conditions = value; await AnalyzeAsync(); }
-    public void SetParameterValues(IReadOnlyDictionary<string, IReadOnlyList<string>> value) => parameterValues = value;
-    public async Task ClearAllFiltersAsync() { if (Session.Busy) return; filters = null; conditions = []; parameterValues = new Dictionary<string, IReadOnlyList<string>>(); SaveParameterDefaults = false; filterEditorVersion++; await AnalyzeAsync(); }
-    private AnalysisRequest SaveRequest
-    {
-        get
-        {
-            var request = Request;
-            if (SaveParameterDefaults && request.Filters != null)
-                request = request with { Filters = request.Filters with { Parameters = request.Filters.Parameters.Select(p => p with { Defaults = parameterValues.TryGetValue(p.Id, out var value) ? value.ToArray() : p.Defaults, RelativeDate = "" }).ToArray() } };
-            return request;
-        }
-    }
+    public async Task ClearAllFiltersAsync() { if (Session.Busy) return; filters = null; conditions = [];  filterEditorVersion++; await AnalyzeAsync(); }
+    private AnalysisRequest SaveRequest => Request;
     private IReadOnlyList<SearchCondition> templateConditions = [];
     private string DefaultFilterSummary => string.Join(" AND ", new[] { AnalysisFilters.Summary(templateFilters), string.Join(" AND ", templateConditions.Select(c => (string.IsNullOrEmpty(c.Column) ? "All text fields" : c.Column) + " contains \"" + c.Text + "\"")) }.Where(s => !string.IsNullOrEmpty(s)));
     private void SetTemplateConditions(AnalysisRequest request) { templateConditions = request.Conditions?.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray() ?? []; templateFilters = AnalysisFilters.Snapshot(request.Filters); }
@@ -153,8 +136,7 @@ else if (settingsDialog == "save-template")
     private void CommitSavedTemplate(AnalysisRequest saved)
     {
         SetTemplateConditions(saved);
-        if (SaveParameterDefaults) filters = AnalysisFilters.Snapshot(saved.Filters);
-        SaveParameterDefaults = false;
+
     }
     public async Task NewTemplateAsync()
     {
@@ -166,9 +148,9 @@ else if (settingsDialog == "save-template")
             groups = request.Groups.ToList(); calculations = request.Calculations.ToList(); formulas = (request.Formulas ?? []).ToList(); includeCount = request.IncludeCount;
             defaultSort = request.SortBy ?? ""; defaultSortDescending = request.SortDescending;
             conditions = request.Conditions?.ToArray() ?? [];
-            filters = AnalysisFilters.Snapshot(request.Filters); parameterValues = AnalysisFilters.Resolve(filters); countFormat = request.CountFormat;
+            filters = AnalysisFilters.Snapshot(request.Filters); countFormat = request.CountFormat;
         }
-        selectedTemplateId = 0; templateConditions = []; templateFilters = null; NewTemplateName = ""; isNewTemplateDraft = true; SaveParameterDefaults = false; clipboardMessage = "";
+        selectedTemplateId = 0; templateConditions = []; templateFilters = null; NewTemplateName = ""; isNewTemplateDraft = true; clipboardMessage = "";
         filterEditorVersion++;
         Session.Reset(); displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
     }
@@ -196,9 +178,9 @@ else if (settingsDialog == "save-template")
         var request = await Session.LoadTemplateAsync(templateId);
         if (request == null) return;
         if (request.Conditions is { Count: > 0 }) conditions = request.Conditions.ToArray();
-        if (request.Filters != null) { filters = AnalysisFilters.Snapshot(request.Filters); parameterValues = AnalysisFilters.Resolve(filters); conditions = request.Conditions?.ToArray() ?? []; }
-        else if (request.Conditions is { Count: > 0 }) { filters = null; parameterValues = new Dictionary<string, IReadOnlyList<string>>(); }
-        countFormat = request.CountFormat; SaveParameterDefaults = false;
+        if (request.Filters != null) { filters = AnalysisFilters.Snapshot(request.Filters); conditions = request.Conditions?.ToArray() ?? []; }
+        else if (request.Conditions is { Count: > 0 }) { filters = null; }
+        countFormat = request.CountFormat;
         filterEditorVersion++;
         selectedTemplateId = templateId;
         isNewTemplateDraft = false;
@@ -240,7 +222,7 @@ else if (settingsDialog == "save-template")
         order = Enumerable.Range(0, Session.Result?.RowCount ?? 0).ToArray(); page = 0; sortColumn = -1; selected = null;
     }
     private int PageCount => Math.Max(1, (order.Length + 99) / 100);
-    private AnalysisRequest Request => new(groups.ToArray(), calculations.ToArray(), includeCount, Formulas: formulas.ToArray(), Conditions: conditions.ToArray(), SortBy: defaultSort, SortDescending: defaultSortDescending, Filters: filters, ParameterValues: filters == null ? null : AnalysisFilters.Resolve(filters, parameterValues), CountFormat: countFormat);
+    private AnalysisRequest Request => new(groups.ToArray(), calculations.ToArray(), includeCount, Formulas: formulas.ToArray(), Conditions: conditions.ToArray(), SortBy: defaultSort, SortDescending: defaultSortDescending, Filters: filters, CountFormat: countFormat);
     public async Task AnalyzeAsync()
     {
         if (Session.Busy) return;
@@ -264,7 +246,7 @@ else if (settingsDialog == "save-template")
         selectedTemplateId = 0;
         isNewTemplateDraft = false;
         templateConditions = [];
-        templateFilters = null; filters = null; parameterValues = new Dictionary<string, IReadOnlyList<string>>(); countFormat = null; SaveParameterDefaults = false;
+        templateFilters = null; filters = null; countFormat = null;
         filterEditorVersion++;
         Session.Reset(); displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
     }
