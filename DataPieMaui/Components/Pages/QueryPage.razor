@@ -13,9 +13,10 @@
 @code {
     private DBUtil.TableStruct SelectedQueryTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.QueryTable, "Select a table."), Type);
     public Task EditQueryTableAsync() => RunAsync("Open table editor", watch => OpenTableEditorAsync(SelectedQueryTable(), watch));
-    private void Generate(string kind)
+    private async Task Generate(string kind)
     {
         var table = SelectedQueryTable();
+        await Database.EnsureColumnsAsync(table);
         Form.Sql = kind switch
         {
             "UPDATE" => SqlWriter.WriteUpdate(table, Type),
@@ -24,16 +25,15 @@
         };
     }
 
-    public Task GenerateAsync(string kind) => RunAsync("Generate " + kind, watch =>
+    public Task GenerateAsync(string kind) => RunAsync("Generate " + kind, async watch =>
     {
         watch.Start();
-        Generate(kind);
-        return Task.CompletedTask;
+        await Generate(kind);
     });
 
     public Task PreviewAsync() => RunAsync("Query", async watch =>
     {
-        if (string.IsNullOrWhiteSpace(Form.Sql)) Generate("SELECT");
+        if (string.IsNullOrWhiteSpace(Form.Sql)) await Generate("SELECT");
         await Context.Preview.LoadAsync(Form.Sql, "SQL query", watch);
     });
     public Task OpenResultsAsync() => RunAsync("Open results", async watch =>

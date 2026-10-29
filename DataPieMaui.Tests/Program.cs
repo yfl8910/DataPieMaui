@@ -101,6 +101,25 @@ try
         Check(SqlServerDbAccess.ReadTableSchema(emptyReader).Count == 0, "Empty schema failed");
         return Task.CompletedTask;
     });
+    await Test("SQL Server connection summary preserves object identity without loading columns", () =>
+    {
+        using var tables = new DataTable(); tables.Columns.Add("Name", typeof(string)); tables.Columns.Add("Schema", typeof(string));
+        tables.Rows.Add("Orders", "dbo"); tables.Rows.Add("Orders", "archive");
+        using var definitions = new DataTable(); definitions.Columns.Add("Kind", typeof(string)); definitions.Columns.Add("Schema", typeof(string));
+        definitions.Columns.Add("Name", typeof(string)); definitions.Columns.Add("Id", typeof(int)); definitions.Columns.Add("HasParameters", typeof(int));
+        definitions.Rows.Add("View", "dbo", "Report", 10, 0); definitions.Rows.Add("Procedure", "dbo", "Run", 11, 1);
+        using var reader = new DataTableReader(new[] { tables, definitions });
+        var result = SqlServerDbAccess.ReadSchemaSummary(reader, "Example");
+        Check(result.Name == "Example" && result.Tables.Count == 2 && result.Tables.All(t => !t.ColumnsLoaded && t.Columns.Count == 0)
+            && result.Tables[1].TableSchemaName == "archive", "Summary loaded columns or lost schema identity");
+        Check(result.DefinitionObjects.Count == 2 && result.DefinitionObjects.Single(o => o.Kind == "Procedure").HasParameters
+            && result.ViewNames.Single() == "Report" && result.Procedures.Single().Name == "Run", "View or procedure summary changed");
+        using var missing = new DataTableReader(tables);
+        try { SqlServerDbAccess.ReadSchemaSummary(missing, "Example"); throw new Exception("Expected missing object list failure"); }
+        catch (InvalidOperationException) { }
+        Check(!SqlServerDbAccess.SummarySql.Contains("sys.columns", StringComparison.OrdinalIgnoreCase), "Connection summary unexpectedly reads columns");
+        return Task.CompletedTask;
+    });
     await Test("SQL Server import normalizes numeric/date blanks without changing text", () =>
     {
         using var data = new DataTable();

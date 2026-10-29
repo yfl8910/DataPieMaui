@@ -59,7 +59,11 @@
 
     private async Task ConnectAsync(Dbinfo record, bool save)
     {
-        await Database.ConnectAsync(Info(record));
+        bool connecting = true;
+        var progress = new Progress<string>(value => { if (connecting && State.Busy) State.Status = value; });
+        try { await Database.ConnectAsync(Info(record), progress); }
+        finally { connecting = false; }
+        var setupWatch = System.Diagnostics.Stopwatch.StartNew();
         State.DatabaseType = Database.Connection!.DatabaseType;
         Tables = Database.Schema!.Tables.Select(t => t.Name).ToArray();
         Form.ImportTable = Database.Schema.Tables.FirstOrDefault() is { } first ? DataPieMaui.Services.Shared.TableSelection.Key(first, Type) : "";
@@ -79,6 +83,8 @@
         State.Connection = record.Dbname + " · " + record.Dbtype;
         if (save) { await Task.Run(() => Store.Save(record, true)); await ReloadConnectionsAsync(); }
         Section = "Query";
+        setupWatch.Stop();
+        State.Status = "Connected · " + Database.ConnectionTiming + $" · Workspace {setupWatch.Elapsed.TotalSeconds:F2}s";
     }
 
     public Task ConnectSavedAsync() => RunAsync("Connect to database", async watch =>

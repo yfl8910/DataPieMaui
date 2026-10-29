@@ -67,7 +67,7 @@ public sealed class TableEditorSession
     public static TableEditorSession Open(string connectionString, string databaseType, string schema, string name)
     {
         using var access = DbAccessFactory.Create(connectionString, databaseType);
-        var table = access.ShowTables().SingleOrDefault(t => t.Name == name && (databaseType != "SQLSERVER" || t.TableSchemaName == schema))
+        var table = (access is SqlServerDbAccess sqlServer ? sqlServer.ReadTable(schema, name) : access.ShowTables().SingleOrDefault(t => t.Name == name))
             ?? throw new InvalidOperationException("The selected table is no longer available. Refresh the table list.");
         var editor = new TableEditorSession(connectionString, databaseType, table);
         editor.FindLocator(table);

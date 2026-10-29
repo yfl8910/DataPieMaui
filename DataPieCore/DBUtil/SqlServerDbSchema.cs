@@ -121,6 +121,32 @@ namespace DBUtil
             return dbs;
         }
 
+        // Login only needs object names. Read columns later for the selected table.
+        internal const string SummarySql = @"SELECT name, SCHEMA_NAME(schema_id) FROM sys.tables;
+SELECT CASE o.type WHEN 'V' THEN 'View' ELSE 'Procedure' END, s.name, o.name, o.object_id,
+CASE WHEN o.type IN ('P','PC') AND EXISTS (SELECT 1 FROM sys.parameters p WHERE p.object_id=o.object_id AND p.parameter_id>0) THEN 1 ELSE 0 END
+FROM sys.objects o JOIN sys.schemas s ON s.schema_id=o.schema_id
+WHERE o.type IN ('V','P','PC') AND o.is_ms_shipped=0 ORDER BY s.name,o.name";
+        public DbSchema ShowDbSchemaSummary()
+        {
+            if (conn.State != ConnectionState.Open) conn.Open();
+            using var command = conn.CreateCommand();
+            command.CommandText = SummarySql; command.CommandTimeout = 30;
+            using var reader = command.ExecuteReader();
+            return ReadSchemaSummary(reader, GetDbName());
+        }
+        internal static DbSchema ReadSchemaSummary(IDataReader reader, string database)
+        {
+            var tables = new List<TableStruct>();
+            while (reader.Read()) tables.Add(new TableStruct { Name = reader.GetString(0), TableSchemaName = reader.GetString(1), ColumnsLoaded = false });
+            if (!reader.NextResult()) throw new InvalidOperationException("The definition object result set is missing.");
+            var objects = new List<DefinitionObject>();
+            while (reader.Read()) objects.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)) { HasParameters = reader.GetInt32(4) == 1 });
+            return new DbSchema { Name = database, Tables = tables, DefinitionObjects = objects,
+                ViewNames = objects.Where(o => o.Kind == "View").Select(o => o.Name).ToList(),
+                Procedures = objects.Where(o => o.Kind == "Procedure").Select(o => new Proc { Name = o.Name, SchemaName = o.Schema }).ToList() };
+        }
+
         /// <summary>
         /// 获得所有表
         /// </summary>
@@ -145,6 +171,27 @@ LEFT JOIN PrimaryKeyColumns pk ON pk.object_id = c.object_id AND pk.column_id = 
 ORDER BY c.object_id, c.column_id";
             using var reader = GetDataReader(sql);
             return ReadTableSchema(reader);
+        }
+
+        public TableStruct ReadTable(string schema, string name)
+        {
+            const string sql = @"SELECT t.name, SCHEMA_NAME(t.schema_id), t.object_id FROM sys.tables t WHERE SCHEMA_NAME(t.schema_id)=@schema AND t.name=@name;
+WITH PrimaryKeyColumns AS (
+ SELECT ic.object_id, ic.column_id FROM sys.indexes i JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id
+ WHERE i.is_primary_key=1 AND ic.key_ordinal>0
+)
+SELECT c.object_id,c.name,ty.name,c.max_length,OBJECT_DEFINITION(c.default_object_id),c.is_nullable,c.is_identity,
+CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END,c.precision,c.scale,c.is_computed
+FROM sys.tables t JOIN sys.columns c ON c.object_id=t.object_id
+JOIN sys.types ty ON ty.user_type_id=CASE WHEN c.system_type_id=240 THEN c.user_type_id ELSE c.system_type_id END
+LEFT JOIN PrimaryKeyColumns pk ON pk.object_id=c.object_id AND pk.column_id=c.column_id
+WHERE SCHEMA_NAME(t.schema_id)=@schema AND t.name=@name ORDER BY c.object_id,c.column_id";
+            if (conn.State != ConnectionState.Open) conn.Open();
+            using var command = (SqlCommand)conn.CreateCommand();
+            command.CommandText = sql; command.CommandTimeout = 30;
+            command.Parameters.AddWithValue("@schema", schema); command.Parameters.AddWithValue("@name", name);
+            using var reader = command.ExecuteReader();
+            return ReadTableSchema(reader).SingleOrDefault() ?? throw new InvalidOperationException("The selected table is no longer available. Refresh the schema.");
         }
 
         internal static List<TableStruct> ReadTableSchema(IDataReader reader)

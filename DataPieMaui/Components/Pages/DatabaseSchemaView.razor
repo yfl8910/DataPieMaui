@@ -91,6 +91,7 @@
     public async Task DropSelectedTableAsync()
     {
         var table = SelectedTable();
+        await Database.EnsureColumnsAsync(table);
         await Context.TableActions.DropAsync(table);
         if (!Database.Schema!.Tables.Any(t => t.Name == table.Name && (Type != "SQLSERVER" || t.TableSchemaName == table.TableSchemaName)))
         { selected = null; columns = []; showStructure = false; }

@@ -27,6 +27,7 @@ namespace DBUtil
         public string Name { set; get; }
 
         public List<Column> Columns { get; set; } = new();
+        public bool ColumnsLoaded { get; set; } = true;
 
 
         public List<ForeignKeySchema> ForeignKeys { get; set; } = new();

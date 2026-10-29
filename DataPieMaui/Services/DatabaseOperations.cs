@@ -1,5 +1,6 @@
 using DataPieCore;
 using DBUtil;
+using System.Diagnostics;
 
 namespace DataPieMaui.Services;
 
@@ -7,20 +8,41 @@ internal sealed class DatabaseOperations
 {
     public DatabaseConnectionInfo? Connection { get; private set; }
     public DbSchema? Schema { get; private set; }
+    public string ConnectionTiming { get; private set; } = "";
     public IDbAccess OpenAccess() => Connection is { } connection
         ? DbAccessFactory.Create(connection.ConnectionString, connection.DatabaseType)
         : throw new InvalidOperationException("Connect to a database first.");
 
-    public async Task ConnectAsync(DatabaseConnectionInfo connection)
+    public async Task ConnectAsync(DatabaseConnectionInfo connection, IProgress<string>? progress = null)
     {
-        var schema = await Task.Run(() =>
+        var result = await Task.Run(() =>
         {
             using var access = DbAccessFactory.Create(connection.ConnectionString, connection.DatabaseType);
+            var watch = Stopwatch.StartNew();
+            progress?.Report("Connecting to database…");
             access.conn.Open();
-            return access.ShowDbSchema();
+            var opened = watch.Elapsed;
+            progress?.Report("Reading database object list…");
+            var schema = access is SqlServerDbAccess sqlServer ? sqlServer.ShowDbSchemaSummary() : access.ShowDbSchema();
+            var metadata = watch.Elapsed - opened;
+            string timings = $"Connection {opened.TotalSeconds:F2}s · Object list {metadata.TotalSeconds:F2}s · {schema.Tables.Count:N0} tables · {schema.DefinitionObjects.Count:N0} views/procedures";
+            Trace.TraceInformation("Database connection stages: {0}", timings);
+            return (schema, timings);
         });
         Connection = connection;
-        Schema = schema;
+        Schema = result.schema;
+        ConnectionTiming = result.timings;
+    }
+
+    public async Task EnsureColumnsAsync(TableStruct table)
+    {
+        if (Connection?.DatabaseType != "SQLSERVER" || table.ColumnsLoaded) return;
+        var owner = Schema;
+        var watch = Stopwatch.StartNew();
+        var columns = await Task.Run(() => { using var access = (SqlServerDbAccess)OpenAccess(); return access.ReadTable(table.TableSchemaName, table.Name).Columns; });
+        if (!ReferenceEquals(owner, Schema) || owner == null || !owner.Tables.Contains(table)) throw new InvalidOperationException("The database schema changed. Refresh and select the table again.");
+        table.Columns = columns; table.ColumnsLoaded = true;
+        Trace.TraceInformation("Loaded table columns in {0:F2}s; {1} columns.", watch.Elapsed.TotalSeconds, columns.Count);
     }
 
     public static void Import(string path, string table, IDbAccess access, bool validateFieldLengths = false, string sourceTableName = null)
@@ -66,10 +88,11 @@ internal sealed class DatabaseOperations
             throw new InvalidOperationException("Connect to SQL Server first.");
         using var access = (SqlServerDbAccess)OpenAccess();
         // The existing converter has process-wide state. The UI serializes all operations.
-        SqlServerToSQLite.dbs = Schema;
-        access.LoadForeignKeys(Schema.Tables);
+        var fullTables = access.ShowTables();
+        access.LoadForeignKeys(fullTables);
         Schema.ViewDefinitions = access.ReadViewDefinitions();
         Schema.Procedures = access.ReadProcedureDefinitions();
+        SqlServerToSQLite.dbs = new DbSchema { Name = Schema.Name, Tables = fullTables, ViewDefinitions = Schema.ViewDefinitions, Procedures = Schema.Procedures };
         var migration = SqlServerToSQLite.CreateSQLiteDatabase(path, null, true);
         SqlServerToSQLite.CopySqlServerRowsToSQLiteDB(access.ConnectionString, path, null);
         var warnings = migration.ViewErrors.Concat(migration.ProcedureErrors).ToArray();
