@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
@@ -14,7 +15,7 @@ namespace DataPieCore
             @"--[^\r\n]*|/\*[\s\S]*?\*/|[Nn]?'(?:''|[^'])*'|\[(?:\]\]|[^\]])*\]|""(?:""""|[^""])*""|[\p{L}_#@][\p{L}\p{N}_$#@]*|\d+(?:\.\d+)?|<>|!=|<=|>=|\S",
             RegexOptions.Compiled);
 
-        public static List<string> Create(SQLiteConnection connection, DbSchema schema)
+        public static List<string> Create(DbConnection connection, DbSchema schema)
         {
             var errors = new List<string>();
             var created = new List<ViewSchema>();
@@ -34,11 +35,11 @@ namespace DataPieCore
                 {
                     if (names[view.ViewName] != 1)
                         throw new NotSupportedException("Name conflicts with another table or view.");
-                    using var command = new SQLiteCommand(ConvertDefinition(view, objects), connection);
+                    using var command = SQLiteConnections.Command(ConvertDefinition(view, objects), connection);
                     command.ExecuteNonQuery();
                     created.Add(view);
                 }
-                catch (Exception ex) when (ex is SQLiteException || ex is NotSupportedException)
+                catch (Exception ex) when (ex is DbException || ex is NotSupportedException)
                 {
                     errors.Add($"{view.SchemaName}.{view.ViewName}: {ex.Message}");
                 }
@@ -53,12 +54,12 @@ namespace DataPieCore
                 {
                     try
                     {
-                        using var command = new SQLiteCommand($"SELECT * FROM {Quote(view.ViewName)} LIMIT 0", connection);
+                        using var command = SQLiteConnections.Command($"SELECT * FROM {Quote(view.ViewName)} LIMIT 0", connection);
                         using var reader = command.ExecuteReader();
                     }
-                    catch (SQLiteException ex)
+                    catch (DbException ex)
                     {
-                        using var drop = new SQLiteCommand($"DROP VIEW {Quote(view.ViewName)}", connection);
+                        using var drop = SQLiteConnections.Command($"DROP VIEW {Quote(view.ViewName)}", connection);
                         drop.ExecuteNonQuery();
                         created.Remove(view);
                         errors.Add($"{view.SchemaName}.{view.ViewName}: {ex.Message}");

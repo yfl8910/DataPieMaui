@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -25,7 +26,7 @@ namespace DBUtil
         {
             try
             {
-                using SQLiteCommand cmd = new SQLiteCommand(strSql, (SQLiteConnection)conn);
+                using var cmd = SQLiteConnections.Command(strSql, (DbConnection)conn);
                 if (conn.State != ConnectionState.Open)
                 {
                     conn.Open();
@@ -58,12 +59,12 @@ namespace DBUtil
 
         private DataSet GetDataSet(string strSql, IDbDataParameter[] paraArr)
         {
-            using var command = new SQLiteCommand(strSql, (SQLiteConnection)conn);
-            using var adapter = new SQLiteDataAdapter(command);
+            using var command = SQLiteConnections.Command(strSql, (DbConnection)conn);
+            using var adapter = new SQLiteConnections.Adapter(command);
             var result = new DataSet();
             try
             {
-                if (paraArr != null) command.Parameters.AddRange(paraArr);
+                if (paraArr != null) SQLiteConnections.AddParameters(command, paraArr);
                 if (conn.State != ConnectionState.Open) conn.Open();
                 adapter.Fill(result);
                 return result;
@@ -123,7 +124,7 @@ namespace DBUtil
             if (reader == null) throw new ArgumentNullException(nameof(reader));
             var names = Enumerable.Range(0, reader.FieldCount).Select(reader.GetName).ToArray();
             if (names.Length == 0) throw new ArgumentException("No columns to import.");
-            using var connection = new SQLiteConnection(ConnectionString);
+            using var connection = SQLiteConnections.Create(ConnectionString);
             connection.Open();
             using var transaction = connection.BeginTransaction();
             var blankAsNull = new bool[names.Length];
@@ -169,10 +170,11 @@ namespace DBUtil
                 : "INSERT INTO " + QuoteIdentifier(tableName) + " (" +
                 string.Join(",", ordinals.Select(i => QuoteIdentifier(destinationColumns[names[i]].Name))) + ") VALUES (" +
                 string.Join(",", Enumerable.Range(0, ordinals.Length).Select(i => "@p" + i)) + ")";
-            var parameters = new SQLiteParameter[ordinals.Length];
+            var parameters = new DbParameter[ordinals.Length];
             for (int i = 0; i < parameters.Length; i++)
             {
-                parameters[i] = new SQLiteParameter("@p" + i);
+                parameters[i] = command.CreateParameter();
+                parameters[i].ParameterName = "@p" + i;
                 command.Parameters.Add(parameters[i]);
             }
             command.Prepare();
@@ -224,13 +226,11 @@ namespace DBUtil
             try
             {
                 if (conn.State != ConnectionState.Open) conn.Open();
-                using var transaction = ((SQLiteConnection)conn).BeginTransaction();
-                using var command = new SQLiteCommand(script.Sql, (SQLiteConnection)conn)
-                {
-                    Transaction = transaction,
-                    CommandTimeout = 600
-                };
-                command.Parameters.AddRange(bound.Cast<SQLiteParameter>().ToArray());
+                using var transaction = ((DbConnection)conn).BeginTransaction();
+                using var command = SQLiteConnections.Command(script.Sql, (DbConnection)conn);
+                command.Transaction = transaction;
+                command.CommandTimeout = 600;
+                SQLiteConnections.AddParameters(command, bound);
                 rowsAffected = command.ExecuteNonQuery();
                 transaction.Commit();
                 return rowsAffected;

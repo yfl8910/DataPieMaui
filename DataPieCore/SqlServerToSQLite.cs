@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -50,7 +51,7 @@ namespace DataPieCore
                 CheckCancelled();
                 using var source = new SqlConnection(sqlConnString);
                 source.Open();
-                using var destination = new SQLiteConnection(CreateSQLiteConnectionString(sqlitePath, password));
+                using var destination = SQLiteConnections.Create(CreateSQLiteConnectionString(sqlitePath, password));
                 destination.Open();
                 foreach (var table in dbs.Tables)
                 {
@@ -60,11 +61,11 @@ namespace DataPieCore
                         CommandTimeout = commandTimeoutSeconds
                     };
                     using var reader = query.ExecuteReader(CommandBehavior.SequentialAccess);
-                    using var insert = BuildSQLiteInsert(table);
+                    using var insert = BuildSQLiteInsert(table, destination);
                     insert.Connection = destination;
-                    var parameters = insert.Parameters.Cast<SQLiteParameter>().ToArray();
+                    var parameters = insert.Parameters.Cast<DbParameter>().ToArray();
                     var types = table.Columns.Select(GetDbTypeOfColumn).ToArray();
-                    SQLiteTransaction transaction = destination.BeginTransaction();
+                    DbTransaction transaction = destination.BeginTransaction();
                     try
                     {
                         insert.Transaction = transaction;
@@ -253,9 +254,9 @@ namespace DataPieCore
         /// </summary>
         /// <param name="ts">The table schema object for the table.</param>
         /// <returns>A command object with the required functionality.</returns>
-        private static SQLiteCommand BuildSQLiteInsert(TableStruct ts)
+        private static DbCommand BuildSQLiteInsert(TableStruct ts, DbConnection connection)
         {
-            SQLiteCommand res = new SQLiteCommand();
+            var res = connection.CreateCommand();
 
             StringBuilder sb = new StringBuilder();
             sb.Append("INSERT INTO [" + ts.Name + "] (");
@@ -276,7 +277,8 @@ namespace DataPieCore
                     sb.Append(", ");
 
                 DbType dbType = GetDbTypeOfColumn(ts.Columns[i]);
-                SQLiteParameter prm = new SQLiteParameter(pname, dbType, ts.Columns[i].Name);
+                var prm = res.CreateParameter();
+                prm.ParameterName = pname; prm.DbType = dbType; prm.SourceColumn = ts.Columns[i].Name;
                 res.Parameters.Add(prm);
 
                 // Remember the parameter name in order to avoid duplicates
@@ -382,7 +384,7 @@ namespace DataPieCore
                 throw new InvalidOperationException($"Multiple source tables map to SQLite table '{duplicate.Key}'.");
 
             SQLiteConnection.CreateFile(sqlitePath);
-            using var connection = new SQLiteConnection(CreateSQLiteConnectionString(sqlitePath, password));
+            using var connection = SQLiteConnections.Create(CreateSQLiteConnectionString(sqlitePath, password));
             connection.Open();
             foreach (var table in dbs.Tables)
             {
@@ -400,7 +402,7 @@ namespace DataPieCore
                     continue;
                 string target = QuoteSQLiteName(parent.Name) + " (" + QuoteSQLiteNames(key.ReferencedColumnNames) + ")";
                 if (!indexedKeys.Add(target)) continue;
-                using var command = new SQLiteCommand($"CREATE UNIQUE INDEX {QuoteSQLiteName("__DataPie_FK_" + index++)} ON {target}", connection);
+                using var command = SQLiteConnections.Command($"CREATE UNIQUE INDEX {QuoteSQLiteName("__DataPie_FK_" + index++)} ON {target}", connection);
                 command.ExecuteNonQuery();
             }
             var result = new SQLiteMigrationResult();
@@ -433,12 +435,12 @@ namespace DataPieCore
         /// </summary>
         /// <param name="conn">The SQLite connection</param>
         /// <param name="dt">The table schema object for the table to be generated.</param>
-        private static void AddSQLiteTable(SQLiteConnection conn, TableStruct dt)
+        private static void AddSQLiteTable(DbConnection conn, TableStruct dt)
         {
             // Prepare a CREATE TABLE DDL statement
             string stmt = BuildCreateTableQuery(dt);
             // Execute the query in order to actually create the table.
-            using var cmd = new SQLiteCommand(stmt, conn);
+            using var cmd = SQLiteConnections.Command(stmt, conn);
             cmd.ExecuteNonQuery();
         }
 

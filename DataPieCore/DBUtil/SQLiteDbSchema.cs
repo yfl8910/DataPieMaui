@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Collections.Generic;
 using System;
 using System.Linq;
@@ -66,7 +67,7 @@ namespace DBUtil
             {
                 command.CommandText = "EXPLAIN SELECT * FROM main.\"" + view.Replace("\"", "\"\"") + "\"";
                 try { using var reader = command.ExecuteReader(); while (reader.Read()) { } validViews.Add(view); }
-                catch (SQLiteException) { /* Existing invalid views must not block unrelated repairs. */ }
+                catch (DbException) { /* Existing invalid views must not block unrelated repairs. */ }
             }
             command.CommandText = "DROP VIEW main." + quoted; command.ExecuteNonQuery();
             command.CommandText = draft; command.ExecuteNonQuery();
@@ -114,7 +115,7 @@ namespace DBUtil
         {
             string DBName;
 
-            using (SQLiteConnection connection = new SQLiteConnection(ConnectionString))
+            using (DbConnection connection = SQLiteConnections.Create(ConnectionString))
             {
                 DBName = connection.Database.ToString();
             }
@@ -151,9 +152,17 @@ namespace DBUtil
 
         public List<Column> ReadSchemaColumns(string tableName)
         {
+            using var connection = SQLiteConnections.Create(ConnectionString);
+            connection.Open();
+            return ReadSchemaColumns(connection, tableName);
+        }
+
+        private static List<Column> ReadSchemaColumns(DbConnection connection, string tableName)
+        {
             string quoted = DataPieCore.SqlQueryBuilder.QuoteIdentifier(tableName, "SQLITE");
             var columns = new List<Column>();
-            using (var reader = GetDataReader("PRAGMA main.table_xinfo(" + quoted + ")"))
+            using (var command = SQLiteConnections.Command("PRAGMA main.table_xinfo(" + quoted + ")", connection))
+            using (var reader = command.ExecuteReader())
                 while (reader.Read())
                     columns.Add(new Column
                     {
@@ -164,7 +173,8 @@ namespace DBUtil
                         IsComputed = Convert.ToInt32(reader.GetValue(6)) is 2 or 3
                     });
             bool primaryIndex = false;
-            using (var reader = GetDataReader("PRAGMA main.index_list(" + quoted + ")"))
+            using (var command = SQLiteConnections.Command("PRAGMA main.index_list(" + quoted + ")", connection))
+            using (var reader = command.ExecuteReader())
                 while (reader.Read()) if (reader.GetString(3) == "pk") primaryIndex = true;
             var keys = columns.Where(c => c.IsPrimaryKey).ToList();
             if (!primaryIndex && keys.Count == 1 && keys[0].Type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase))
@@ -187,9 +197,58 @@ namespace DBUtil
         };
         public DataTable GetSchema(string collectionName, string[] restictionValues)
         {
-            using var connection = new SQLiteConnection(ConnectionString);
+            using var connection = SQLiteConnections.Create(ConnectionString);
             connection.Open();
+            if (connection is Microsoft.Data.Sqlite.SqliteConnection)
+                return ReadCipherSchema(connection, collectionName, restictionValues);
             return connection.GetSchema(collectionName, restictionValues);
+        }
+
+        private DataTable ReadCipherSchema(DbConnection connection, string collectionName, string[] restrictions)
+        {
+            var result = new DataTable(collectionName);
+            if (collectionName == "Catalogs")
+            {
+                result.Columns.Add("Catalog_name");
+                using var command = SQLiteConnections.Command("PRAGMA database_list", connection);
+                using var reader = command.ExecuteReader();
+                while (reader.Read()) result.Rows.Add(reader.GetString(1));
+                return result;
+            }
+            if (collectionName != "Columns") throw new NotSupportedException("Unsupported SQLCipher schema collection: " + collectionName);
+            foreach (string name in new[] { "TABLE_NAME", "COLUMN_NAME", "DATA_TYPE" }) result.Columns.Add(name);
+            foreach (string name in new[] { "IS_NULLABLE", "PRIMARY_KEY", "UNIQUE", "AUTOINCREMENT" }) result.Columns.Add(name, typeof(bool));
+            result.Columns.Add("CHARACTER_MAXIMUM_LENGTH", typeof(int));
+            var tables = new List<string>();
+            using (var command = SQLiteConnections.Command("SELECT name FROM sqlite_schema WHERE type IN ('table','view') ORDER BY name", connection))
+            using (var reader = command.ExecuteReader())
+                while (reader.Read()) tables.Add(reader.GetString(0));
+            foreach (string table in tables)
+            {
+                if (restrictions?.Length > 2 && restrictions[2] != null && restrictions[2] != table) continue;
+                var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var indexes = new List<string>();
+                using (var command = SQLiteConnections.Command("PRAGMA index_list(" + QuoteIdentifier(table) + ")", connection))
+                using (var reader = command.ExecuteReader())
+                    while (reader.Read()) if (reader.GetInt64(2) == 1 && reader.GetInt64(4) == 0) indexes.Add(reader.GetString(1));
+                foreach (string index in indexes)
+                {
+                    using var command = SQLiteConnections.Command("PRAGMA index_info(" + QuoteIdentifier(index) + ")", connection);
+                    using var reader = command.ExecuteReader();
+                    if (reader.Read())
+                    {
+                        string column = reader.IsDBNull(2) ? null : reader.GetString(2);
+                        if (!reader.Read() && column != null) unique.Add(column);
+                    }
+                }
+                foreach (var column in ReadSchemaColumns(connection, table))
+                {
+                    if (restrictions?.Length > 3 && restrictions[3] != null && restrictions[3] != column.Name) continue;
+                    result.Rows.Add(table, column.Name, column.Type, column.IsNullable, column.IsPrimaryKey,
+                        unique.Contains(column.Name) || column.IsIdentity, column.IsIdentity, 0);
+                }
+            }
+            return result;
         }
 
         public DataTable GetSchema(string collectionName) => GetSchema(collectionName, null);

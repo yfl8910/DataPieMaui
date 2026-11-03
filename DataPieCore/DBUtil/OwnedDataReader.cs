@@ -30,7 +30,8 @@ namespace DBUtil
                     {
                         if ((parameter.Direction == ParameterDirection.Input || parameter.Direction == ParameterDirection.InputOutput)
                             && parameter.Value == null) parameter.Value = DBNull.Value;
-                        command.Parameters.Add(parameter);
+                        if (access is SQLiteDbAccess) SQLiteConnections.AddParameters(command, new[] { parameter });
+                        else command.Parameters.Add(parameter);
                     }
                 if (access.conn.State != ConnectionState.Open) access.conn.Open();
                 return new OwnedDataReader(command.ExecuteReader(), command, access);

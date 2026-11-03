@@ -49,7 +49,8 @@ namespace DataPieMaui.Services
             using var command = new SQLiteCommand(sql, connection);
             command.Parameters.AddWithValue("@id", record.Id);
             command.Parameters.AddWithValue("@name", record.Dbname);
-            command.Parameters.AddWithValue("@connection", record.ConnectionStrings);
+            command.Parameters.AddWithValue("@connection", record.Dbtype == "SQLITE"
+                ? Shared.ConnectionCredentials.WithoutPassword(record.ConnectionStrings) : record.ConnectionStrings);
             command.Parameters.AddWithValue("@type", record.Dbtype);
             command.ExecuteNonQuery();
         }

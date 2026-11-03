@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -81,7 +82,7 @@ namespace DataPieCore
             public string Sql { get; set; }
         }
 
-        internal static List<string> Export(SQLiteConnection connection, string sqlitePath, DbSchema schema)
+        internal static List<string> Export(DbConnection connection, string sqlitePath, DbSchema schema)
         {
             string folder = Folder(sqlitePath);
             Directory.CreateDirectory(folder);
@@ -119,13 +120,13 @@ namespace DataPieCore
                         if (statement.StartsWith("-- UNSUPPORTED:", StringComparison.Ordinal)) continue;
                         try
                         {
-                            using var command = new SQLiteCommand("EXPLAIN " + statement, connection);
+                            using var command = SQLiteConnections.Command("EXPLAIN " + statement, connection);
                             foreach (var parameter in metadata.Parameters.Concat(metadata.Locals))
-                                command.Parameters.Add(new SQLiteParameter(parameter.Name, parameter.Type) { Value = DBNull.Value });
+                                SQLiteConnections.AddParameters(command, new[] { new SQLiteParameter(parameter.Name, parameter.Type) { Value = DBNull.Value } });
                             using var reader = command.ExecuteReader();
                             while (reader.Read()) { }
                         }
-                        catch (SQLiteException ex)
+                        catch (DbException ex)
                         {
                             metadata.Warnings.Add(ex.Message);
                             statements[i] = CommentSkipped(statement, ex.Message);
@@ -152,7 +153,7 @@ namespace DataPieCore
                         errors.Add($"{metadata.Source}: partial conversion; {string.Join(" | ", metadata.Warnings)}");
                     }
                 }
-                catch (Exception ex) when (ex is NotSupportedException || ex is SQLiteException)
+                catch (Exception ex) when (ex is NotSupportedException || ex is DbException)
                 {
                     metadata.Error = ex.Message;
                     errors.Add($"{metadata.Source}: {ex.Message}");
