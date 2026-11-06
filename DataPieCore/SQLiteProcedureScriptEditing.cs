@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System;
 using System.Data.SQLite;
 using System.IO;
@@ -52,13 +53,17 @@ internal static partial class SQLiteProcedureScripts
                 if (token[0] is '@' or ':' or '$' or '?')
                     if (!parameters.Contains(token) || token[0] != '@')
                         throw new ArgumentException("Unknown parameter or local variable: " + token + ". Edit only the SQL body using existing @parameters.");
-            using (var connection = new SQLiteConnection(connectionString))
+            using (var connection = SQLiteConnections.Create(connectionString))
             {
                 connection.Open();
                 foreach (string sql in texts)
                 {
-                    using var command = new SQLiteCommand("EXPLAIN " + sql, connection) { CommandTimeout = 30 };
-                    foreach (string parameter in parameters) command.Parameters.AddWithValue(parameter, DBNull.Value);
+                    using var command = SQLiteConnections.Command("EXPLAIN " + sql, connection);
+                    command.CommandTimeout = 30;
+                    foreach (string parameterName in parameters)
+                    {
+                        var parameter = command.CreateParameter(); parameter.ParameterName = parameterName; parameter.Value = DBNull.Value; command.Parameters.Add(parameter);
+                    }
                     using var reader = command.ExecuteReader();
                     while (reader.Read()) { }
                 }

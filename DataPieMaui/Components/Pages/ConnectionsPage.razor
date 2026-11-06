@@ -22,13 +22,19 @@
     {
         <h2>Connect to SQLite</h2><p class="muted">Connect and save opens an existing database and saves its connection. Creating a blank database connects without saving the connection.</p>
         <div class="actions align-end"><label class="grow">Database file<input @bind="Model.Form.SqlitePath" @bind:event="oninput" placeholder="Path to a SQLite database" /></label><button @onclick="BrowseSqliteAsync">Browse file</button></div>
-        <div class="actions"><button class="primary" @onclick="ConnectSqliteAsync">Connect and save</button><button @onclick="CreateSqliteAsync">Create blank database and connect</button></div>
+        <label>Password (optional)<input type="password" @bind="Model.Form.SqlitePassword" @bind:event="oninput" autocomplete="off" /></label>
+        <p class="muted">Supports SQLCipher 4 databases. Leave blank for unencrypted files. Passwords are used for this session only.</p>
+        <div class="actions"><button class="primary" @onclick="ConnectSqliteAsync">Connect and save</button><button @onclick="CreateSqliteAsync" disabled="@(Model.Form.SqlitePassword.Length > 0)">Create blank database and connect</button></div>
     }
     else
     {
         <h2>Saved connections</h2>
         <div class="actions align-end"><label class="grow">Connection<select value="@Model.Form.SelectedConnectionId" @onchange="Select"><option value="0">Select a connection</option>@foreach (var item in Model.Connections) { <option value="@item.Id">@item.Dbname · @item.Dbtype</option> }</select></label><button class="primary" @onclick="ConnectSavedAsync">Connect</button><button class="danger" @onclick="DeleteConnectionAsync">Delete</button></div>
         <hr /><h2>Connection details</h2>
+        @if (Model.Connections.FirstOrDefault(c => c.Id == Model.Form.SelectedConnectionId)?.Dbtype == "SQLITE")
+        {
+            <label>SQLite password (optional, not saved)<input type="password" @bind="Model.Form.SqlitePassword" @bind:event="oninput" autocomplete="off" /></label>
+        }
         <label>Connection string<input type="text" value="@Model.Form.ConnectionString" readonly autocomplete="off" /></label>
     }
 </section>
@@ -51,7 +57,8 @@
         if (IsOperationRunning) return;
         Form.SelectedConnectionId = id;
         var selected = Connections.FirstOrDefault(x => x.Id == id);
-        Form.ConnectionString = selected == null ? "" : Info(selected).ConnectionString;
+        Form.ConnectionString = selected == null ? "" : DataPieMaui.Services.Shared.ConnectionCredentials.Display(Info(selected).ConnectionString);
+        Form.SqlitePassword = "";
         Notify();
     }
     private Dbinfo SelectedConnection() => Connections.FirstOrDefault(x => x.Id == Form.SelectedConnectionId) ?? throw new InvalidOperationException("Select a connection.");
@@ -62,6 +69,10 @@
         bool connecting = true;
         var progress = new Progress<string>(value => { if (connecting && State.Busy) State.Status = value; });
         try { await Database.ConnectAsync(Info(record), progress); }
+        catch (Exception) when (record.Dbtype == "SQLITE")
+        {
+            throw new InvalidOperationException("Unable to open the SQLite database. Check the file, permissions and password. Encrypted files must use SQLCipher 4 with default encryption settings.");
+        }
         finally { connecting = false; }
         var setupWatch = System.Diagnostics.Stopwatch.StartNew();
         State.DatabaseType = Database.Connection!.DatabaseType;
@@ -82,6 +93,7 @@
         Procedures.AddRange(Database.Schema.DefinitionObjects.Where(o => o.Kind == "Procedure").Select(o => new SelectableObject(o.Name, o.Kind) { DefinitionObject = o }));
         State.Connection = record.Dbname + " · " + record.Dbtype;
         if (save) { await Task.Run(() => Store.Save(record, true)); await ReloadConnectionsAsync(); }
+        if (record.Dbtype == "SQLITE") Form.SqlitePassword = "";
         Section = "Query";
         setupWatch.Stop();
         State.Status = "Connected · " + Database.ConnectionTiming + $" · Workspace {setupWatch.Elapsed.TotalSeconds:F2}s";
@@ -92,9 +104,10 @@
         var original = SelectedConnection();
         var record = new Dbinfo { Id = original.Id, Dbname = original.Dbname, Dbtype = original.Dbtype,
             ConnectionStrings = Info(original).ConnectionString };
+        if (record.Dbtype == "SQLITE") record.ConnectionStrings = DataPieMaui.Services.Shared.ConnectionCredentials.WithSqlitePassword(record.ConnectionStrings, Form.SqlitePassword);
         watch.Start();
         await ConnectAsync(record, false);
-        if (record.ConnectionStrings != original.ConnectionStrings)
+        if (record.ConnectionStrings != original.ConnectionStrings || record.Dbtype == "SQLITE")
         {
             await Task.Run(() => Store.Save(record));
             await ReloadConnectionsAsync();
@@ -130,17 +143,18 @@
     {
         var path = await Desktop.OpenAsync(".db", ".sqlite", ".sqlite3");
         if (path == null) return;
-        watch.Start(); Form.SqlitePath = path;
+        watch.Start(); Form.SqlitePath = path; Form.SqlitePassword = "";
     });
     public Task ConnectSqliteAsync() => RunAsync("Connect to SQLite", async watch =>
     {
         if (!File.Exists(Form.SqlitePath)) throw new FileNotFoundException("Select an existing SQLite database.");
         var path = Path.GetFullPath(Form.SqlitePath); watch.Start();
-        await ConnectAsync(new Dbinfo { Dbname = Path.GetFileNameWithoutExtension(path), Dbtype = "SQLITE", ConnectionStrings = new DBConfig { ProviderName = "SQLITE", DataBase = path }.GetConstring() }, true);
+        await ConnectAsync(new Dbinfo { Dbname = Path.GetFileNameWithoutExtension(path), Dbtype = "SQLITE", ConnectionStrings = new DBConfig { ProviderName = "SQLITE", DataBase = path, UserPwd = Form.SqlitePassword }.GetConstring() }, true);
     });
 
     public Task CreateSqliteAsync() => RunAsync("Create SQLite database", async watch =>
     {
+        if (Form.SqlitePassword.Length > 0) throw new InvalidOperationException("Clear the password to create a blank, unencrypted database. Creating encrypted databases is not supported.");
         var selectedPath = await Desktop.SelectNewFilePathAsync("NewDatabase", ".db");
         if (selectedPath == null) return;
         var path = Path.GetFullPath(selectedPath);

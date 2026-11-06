@@ -49,6 +49,10 @@ dotnet build DataPieMaui\DataPieMaui.csproj -t:Run -c Debug
 
 SQL Server 支持 Windows 或 SQL Server 身份验证。填写服务器和身份信息，点击 **Load databases** 选择数据库，再点击 **Connect and save**。
 
+SQLite 的 **Password (optional)** 支持使用默认加密参数的 SQLCipher 4 文件；普通文件请留空。密码只在当前会话内使用，不保存到连接配置；重新连接已保存的加密库时需再次输入。连接、查询、编辑、分析和导出共享该凭据。此入口不修改现有文件的加密方式，也不创建加密库。
+
+加密连接使用 `Microsoft.Data.Sqlite.Core` 与 `SQLitePCLRaw.bundle_e_sqlcipher 2.1.11`（包含 `provider.e_sqlcipher`、`batteries_v2` 和原生库）；普通 SQLite 保留原驱动。此 SQLCipher bundle 已被上游标记为停止维护，后续升级需验证新原生库的兼容性。
+
 SQLite 提供两种操作：
 
 - **Browse file → Connect and save**：打开已有数据库，并保存连接配置。

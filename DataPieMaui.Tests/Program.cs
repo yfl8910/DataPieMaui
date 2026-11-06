@@ -36,6 +36,7 @@ try
         Console.WriteLine($"{passed} regression checks passed.");
         return 0;
     }
+    await SqlCipherChecks.Run(root, Test);
     await Test("Import targets distinguish SQL Server schemas and quote qualified names", () =>
     {
         var dbo = new TableStruct { Name = "Items", TableSchemaName = "dbo" };
@@ -305,6 +306,26 @@ try
         records[0].Dbname = "Renamed"; destination.Save(records[0]);
         Check(destination.Load().Single().Dbname == "Renamed", "Update failed");
         destination.Delete(records[0].Id); Check(destination.Load().Count == 0, "Delete failed");
+        return Task.CompletedTask;
+    });
+    await Test("SQLite passwords are quoted, session-only and hidden in connection details", () =>
+    {
+        const string password = " secret;Password=other;quote=\"value\" ";
+        var config = new DBConfig { ProviderName = "SQLITE", DataBase = path, UserPwd = password };
+        var parsed = new SQLiteConnectionStringBuilder(config.GetConstring());
+        Check(parsed.Password == password && parsed.DataSource == path && parsed.FailIfMissing, "SQLite password or file path was not preserved safely");
+        Check(new SQLiteConnectionStringBuilder(DbAccessFactory.GetSQLiteConnectionString(path, password)).Password == password, "Legacy helper did not quote password safely");
+        var store = new ConnectionStore(Path.Combine(root, "password-connections.db"));
+        var record = new Dbinfo { Dbname = "Secret", Dbtype = "SQLITE", ConnectionStrings = config.GetConstring() };
+        store.Save(record, true);
+        config.UserPwd = "changed"; record.ConnectionStrings = config.GetConstring(); store.Save(record, true);
+        var saved = store.Load().Single();
+        Check(!saved.ConnectionStrings.Contains("password", StringComparison.OrdinalIgnoreCase) && new SQLiteConnectionStringBuilder(saved.ConnectionStrings).DataSource == path, "SQLite password persisted or produced duplicate connections");
+        var display = DataPieMaui.Services.Shared.ConnectionCredentials.Display(config.GetConstring());
+        Check(!display.Contains("changed") && display.Contains("********"), "Connection details exposed password");
+        var resumed = DataPieMaui.Services.Shared.ConnectionCredentials.WithSqlitePassword(saved.ConnectionStrings, password);
+        Check(new SQLiteConnectionStringBuilder(resumed).Password == password && !saved.ConnectionStrings.Contains(password), "Reconnect changed the saved configuration");
+        config.UserPwd = ""; Check(!new SQLiteConnectionStringBuilder(config.GetConstring()).ContainsKey("Password"), "Empty password changed ordinary SQLite connection behavior");
         return Task.CompletedTask;
     });
     await Test("SQL Server authentication string construction", () =>

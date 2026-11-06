@@ -100,21 +100,14 @@ namespace DBUtil
         /// <returns></returns>
         public static string GetSQLiteConnectionString(string absPath, string pwd)
         {
-            string str;
-            if (string.IsNullOrWhiteSpace(pwd))
-            {
-                str = "Data Source=" + absPath;
-            }
-            else
-            {
-                str = "Data Source=" + absPath + ";Password=" + pwd;
-            }
-            return str;
+            var builder = new System.Data.SQLite.SQLiteConnectionStringBuilder { DataSource = absPath };
+            if (!string.IsNullOrEmpty(pwd)) builder.Password = pwd;
+            return builder.ToString();
         }
 
         private static IDbAccess CreateSQLite(string connStr)
         {
-            System.Data.SQLite.SQLiteConnection conn = new System.Data.SQLite.SQLiteConnection(connStr);
+            var conn = SQLiteConnections.Create(connStr);
 
             IDbAccess iDb = new SQLiteDbAccess()
             {

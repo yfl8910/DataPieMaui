@@ -22,6 +22,7 @@ public sealed class WorkspaceForm
     public string Password { get; set; } = "";
     public string DatabaseName { get; set; } = "";
     public string SqlitePath { get; set; } = "";
+    public string SqlitePassword { get; set; } = "";
     public int SelectedConnectionId { get; set; }
     public string ConnectionString { get; set; } = "";
     public string QueryTable { get; set; } = "";

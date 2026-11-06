@@ -88,7 +88,7 @@ public sealed class TableEditorSession
             if (candidate == null) return;
             command.CommandText = $"SELECT {Quote(candidate)} FROM {destination} LIMIT 0";
             try { using var reader = command.ExecuteReader(); sqliteRowId = candidate; }
-            catch (System.Data.SQLite.SQLiteException) { /* WITHOUT ROWID tables use their declared key/original values. */ }
+            catch (System.Data.Common.DbException) { /* WITHOUT ROWID tables use their declared key/original values. */ }
         }
         else if (databaseType == "SQLSERVER")
         {

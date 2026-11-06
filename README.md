@@ -27,6 +27,12 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 - Export SQL Server schemas, supported tables, primary keys, defaults, views and stored procedures to a creation script, with skipped-object and dependency warnings.
 - Generate a SQL Server schema/procedure script from SQLite without copying rows or executing it against a server.
 
+## SQLite passwords
+
+The optional SQLite password supports SQLCipher 4 files with default encryption settings. Leave it empty for plain files. Passwords remain in the current session and are excluded from saved connections; re-enter the password when reconnecting. Queries, editing, analysis and exports reuse these credentials. The connection page does not change file encryption or create encrypted databases.
+
+Encrypted connections use `Microsoft.Data.Sqlite.Core` and `SQLitePCLRaw.bundle_e_sqlcipher 2.1.11`, including the provider, batteries and native binaries. Plain files retain the existing provider. Upstream has deprecated this bundle; future native-library upgrades require compatibility testing.
+
 ## Requirements
 
 - Windows x64. The project declares Windows 10 version 1809 as its minimum OS version.

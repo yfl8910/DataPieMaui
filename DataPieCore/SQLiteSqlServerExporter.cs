@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
@@ -16,7 +17,7 @@ public static class SQLiteSqlServerExporter
     private static string SQLiteName(string name) => "\"" + name.Replace("\"", "\"\"") + "\"";
     private static bool IsText(string type) => !type.Contains("INT") &&
         (type.Contains("CHAR") || type.Contains("TEXT") || type.Contains("CLOB"));
-    private static Dictionary<string, string> InferTextTypes(SQLiteConnection db, string table, List<object[]> columns)
+    private static Dictionary<string, string> InferTextTypes(DbConnection db, string table, List<object[]> columns)
     {
         var names = columns.Where(c => IsText(Convert.ToString(c[2]).ToUpperInvariant()))
             .Select(c => Convert.ToString(c[1])).ToArray();
@@ -25,7 +26,7 @@ public static class SQLiteSqlServerExporter
         // One bounded scan per table. CAST preserves numeric/mixed values as text;
         // .NET string.Length measures UTF-16 code units, including trailing spaces.
         string projection = string.Join(", ", names.Select(name => "CAST(" + SQLiteName(name) + " AS TEXT)"));
-        using var command = new SQLiteCommand("SELECT " + projection + " FROM " + SQLiteName(table) + " LIMIT " + TextSampleRows, db);
+        using var command = SQLiteConnections.Command("SELECT " + projection + " FROM " + SQLiteName(table) + " LIMIT " + TextSampleRows, db);
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -38,9 +39,9 @@ public static class SQLiteSqlServerExporter
         }
         return types;
     }
-    private static List<object[]> Rows(SQLiteConnection db,string sql)
+    private static List<object[]> Rows(DbConnection db,string sql)
     {
-        using var cmd=new SQLiteCommand(sql,db); using var reader=cmd.ExecuteReader(); var result=new List<object[]>();
+        using var cmd=SQLiteConnections.Command(sql,db); using var reader=cmd.ExecuteReader(); var result=new List<object[]>();
         while(reader.Read()) { var values=new object[reader.FieldCount]; reader.GetValues(values); result.Add(values); }
         return result;
     }
@@ -48,7 +49,7 @@ public static class SQLiteSqlServerExporter
     {
         var builder=new SQLiteConnectionStringBuilder(connectionString) { ReadOnly=true, FailIfMissing=true, Pooling=false };
         var warnings=new List<string>(); var sql=new StringBuilder("-- DataPie SQLite to SQL Server: schema only; no data is copied.\n-- Review and execute in the intended SQL Server database. Tables are mapped to dbo.\n-- Text types sample the first 1000 returned rows per table (no explicit ordering).\n-- NULL/empty/whitespace-only values are ignored; UTF-16 length <=255 uses NVARCHAR(255), otherwise NVARCHAR(MAX).\n-- Empty samples use NVARCHAR(255); later rows may require a wider type.\n\n");
-        using var db=new SQLiteConnection(builder.ToString()); db.Open();
+        using var db=SQLiteConnections.Create(builder.ToString()); db.Open();
         var tables=Rows(db,"SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*' ORDER BY name");
         var exported=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach(var table in tables)

@@ -17,7 +17,7 @@ namespace DataPieMaui.Services
         public string GetConstring() => ProviderName switch
         {
             "SQLSERVER" => BuildSqlServerConnection(DataBase, true),
-            "SQLITE" => new SQLiteConnectionStringBuilder { DataSource = DataBase }.ToString(),
+            "SQLITE" => Shared.ConnectionCredentials.WithSqlitePassword(new SQLiteConnectionStringBuilder { DataSource = DataBase }.ToString(), UserPwd),
             _ => throw new NotSupportedException("Unsupported database type.")
         };
 
