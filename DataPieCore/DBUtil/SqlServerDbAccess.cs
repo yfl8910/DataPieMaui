@@ -137,7 +137,8 @@ namespace DBUtil
             connection.Open();
             using SqlBulkCopy bulkCopy = new SqlBulkCopy(connection)
             {
-                DestinationTableName = destination
+                DestinationTableName = destination,
+                BulkCopyTimeout = 600
             };
 
             // Discover columns using the SAME connection used for bulk copy
