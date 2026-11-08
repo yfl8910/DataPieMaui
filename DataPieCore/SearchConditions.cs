@@ -19,7 +19,7 @@ public static class SearchConditions
     {
         var clauses = new List<string>();
         var parameters = new List<SearchParameter>();
-        foreach (var condition in conditions.Where(c => !string.IsNullOrEmpty(c.Text)))
+        foreach (var condition in conditions.Where(c => !string.IsNullOrEmpty(c.Text)).Distinct())
         {
             string name = "@filter" + clauses.Count;
             if (string.IsNullOrEmpty(condition.Column) && allTextColumns != null)

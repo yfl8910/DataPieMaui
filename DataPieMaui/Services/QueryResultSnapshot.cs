@@ -8,10 +8,13 @@ public sealed class QueryResultSnapshot : IDisposable
     private readonly QueryPreviewResult data;
     private readonly IReadOnlyList<AnalysisNumberFormat>? formats;
     private readonly QueryResultArchive? archive;
+    private Action? cancelCapture;
     public int RowCount => data.RowCount;
     public int ColumnCount => data.ColumnCount;
     public bool Truncated => data.Truncated;
     public bool HasFullResult => archive != null || !data.Truncated;
+    public bool IsCapturing => cancelCapture != null;
+    public void CancelCapture() => cancelCapture?.Invoke();
     public long TotalRows => archive?.RowCount ?? data.RowCount;
     public string Connection { get; }
     public string Source { get; }
@@ -32,21 +35,27 @@ public sealed class QueryResultSnapshot : IDisposable
     };
 
     // The immutable result is shared, without copying rows or binary buffers.
-    public QueryResultSnapshot(QueryPreviewResult data, string connection, string source = "SQL query", IReadOnlyList<AnalysisNumberFormat>? formats = null, QueryResultArchive? archive = null)
+    public QueryResultSnapshot(QueryPreviewResult data, string connection, string source = "SQL query", IReadOnlyList<AnalysisNumberFormat>? formats = null, QueryResultArchive? archive = null, Action? cancelCapture = null)
     {
         this.data = data;
         this.formats = formats;
         this.archive = archive;
+        this.cancelCapture = cancelCapture;
         Connection = connection;
         Source = source;
     }
-    public QueryResultSnapshot SearchFull(Func<Func<string, object>, bool> matcher)
+    public QueryResultSnapshot SearchFull(Func<Func<string, object>, bool> matcher, IReadOnlyCollection<int>? matchColumns = null)
     {
         if (archive == null) throw new InvalidOperationException("The full query result is not available. Run the query again to enable full-result search.");
-        return new QueryResultSnapshot(archive.Search(matcher), Connection, Source, formats, archive);
+        return new QueryResultSnapshot(archive.Search(matcher, matchColumns: matchColumns), Connection, Source, formats, archive);
     }
     public bool HasArchive => archive != null;
-    public void Dispose() => archive?.Dispose();
+    internal bool SharesPreviewWith(QueryResultSnapshot other) => ReferenceEquals(data, other.data);
+    public void Dispose()
+    {
+        cancelCapture = null;
+        archive?.Dispose();
+    }
 
     public string CopyText(IEnumerable<int> indices)
     {

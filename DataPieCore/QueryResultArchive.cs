@@ -4,6 +4,7 @@ using System.Data;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace DataPieCore;
 
@@ -18,8 +19,10 @@ public sealed class QueryResultArchive : IDisposable
     public long RowCount { get; private set; }
     internal string StoragePath => stream.Name;
     private QueryResultArchive(FileStream stream, string[] columns, Type[] types) { this.stream = stream; this.columns = columns; this.types = types; }
-    public static QueryResultArchive Capture(IDataReader reader)
+    public static QueryResultArchive Capture(IDataReader reader, int previewLimit = 0,
+        Action<QueryPreviewResult> previewReady = null, CancellationToken cancellation = default)
     {
+        if (previewReady != null && previewLimit < 1) throw new ArgumentOutOfRangeException(nameof(previewLimit));
         string path = Path.Combine(Path.GetTempPath(), "datapie-query-" + Guid.NewGuid().ToString("N") + ".tmp");
         var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read, 65536, FileOptions.DeleteOnClose | FileOptions.SequentialScan);
         try
@@ -35,8 +38,18 @@ public sealed class QueryResultArchive : IDisposable
             var archive = new QueryResultArchive(stream, columns, types);
             using var writer = new BinaryWriter(stream, Encoding.UTF8, true);
             byte[] buffer = new byte[65536];
-            while (reader.Read())
+            while (true)
             {
+                cancellation.ThrowIfCancellationRequested();
+                if (!reader.Read()) break;
+                if (previewReady != null && archive.RowCount == previewLimit)
+                {
+                    writer.Flush();
+                    long end = stream.Position;
+                    previewReady(archive.Search(null, previewLimit, knownTruncated: true));
+                    cancellation.ThrowIfCancellationRequested();
+                    stream.Position = end;
+                }
                 for (int i = 0; i < columns.Length; i++)
                 {
                     if (reader.IsDBNull(i)) { writer.Write((byte)0); continue; }
@@ -44,7 +57,14 @@ public sealed class QueryResultArchive : IDisposable
                     {
                         long length = reader.GetBytes(i, 0, null, 0, 0); if (length > int.MaxValue) throw new InvalidOperationException("A binary value is too large to preview.");
                         writer.Write((byte)14); writer.Write((int)length); long offset = 0;
-                        while (offset < length) { int read = (int)reader.GetBytes(i, offset, buffer, 0, (int)Math.Min(buffer.Length, length - offset)); if (read <= 0) throw new EndOfStreamException("Incomplete binary query value."); writer.Write(buffer, 0, read); offset += read; }
+                        while (offset < length)
+                        {
+                            cancellation.ThrowIfCancellationRequested();
+                            int read = (int)reader.GetBytes(i, offset, buffer, 0, (int)Math.Min(buffer.Length, length - offset));
+                            if (read <= 0) throw new EndOfStreamException("Incomplete binary query value.");
+                            writer.Write(buffer, 0, read);
+                            offset += read;
+                        }
                     }
                     else Write(writer, reader.GetValue(i));
                 }
@@ -88,7 +108,28 @@ public sealed class QueryResultArchive : IDisposable
         14 => r.ReadBytes(r.ReadInt32()), 15 => r.ReadSByte(), 16 => r.ReadUInt16(), 17 => r.ReadUInt32(), 18 => r.ReadUInt64(),
         _ => throw new InvalidDataException("Invalid query snapshot value.")
     };
-    public QueryPreviewResult Search(Func<Func<string, object>, bool> matcher, int limit = 1000)
+    public QueryPreviewResult Search(Func<Func<string, object>, bool> matcher, int limit = 1000, IReadOnlyCollection<int> matchColumns = null)
+        => Search(matcher, limit, knownTruncated: false, matchColumns);
+
+    private static void Skip(BinaryReader reader)
+    {
+        int length = reader.ReadByte() switch
+        {
+            0 => 0,
+            1 => reader.Read7BitEncodedInt(),
+            2 or 3 or 15 => 1,
+            4 or 16 => 2,
+            5 or 7 or 17 => 4,
+            6 or 8 or 10 or 13 or 18 => 8,
+            9 or 12 => 16,
+            11 => 10,
+            14 => reader.ReadInt32(),
+            _ => throw new InvalidDataException("Invalid archived query value.")
+        };
+        if (length > 0) reader.BaseStream.Seek(length, SeekOrigin.Current);
+    }
+
+    private QueryPreviewResult Search(Func<Func<string, object>, bool> matcher, int limit, bool knownTruncated, IReadOnlyCollection<int> matchColumns = null)
     {
         if (limit < 1) throw new ArgumentOutOfRangeException(nameof(limit));
         lock (gate)
@@ -96,13 +137,43 @@ public sealed class QueryResultArchive : IDisposable
             if (disposed) throw new ObjectDisposedException(nameof(QueryResultArchive));
             stream.Position = 0;
             using var reader = new BinaryReader(stream, Encoding.UTF8, true);
-            var rows = new List<object[]>(limit); bool truncated = false;
+            var rows = new List<object[]>(limit); bool truncated = knownTruncated;
+            bool[] selected = null;
+            if (matcher != null && matchColumns != null)
+            {
+                selected = new bool[columns.Length];
+                foreach (int column in matchColumns) selected[column] = true;
+                if (Array.TrueForAll(selected, value => value)) selected = null;
+            }
+            var row = new object[columns.Length];
+            object GetValue(string name)
+            {
+                int column = int.Parse(name, CultureInfo.InvariantCulture);
+                if (selected != null && !selected[column]) throw new InvalidOperationException("The search accessed an undeclared column.");
+                return row[column];
+            }
+            Func<string, object> getValue = GetValue;
             for (long n = 0; n < RowCount; n++)
             {
-                var row = new object[columns.Length]; for (int i = 0; i < row.Length; i++) row[i] = Read(reader);
-                if (matcher != null && !matcher(name => row[int.Parse(name, CultureInfo.InvariantCulture)])) continue;
+                long start = selected == null ? 0 : stream.Position;
+                for (int i = 0; i < row.Length; i++)
+                {
+                    if (selected == null || selected[i]) row[i] = Read(reader);
+                    else Skip(reader);
+                }
+                if (matcher != null && !matcher(getValue)) continue;
                 if (rows.Count == limit) { truncated = true; break; }
+                if (selected != null)
+                {
+                    stream.Position = start;
+                    for (int i = 0; i < row.Length; i++)
+                    {
+                        if (selected[i]) Skip(reader);
+                        else row[i] = Read(reader);
+                    }
+                }
                 rows.Add(row);
+                row = new object[columns.Length];
             }
             return QueryPreviewResult.FromRows(columns, types, rows, truncated);
         }

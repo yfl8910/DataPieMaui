@@ -117,6 +117,9 @@ public sealed class TableEditorSession
     public void LoadPage(int page)
         => LoadPage(page, Conditions, AdvancedFilters);
 
+    public void NavigateToPage(int page)
+        => LoadPage(page, Conditions, AdvancedFilters, refreshCount: false);
+
     public void Search(string? column, string text) => Search(string.IsNullOrEmpty(text) ? Array.Empty<SearchCondition>() : new[] { new SearchCondition(column, text) });
     public void Search(IReadOnlyList<SearchCondition> conditions) => LoadPage(0, conditions.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray(), null);
     public void SearchAdvanced(AnalysisFilterConfig config) => LoadPage(0, Array.Empty<SearchCondition>(), AnalysisFilters.Snapshot(config));
@@ -161,7 +164,7 @@ public sealed class TableEditorSession
         finally { if (System.IO.File.Exists(temporary)) System.IO.File.Delete(temporary); }
     }
 
-    private void LoadPage(int page, IReadOnlyList<SearchCondition> conditions, AnalysisFilterConfig advanced)
+    private void LoadPage(int page, IReadOnlyList<SearchCondition> conditions, AnalysisFilterConfig advanced, bool refreshCount = true)
     {
         if (page < 0) throw new ArgumentOutOfRangeException(nameof(page));
         long offset = checked((long)page * PageSize);
@@ -174,8 +177,27 @@ public sealed class TableEditorSession
         string filter = predicate.Sql.Length == 0 ? "" : " WHERE " + predicate.Sql;
         string order = sqliteRowId != null ? Quote(sqliteRowId) : keys.Count > 0 ? string.Join(",", keys.Select(Quote)) : "(SELECT NULL)";
         string projection = sqliteRowId == null ? "*" : $"{Quote(sqliteRowId)} AS {Quote(rowIdAlias)},*";
-        command.CommandText = $"SELECT {(databaseType == "SQLSERVER" ? "COUNT_BIG(*)" : "COUNT(*)")} FROM {destination}{filter}";
-        long totalRows = Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        long totalRows = TotalRows;
+        if (refreshCount)
+        {
+            command.CommandText = $"SELECT {(databaseType == "SQLSERVER" ? "COUNT_BIG(*)" : "COUNT(*)")} FROM {destination}{filter}";
+            totalRows = Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        }
+        // A forward step can seek to the last visible key instead of walking the preceding pages.
+        if (!refreshCount && page == (long)Page + 1 && Data.Rows.Count > 0)
+        {
+            var last = Data.Rows[Data.Rows.Count - 1];
+            string key = sqliteRowId ?? (keys.Count == 1 ? keys.Single() : null);
+            object boundary = sqliteRowId != null ? rowIds[last]
+                : key != null && Data.Columns.Contains(key) && Comparable(Data.Columns[key].DataType) ? last[key] : null;
+            if (boundary is byte or short or int or long)
+            {
+                SearchConditions.Bind(command, new[] { new SearchParameter("@pageBoundary", boundary) });
+                filter = (predicate.Sql.Length == 0 ? " WHERE " : " WHERE (" + predicate.Sql + ") AND ")
+                    + Quote(key) + " > @pageBoundary";
+                offset = 0;
+            }
+        }
         command.CommandText = databaseType == "SQLSERVER"
             ? $"SELECT * FROM {destination}{filter} ORDER BY {order} OFFSET {offset} ROWS FETCH NEXT {PageSize + 1} ROWS ONLY"
             : $"SELECT {projection} FROM {destination}{filter} ORDER BY {order} LIMIT {PageSize + 1} OFFSET {offset}";

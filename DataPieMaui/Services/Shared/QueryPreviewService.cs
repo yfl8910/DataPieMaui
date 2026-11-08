@@ -25,17 +25,60 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
     internal async Task LoadAsync(string sql, string source, Stopwatch watch)
     {
         watch.Start();
-        var result = await Task.Run(() =>
+        string connection = State.Connection;
+        using var cancellation = new CancellationTokenSource();
+        var firstPage = new TaskCompletionSource<QueryPreviewResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var capture = Task.Run(() =>
         {
-            using var access = Database.OpenAccess();
-            var (data, archive) = QueryPreview.LoadFull(access, sql, 1000);
-            try { return new QueryResultSnapshot(data, State.Connection, source, archive: archive); }
-            catch { archive.Dispose(); throw; }
+            try
+            {
+                using var access = Database.OpenAccess();
+                return QueryPreview.LoadFull(access, sql, 1000, data => firstPage.TrySetResult(data), cancellation.Token);
+            }
+            finally { firstPage.TrySetResult(null); }
         });
+
+        var preview = await firstPage.Task;
+        QueryResultSnapshot? pending = null;
+        if (preview != null)
+        {
+            pending = new QueryResultSnapshot(preview, connection, source, cancelCapture: cancellation.Cancel);
+            QuerySummary = $"{source} · Showing the first 1,000 rows · Saving full result…";
+            State.Status = QuerySummary;
+            try
+            {
+                Results.Set(pending);
+                await Desktop.ShowTablePreviewAsync(Results);
+            }
+            catch
+            {
+                cancellation.Cancel();
+                try { (await capture).Archive.Dispose(); }
+                catch (Exception ex) { Trace.TraceError("Query capture failed: {0}", ex); }
+                if (ReferenceEquals(Results.Current, pending)) Results.Set(new QueryResultSnapshot(preview, connection, source));
+                throw;
+            }
+        }
+
+        QueryResultSnapshot result;
+        try
+        {
+            var (data, archive) = await capture;
+            result = new QueryResultSnapshot(data, connection, source, archive: archive);
+        }
+        catch
+        {
+            if (preview != null && ReferenceEquals(Results.Current, pending))
+            {
+                Results.Set(new QueryResultSnapshot(preview, connection, source));
+                QuerySummary = $"{source} · Showing the first 1,000 rows · Full result unavailable";
+            }
+            throw;
+        }
         watch.Stop();
         Results.Set(result);
         QuerySummary = $"{source} · {result.TotalRows:N0} rows / {result.ColumnCount} columns" + (result.Truncated ? " · Showing the first 1,000 rows; search covers the full result." : "");
-        await Desktop.ShowTablePreviewAsync(Results);
+        if (pending == null) await Desktop.ShowTablePreviewAsync(Results);
         State.Status = $"Query completed in {watch.Elapsed.TotalSeconds:F1} s: " + QuerySummary;
     }
 }

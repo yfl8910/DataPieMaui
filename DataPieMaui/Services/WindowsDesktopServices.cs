@@ -28,6 +28,7 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
         window.Destroying += (_, _) =>
         {
             if (ReferenceEquals(resultWindow, window)) resultWindow = null;
+            session.Current?.CancelCapture();
             page.Release();
         };
         resultWindow = window;

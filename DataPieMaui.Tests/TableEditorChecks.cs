@@ -98,9 +98,18 @@ internal static class TableEditorChecks
             session.Search("Name", "match");
             Check(session.TotalRows == 205, "Search total does not count all matches");
             Check(session.Data.Rows.Count == 100 && session.HasNext, "Search was limited to visible rows");
-            session.LoadPage(2);
+            Execute("DELETE FROM SearchRows WHERE Id=1;");
+            session.NavigateToPage(1);
+            Check(Convert.ToInt64(session.Data.Rows[0]["Id"]) == 101 && session.Data.Rows.Count == 100,
+                "Forward paging skipped a row after an earlier row was removed");
+            Execute("INSERT INTO SearchRows VALUES(1,'match 1');");
+            Execute("INSERT INTO SearchRows VALUES(207,'match new');");
+            session.NavigateToPage(2);
             Check(session.TotalRows == 205, "Paging changed total count");
-            Check(session.Data.Rows.Count == 5 && !session.HasNext && session.SearchColumn == "Name", "Paging lost filter");
+            Check(session.Data.Rows.Count == 6 && !session.HasNext && session.SearchColumn == "Name", "Paging lost filter or did not load current data");
+            session.LoadPage(2);
+            Check(session.TotalRows == 206, "Refresh did not recalculate the filtered total");
+            Execute("DELETE FROM SearchRows WHERE Id=207;");
             session.Search("Id", "205");
             Check(session.Page == 0 && session.Data.Rows.Count == 1 && Convert.ToInt64(session.Data.Rows[0]["Id"]) == 205, "Typed search failed");
             session.Save(session.Data.Rows[0], new Dictionary<string, object> { ["Name"] = "edited" });

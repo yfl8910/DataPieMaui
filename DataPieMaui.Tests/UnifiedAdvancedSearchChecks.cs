@@ -98,14 +98,19 @@ internal static class UnifiedAdvancedSearchChecks
                 db.Open(); using var cmd = new SQLiteCommand("CREATE TABLE LargeRows(Id INTEGER, Name TEXT); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1505) INSERT INTO LargeRows SELECT x,'row '||x FROM n", db); cmd.ExecuteNonQuery();
             }
             using var access = DBUtil.DbAccessFactory.Create(cs, "SQLITE");
-            var (data, archive) = QueryPreview.LoadFull(access, "SELECT Id,Name,random() AS Nonce FROM LargeRows ORDER BY Id", 1000);
+            QueryPreviewResult? first = null;
+            var (data, archive) = QueryPreview.LoadFull(access, "SELECT Id,Name,random() AS Nonce,X'00FEFF' AS Payload FROM LargeRows ORDER BY Id", 1000, result => first = result);
             string temporary = archive.StoragePath;
             var snapshot = new QueryResultSnapshot(data, "Test", archive: archive);
             var previewSession = new QueryResultSession(); previewSession.Set(snapshot); var desktop = new Desktop();
             var preview = new PreviewHarness { Preview = previewSession, Desktop = desktop }; preview.Initialize();
             try
             {
+                Check(ReferenceEquals(first, data), "The completed archive did not reuse the early preview");
                 Check(snapshot.TotalRows == 1505 && snapshot.RowCount == 1000 && snapshot.Truncated, "Initial query did not capture all rows with a bounded preview");
+                var narrowMatch = snapshot.SearchFull(get => (string)get("1") == "row 1505", new[] { 1 });
+                Check(narrowMatch.RowCount == 1 && ((byte[])narrowMatch.GetValue(0, 3)).SequenceEqual(new byte[] { 0, 254, 255 }),
+                    "Column-limited search did not restore the binary value of the matching row");
                 await preview.ApplyPreviewConditionsAsync(new[] { new SearchCondition("1", "row 1505") }); await preview.CopyAsync(true);
                 Check(desktop.Text!.Contains("1505\trow 1505") && desktop.Text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 2, "Simple search did not find rows beyond the initial preview");
                 var config = new AnalysisFilterConfig(new[] { new AnalysisFilterGroup(new[] { Rule("last", "0", "Greater", "1500") }) }, Array.Empty<AnalysisParameter>());
@@ -121,6 +126,14 @@ internal static class UnifiedAdvancedSearchChecks
             }
             finally { preview.Dispose(); previewSession.Set(null); }
             Check(!File.Exists(temporary), "Temporary query snapshot was not deleted");
+            using var cancellation = new CancellationTokenSource();
+            try
+            {
+                var canceled = QueryPreview.LoadFull(access, "SELECT Id FROM LargeRows", 1000, _ => cancellation.Cancel(), cancellation.Token);
+                canceled.Archive.Dispose();
+                throw new Exception("Early preview was not published during capture or cancellation was ignored");
+            }
+            catch (OperationCanceledException) { }
         });
         await test("Data analysis single clear removes both legacy and advanced conditions", async () =>
         {

@@ -1,19 +1,26 @@
 using System;
 using System.Data;
+using System.Threading;
 using DBUtil;
 
 namespace DataPieCore;
 
 public static class QueryPreview
 {
-    public static (QueryPreviewResult Preview, QueryResultArchive Archive) LoadFull(IDbAccess access, string sql, int limit)
+    public static (QueryPreviewResult Preview, QueryResultArchive Archive) LoadFull(IDbAccess access, string sql, int limit,
+        Action<QueryPreviewResult> previewReady = null, CancellationToken cancellation = default)
     {
         if (limit < 1) throw new ArgumentOutOfRangeException(nameof(limit));
         if (access.conn.State != ConnectionState.Open) access.conn.Open();
         using var command = access.conn.CreateCommand(); command.CommandText = sql; command.CommandTimeout = 1000;
         using var reader = command.ExecuteReader();
-        var archive = QueryResultArchive.Capture(reader);
-        try { return (archive.Search(null, limit), archive); }
+        QueryPreviewResult first = null;
+        var archive = QueryResultArchive.Capture(reader, limit, previewReady == null ? null : data =>
+        {
+            first = data;
+            previewReady(data);
+        }, cancellation);
+        try { return (first ?? archive.Search(null, limit), archive); }
         catch { archive.Dispose(); throw; }
     }
     // Do not rewrite arbitrary SQL: it may contain CTEs, batches or procedures.

@@ -93,6 +93,9 @@ public sealed class TableAnalysis
     private static bool IsGroupable(Column c, string provider) => IsGroupable(c) || provider == "SQLITE" && BaseType(c) == "timestamp";
 
     public static AnalysisQuery BuildQuery(TableStruct table, string provider, AnalysisRequest request, bool validateOnly = false)
+        => BuildQuery(table, provider, request, validateOnly, preview: false);
+
+    private static AnalysisQuery BuildQuery(TableStruct table, string provider, AnalysisRequest request, bool validateOnly, bool preview)
     {
         if (provider is not ("SQLSERVER" or "SQLITE")) throw new ArgumentException("Unsupported database type.");
         foreach (var format in ResultFormats(request).Where(f => f != null)) format.Validate();
@@ -217,7 +220,8 @@ public sealed class TableAnalysis
         }
         string sql = "SELECT " + string.Join(", ", select) + " FROM " + tableName + filter;
         if (groups.Length > 0) sql += " GROUP BY " + string.Join(", ", groups);
-        sql = "SELECT " + string.Join(", ", output) + " FROM (" + sql + ") s";
+        sql = (preview && provider == "SQLSERVER" ? $"SELECT TOP ({PreviewLimit + 1}) " : "SELECT ")
+            + string.Join(", ", output) + " FROM (" + sql + ") s";
         if (!string.IsNullOrEmpty(request.SortBy) && !sortExpressions.ContainsKey(request.SortBy)) throw new ArgumentException("Select an available default sort calculation, or choose No default sort.");
         if (groups.Length > 0)
         {
@@ -229,6 +233,7 @@ public sealed class TableAnalysis
             }
             sql += " ORDER BY " + order;
         }
+        if (preview && provider == "SQLITE") sql += $" LIMIT {PreviewLimit + 1}";
         return new(sql, searchValue, validation, searchParameters);
     }
 
@@ -252,7 +257,7 @@ public sealed class TableAnalysis
     }
     public QueryPreviewResult Analyze(AnalysisRequest request)
     {
-        var query = BuildQuery(table, provider, request);
+        var query = BuildQuery(table, provider, request, validateOnly: false, preview: true);
         using var access = DbAccessFactory.Create(connectionString, provider); access.conn.Open();
         Validate(access.conn, query);
         return ReadPreview(access.conn, query);
@@ -261,7 +266,7 @@ public sealed class TableAnalysis
     {
         if (request.Filters != null) request = request with { ParameterValues = AnalysisFilters.Resolve(request.Filters, request.ParameterValues) };
         if (request.Groups.Count == 0) return new(Analyze(request), null);
-        var grouped = BuildQuery(table, provider, request);
+        var grouped = BuildQuery(table, provider, request, validateOnly: false, preview: true);
         var overall = BuildQuery(table, provider, request with { Groups = Array.Empty<string>() });
         using var access = DbAccessFactory.Create(connectionString, provider); access.conn.Open();
         Validate(access.conn, grouped);
@@ -270,11 +275,13 @@ public sealed class TableAnalysis
         var totals = ReadPreview(access.conn, overall);
         return new(rows, totals);
     }
+    private const int PreviewLimit = 1000;
+
     private static QueryPreviewResult ReadPreview(IDbConnection connection, AnalysisQuery query, IDbTransaction transaction = null)
     {
         using var command = Command(connection, query.Sql, query.SearchValue, query.Parameters, transaction);
         using var reader = command.ExecuteReader();
-        var result = QueryPreviewResult.Read(reader, 1000);
+        var result = QueryPreviewResult.Read(reader, PreviewLimit);
         if (result.Truncated) command.Cancel();
         return result;
     }
