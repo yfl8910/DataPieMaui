@@ -1,5 +1,6 @@
 using DataPieMaui.Services;
 using Microsoft.AspNetCore.Components.WebView.Maui;
+using Microsoft.Maui.Storage;
 
 namespace DataPieMaui;
 
@@ -8,12 +9,16 @@ public sealed class MainPage : ContentPage
 {
     private readonly WindowsDesktopServices desktop;
     private readonly BlazorWebView? webView;
+    private const string LanguagePreference = "ui-language";
+    private string language;
     public WorkspaceController Workspace { get; }
     public bool HasPendingTableEdits => desktop.HasPendingTableEdits;
 
     public MainPage()
     {
-        desktop = new WindowsDesktopServices(() => Window);
+        string systemLanguage = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+        language = Preferences.Default.Get(LanguagePreference, systemLanguage == "zh" ? "zh-CN" : "en");
+        desktop = new WindowsDesktopServices(() => Window, () => language);
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DataPie");
         Directory.CreateDirectory(directory);
         Workspace = new WorkspaceController(desktop, Path.Combine(directory, "connections.db"));
@@ -36,9 +41,20 @@ public sealed class MainPage : ContentPage
         webView.RootComponents.Add(new RootComponent
         {
             Selector = "#app", ComponentType = typeof(Components.Workspace),
-            Parameters = new Dictionary<string, object?> { ["Controller"] = Workspace }
+            Parameters = new Dictionary<string, object?>
+            {
+                ["Controller"] = Workspace,
+                ["InitialLanguage"] = language,
+                ["SaveLanguage"] = (Action<string>)SaveLanguage
+            }
         });
         Content = webView;
+    }
+
+    private void SaveLanguage(string value)
+    {
+        language = value;
+        Preferences.Default.Set(LanguagePreference, value);
     }
 
     public void Close()

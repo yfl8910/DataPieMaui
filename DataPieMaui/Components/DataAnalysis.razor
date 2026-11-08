@@ -1,18 +1,21 @@
+@inherits LocalizedComponent
 @using DataPieCore
 @using DataPieMaui.Services.Shared
 @inject IJSRuntime JS
+<CascadingValue Name="UiLanguage" Value="CurrentLanguage">
+<div lang="@CurrentLanguage" style="display: contents">
 <main class="analysis-page" inert="@(settingsDialog.Length > 0)">
-    <header><div><h1>Data analysis</h1><p>@Session.ConnectionLabel · @Session.Source.TableName</p></div><span class="badge">@(Session.Busy ? "Working…" : "Read-only")</span></header>
-    <div class="analysis-settings-scroll" tabindex="0" aria-label="Analysis settings">
+    <header><div><h1>@L("Data analysis", "数据分析")</h1><p>@Session.ConnectionLabel · @Session.Source.TableName</p></div><span class="badge">@(Session.Busy ? L("Working…", "处理中…") : L("Read-only", "只读"))</span></header>
+    <div class="analysis-settings-scroll" tabindex="0" aria-label="@L("Analysis settings", "分析设置")">
     <fieldset class="analysis-settings" disabled="@Session.Busy">
         @if (Session.TemplatesEnabled)
         {
             <div class="analysis-template-bar">
-                <select aria-label="Template" @bind="selectedTemplateId" @bind:after="TemplateSelectionChangedAsync"><option value="0">Select a template</option>@foreach (var template in Session.Templates) { <option value="@template.Id">@template.Name</option> }</select>
-                <button @onclick="() => ApplyTemplateAsync(selectedTemplateId)" disabled="@(selectedTemplateId == 0)">Apply template</button>
-                <button @onclick="SaveCurrentTemplateAsync">Save</button>
-                <button @onclick="OpenTemplateManager">Manage templates</button>
-                <button @onclick="NewTemplateAsync">New template</button>
+                <select aria-label="@L("Template", "模板")" @bind="selectedTemplateId" @bind:after="TemplateSelectionChangedAsync"><option value="0">@L("Select a template", "选择模板")</option>@foreach (var template in Session.Templates) { <option value="@template.Id">@template.Name</option> }</select>
+                <button @onclick="() => ApplyTemplateAsync(selectedTemplateId)" disabled="@(selectedTemplateId == 0)">@L("Apply template", "应用模板")</button>
+                <button @onclick="SaveCurrentTemplateAsync">@L("Save", "保存")</button>
+                <button @onclick="OpenTemplateManager">@L("Manage templates", "管理模板")</button>
+                <button @onclick="NewTemplateAsync">@L("New template", "新建模板")</button>
             </div>
             @if (isNewTemplateDraft) { <p class="notice">New template, not saved. Adjust settings and click Save to enter a new name.</p> }
         }
@@ -23,11 +26,11 @@
             <span title="@CalculationSummary">@CalculationSummary</span>
             @if (templateConditions.Count > 0 || templateFilters != null)
             {
-                <div class="analysis-default-filters"><strong>Default filters (saved)</strong><span>@DefaultFilterSummary</span></div>
+                <div class="analysis-default-filters"><strong>@L("Default filters (saved)", "已保存的默认筛选条件")</strong><span>@DefaultFilterSummary</span></div>
             }
         </div>
-        <SimpleSearch Fields="SearchFields" Value="conditions" ValueChanged="SetConditions" OnSearch="AnalyzeConditionsAsync" OnClear="ClearAllFiltersAsync" Disabled="Session.Busy" AllowAllText="true" SearchLabel="Analyze">
-            <Actions><button type="button" @onclick="OpenFilterSettings">Advanced search</button><button type="button" @onclick="Reset">Reset</button><label><input type="checkbox" @bind="exportFormatted" /> Format</label><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">Export</button></Actions>
+        <SimpleSearch Fields="SearchFields" Value="conditions" ValueChanged="SetConditions" OnSearch="AnalyzeConditionsAsync" OnClear="ClearAllFiltersAsync" Disabled="Session.Busy" AllowAllText="true" SearchLabel="@L("Analyze", "分析")">
+            <Actions><button type="button" @onclick="OpenFilterSettings">@L("Advanced search", "高级搜索")</button><button type="button" @onclick="Reset">@L("Reset", "重置")</button><label><input type="checkbox" @bind="exportFormatted" /> @L("Format", "应用格式")</label><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">@L("Export", "导出")</button></Actions>
         </SimpleSearch>
 
         @if (filters != null && (filters.Groups.Any(g => g.Rules.Count > 0) || filters.CommonRules?.Count > 0)) { <p>Advanced filters: @AnalysisFilters.Summary(filters)</p> }
@@ -47,7 +50,7 @@
             <Footer>
                 @if (Session.Totals is { } totals && Session.LastRequest is { } analyzed)
                 {
-                    <tr class="analysis-total-row"><th scope="row" title="Overall totals for all matching source rows, including groups outside this preview">Total</th>
+                    <tr class="analysis-total-row"><th scope="row" title="Overall totals for all matching source rows, including groups outside this preview">@L("Total", "合计")</th>
                         @for (int column = 0; column < result.ColumnCount; column++)
                         {
                             if (column < analyzed.Groups.Count) { <td></td> }
@@ -61,11 +64,11 @@
                 }
             </Footer>
         </TableDataGrid>
-        <div class="toolbar"><button @onclick="() => CopyAsync(false)" disabled="@(selected == null)">Copy selected row</button><button @onclick="() => CopyAsync(true)">Copy preview rows</button>
-            <div class="pagination"><button @onclick="() => page--" disabled="@(page == 0)">Previous</button><span>Page @(page + 1)/@PageCount · @result.RowCount groups</span><button @onclick="() => page++" disabled="@(page + 1 >= PageCount)">Next</button></div>
+        <div class="toolbar"><button @onclick="() => CopyAsync(false)" disabled="@(selected == null)">@L("Copy selected row", "复制选中行")</button><button @onclick="() => CopyAsync(true)">@L("Copy preview rows", "复制预览行")</button>
+            <div class="pagination"><button @onclick="() => page--" disabled="@(page == 0)">@L("Previous", "上一页")</button><span>Page @(page + 1)/@PageCount · @result.RowCount groups</span><button @onclick="() => page++" disabled="@(page + 1 >= PageCount)">@L("Next", "下一页")</button></div>
         </div>
     }
-    else { <div class="empty">Choose fields and click Analyze to view grouped results.</div> }
+    else { <div class="empty">@L("Choose fields and click Analyze to view grouped results.", "选择字段并点击“分析”，即可查看分组结果。")</div> }
     <footer><span role="status" style="white-space:pre-wrap">@(clipboardMessage.Length > 0 ? clipboardMessage : Session.Status)</span></footer>
 </main>
 @if (settingsDialog == "groups")
@@ -87,18 +90,22 @@ else if (settingsDialog == "templates")
 else if (settingsDialog == "save-template")
 {
     <div class="modal-overlay"><section class="editor-dialog" role="dialog" aria-modal="true" aria-labelledby="save-template-title" tabindex="-1">
-        <div class="dialog-header"><h2 id="save-template-title">Save template</h2><button data-dialog-close @onclick="CloseSettings" disabled="@Session.Busy" aria-label="Cancel saving template">×</button></div>
+        <div class="dialog-header"><h2 id="save-template-title">@L("Save template", "保存模板")</h2><button data-dialog-close @onclick="CloseSettings" disabled="@Session.Busy" aria-label="Cancel saving template">×</button></div>
         <form @onsubmit="SaveNewTemplateAsync" @onsubmit:preventDefault>
             <fieldset class="dialog-body" disabled="@Session.Busy">
-                <label>Template name<input @bind="NewTemplateName" @bind:event="oninput" maxlength="100" autofocus /></label>
+                <label>@L("Template name", "模板名称")<input @bind="NewTemplateName" @bind:event="oninput" maxlength="100" autofocus /></label>
                 <p>Saves current Group by, Calculations, default sort and nonempty search conditions. @(isNewTemplateDraft ? "Enter a different name to create a new template." : "The same table and name replaces the existing template.")</p>
                 <p role="status" style="white-space:pre-wrap">@Session.Status</p>
             </fieldset>
-            <div class="dialog-actions"><button type="submit" disabled="@(Session.Busy || string.IsNullOrWhiteSpace(NewTemplateName))">Save</button><button type="button" @onclick="CloseSettings" disabled="@Session.Busy">Cancel</button></div>
+            <div class="dialog-actions"><button type="submit" disabled="@(Session.Busy || string.IsNullOrWhiteSpace(NewTemplateName))">@L("Save", "保存")</button><button type="button" @onclick="CloseSettings" disabled="@Session.Busy">@L("Cancel", "取消")</button></div>
         </form>
     </section></div>
 }
+</div>
+</CascadingValue>
 @code {
+    [Parameter] public string InitialLanguage { get; set; } = "en";
+    protected override string CurrentLanguage => Language ?? InitialLanguage;
     [Parameter, EditorRequired] public DataAnalysisSession Session { get; set; } = default!;
     [Parameter, EditorRequired] public IDesktopServices Desktop { get; set; } = default!;
     private List<string> groups = [];

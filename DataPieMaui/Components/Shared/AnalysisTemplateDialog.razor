@@ -1,3 +1,4 @@
+@inherits LocalizedComponent
 @using DataPieCore
 @using DataPieMaui.Services.Shared
 @if (editing == "groups" && draft != null)
@@ -12,22 +13,22 @@ else
 {
 <div class="modal-overlay">
     <section class="editor-dialog template-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="template-manager-title" tabindex="-1">
-        <div class="dialog-header"><h2 id="template-manager-title">Manage templates</h2><button data-dialog-close @onclick="CloseAsync" disabled="@Session.Busy" aria-label="Close template manager">×</button></div>
+        <div class="dialog-header"><h2 id="template-manager-title">@L("Manage templates", "管理模板")</h2><button data-dialog-close @onclick="CloseAsync" disabled="@Session.Busy" aria-label="Close template manager">×</button></div>
         <div class="dialog-body template-manager-body" tabindex="0" aria-label="Template settings">
         <fieldset class="template-manager-fields" disabled="@Session.Busy">
             <div class="template-name-row">
-                <label>Template<select value="@selected" @onchange="SelectTemplate"><option value="0">Select a template</option>@foreach (var item in Session.Templates) { <option value="@item.Id">@item.Name</option> }</select></label>
-                <label>Template name<input @bind="TemplateName" @bind:event="oninput" maxlength="100" disabled="@(selected == 0)" placeholder="Enter a new name" /></label>
+                <label>@L("Template", "模板")<select value="@selected" @onchange="SelectTemplate"><option value="0">@L("Select a template", "选择模板")</option>@foreach (var item in Session.Templates) { <option value="@item.Id">@item.Name</option> }</select></label>
+                <label>@L("Template name", "模板名称")<input @bind="TemplateName" @bind:event="oninput" maxlength="100" disabled="@(selected == 0)" placeholder="Enter a new name" /></label>
             </div>
             @if (draft != null)
             {
                 <section class="analysis-config-panel" aria-label="Group by settings">
-                <h3>Group by</h3>
+                <h3>@L("Group by", "分组字段")</h3>
                 <p>@(draft.Groups.Count == 0 ? "Total (no grouping)" : string.Join(", ", draft.Groups))</p>
                 <button @onclick='() => OpenEditorAsync("groups")'>Edit Group by</button>
                 </section>
                 <section class="analysis-config-panel" aria-label="Calculation settings">
-                <h3>Calculations</h3>
+                <h3>@L("Calculations", "计算项")</h3>
                 <ul>
                     @foreach (var calculation in draft.Calculations) { <li>@calculation.DisplayName · @(calculation.Operation + "(" + calculation.Column + ")")</li> }
                     @if (draft.IncludeCount) { <li>Record count</li> }
@@ -51,14 +52,14 @@ else
             @if (confirmDelete)
             {
                 <p role="alert">Delete template '@Session.Templates.FirstOrDefault(t => t.Id == selected)?.Name'?</p>
-                <button class="danger" @onclick="DeleteAsync" disabled="@Session.Busy">Confirm delete</button><button @onclick="() => confirmDelete = false" disabled="@Session.Busy">Cancel</button>
+                <button class="danger" @onclick="DeleteAsync" disabled="@Session.Busy">@L("Confirm delete", "确认删除")</button><button @onclick="() => confirmDelete = false" disabled="@Session.Busy">@L("Cancel", "取消")</button>
             }
             else
             {
                 <button @onclick="UpdateAsync" disabled="@(Session.Busy || draft == null || string.IsNullOrWhiteSpace(TemplateName))">Update selected</button>
                 <button @onclick="() => confirmDelete = true" disabled="@(Session.Busy || selected == 0)">Delete template</button>
             }
-            <button @onclick="CloseAsync" disabled="@Session.Busy">Close</button>
+            <button @onclick="CloseAsync" disabled="@Session.Busy">@L("Close", "关闭")</button>
         </div>
     </section>
 </div>

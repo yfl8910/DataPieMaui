@@ -1,36 +1,36 @@
 @using DBUtil
 @inherits WorkspacePageBase
 <section class="card">
-    <div class="tabs" aria-label="Connection type">
-        @foreach (var tab in new[] { ("SqlServer", "SQL Server"), ("Sqlite", "SQLite"), ("Saved", "Saved connections") })
+    <div class="tabs" aria-label="@L("Connection type", "连接类型")">
+        @foreach (var tab in new[] { ("SqlServer", "SQL Server"), ("Sqlite", "SQLite"), ("Saved", L("Saved connections", "已保存的连接")) })
         {
             <button class="@(Model.Form.ConnectionTab == tab.Item1 ? "active" : "")" @onclick="() => Model.Form.ConnectionTab = tab.Item1">@tab.Item2</button>
         }
     </div>
     @if (Model.Form.ConnectionTab == "SqlServer")
     {
-        <h2>Connect to SQL Server</h2>
+        <h2>@L("Connect to SQL Server", "连接 SQL Server")</h2>
         <div class="form-grid">
-            <label>Server<input @bind="Model.Form.Server" @bind:event="oninput" placeholder="(local) or server\instance" /></label>
-            <label>Authentication<select @bind="Model.Form.Authentication"><option>Windows</option><option>SQL Server</option></select></label>
-            <label>Username<input @bind="Model.Form.UserName" @bind:event="oninput" disabled="@(Model.Form.Authentication == "Windows")" autocomplete="off" /></label>
-            <label>Password<input type="password" @bind="Model.Form.Password" @bind:event="oninput" disabled="@(Model.Form.Authentication == "Windows")" autocomplete="off" /></label>
+            <label>@L("Server", "服务器")<input @bind="Model.Form.Server" @bind:event="oninput" placeholder="(local) or server\instance" /></label>
+            <label>@L("Authentication", "身份验证")<select @bind="Model.Form.Authentication"><option>Windows</option><option>SQL Server</option></select></label>
+            <label>@L("Username", "用户名")<input @bind="Model.Form.UserName" @bind:event="oninput" disabled="@(Model.Form.Authentication == "Windows")" autocomplete="off" /></label>
+            <label>@L("Password", "密码")<input type="password" @bind="Model.Form.Password" @bind:event="oninput" disabled="@(Model.Form.Authentication == "Windows")" autocomplete="off" /></label>
         </div>
-        <div class="actions align-end"><button @onclick="LoadDatabasesAsync">Load databases</button><label class="grow">Database<select @bind="Model.Form.DatabaseName"><option value="">Select a database</option>@foreach (var name in Model.Databases) { <option value="@name">@name</option> }</select></label><button class="primary" @onclick="ConnectServerAsync">Connect and save</button></div>
+        <div class="actions align-end"><button @onclick="LoadDatabasesAsync">@L("Load databases", "加载数据库列表")</button><label class="grow">@L("Database", "数据库")<select @bind="Model.Form.DatabaseName"><option value="">@L("Select a database", "选择数据库")</option>@foreach (var name in Model.Databases) { <option value="@name">@name</option> }</select></label><button class="primary" @onclick="ConnectServerAsync">@L("Connect and save", "连接并保存")</button></div>
     }
     else if (Model.Form.ConnectionTab == "Sqlite")
     {
-        <h2>Connect to SQLite</h2><p class="muted">Connect and save opens an existing database and saves its connection. Creating a blank database connects without saving the connection.</p>
-        <div class="actions align-end"><label class="grow">Database file<input @bind="Model.Form.SqlitePath" @bind:event="oninput" placeholder="Path to a SQLite database" /></label><button @onclick="BrowseSqliteAsync">Browse file</button></div>
-        <label>Password (optional)<input type="password" @bind="Model.Form.SqlitePassword" @bind:event="oninput" autocomplete="off" /></label>
-        <p class="muted">Supports SQLCipher 4 databases. Leave blank for unencrypted files. Passwords are used for this session only.</p>
-        <div class="actions"><button class="primary" @onclick="ConnectSqliteAsync">Connect and save</button><button @onclick="CreateSqliteAsync" disabled="@(Model.Form.SqlitePassword.Length > 0)">Create blank database and connect</button></div>
+        <h2>@L("Connect to SQLite", "连接 SQLite")</h2><p class="muted">@L("Connect and save opens an existing database and saves its connection. Creating a blank database connects without saving the connection.", "“连接并保存”会打开现有数据库并保存连接。创建空数据库时会直接连接。")</p>
+        <div class="actions align-end"><label class="grow">@L("Database file", "数据库文件")<input @bind="Model.Form.SqlitePath" @bind:event="oninput" placeholder="@L("Path to a SQLite database", "SQLite 数据库文件路径")" /></label><button @onclick="BrowseSqliteAsync">@L("Browse file", "浏览文件")</button></div>
+        <label>@L("Password (optional)", "密码（可选）")<input type="password" @bind="Model.Form.SqlitePassword" @bind:event="oninput" autocomplete="off" /></label>
+        <p class="muted">@L("Supports SQLCipher 4 databases. Leave blank for unencrypted files. Passwords are used for this session only.", "支持 SQLCipher 4 数据库。未加密的文件可留空。密码仅用于当前会话。")</p>
+        <div class="actions"><button class="primary" @onclick="ConnectSqliteAsync">@L("Connect and save", "连接并保存")</button><button @onclick="CreateSqliteAsync" disabled="@(Model.Form.SqlitePassword.Length > 0)">@L("Create blank database and connect", "创建空数据库并连接")</button></div>
     }
     else
     {
-        <h2>Saved connections</h2>
-        <div class="actions align-end"><label class="grow">Connection<select value="@Model.Form.SelectedConnectionId" @onchange="Select"><option value="0">Select a connection</option>@foreach (var item in Model.Connections) { <option value="@item.Id">@item.Dbname · @item.Dbtype</option> }</select></label><button class="primary" @onclick="ConnectSavedAsync">Connect</button><button class="danger" @onclick="DeleteConnectionAsync">Delete</button></div>
-        <hr /><h2>Connection details</h2>
+        <h2>@L("Saved connections", "已保存的连接")</h2>
+        <div class="actions align-end"><label class="grow">@L("Connection", "连接")<select value="@Model.Form.SelectedConnectionId" @onchange="Select"><option value="0">@L("Select a connection", "选择连接")</option>@foreach (var item in Model.Connections) { <option value="@item.Id">@item.Dbname · @item.Dbtype</option> }</select></label><button class="primary" @onclick="ConnectSavedAsync">@L("Connect", "连接")</button><button class="danger" @onclick="DeleteConnectionAsync">@L("Delete", "删除")</button></div>
+        <hr /><h2>@L("Connection details", "连接详情")</h2>
         @if (Model.Connections.FirstOrDefault(c => c.Id == Model.Form.SelectedConnectionId)?.Dbtype == "SQLITE")
         {
             <label>SQLite password (optional, not saved)<input type="password" @bind="Model.Form.SqlitePassword" @bind:event="oninput" autocomplete="off" /></label>

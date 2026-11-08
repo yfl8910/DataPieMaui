@@ -2,12 +2,12 @@
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
 <section class="card">
-    <div class="actions align-end"><label class="grow">Table<select @bind="Model.Form.QueryTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label>
+    <div class="actions align-end"><label class="grow">@L("Table", "表")<select @bind="Model.Form.QueryTable"><option value="">@L("Select a table", "选择表")</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label>
         @foreach (var kind in new[] { "SELECT", "UPDATE", "DELETE" }) { <button @onclick="() => GenerateAsync(kind)">@kind</button> }
-        <button @onclick="EditQueryTableAsync" disabled="@(string.IsNullOrEmpty(Form.QueryTable))">Query&amp;Edit</button>
+        <button @onclick="EditQueryTableAsync" disabled="@(string.IsNullOrEmpty(Form.QueryTable))">@L("Query&Edit", "查询并编辑")</button>
     </div>
-    <label>SQL editor<textarea class="sql-editor" @bind="Model.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="Enter SQL. Preview shows up to 1,000 rows."></textarea></label>
-    <div class="actions"><button class="primary" @onclick="PreviewAsync">Preview query</button><button @onclick="ExecuteSqlAsync">Run SQL</button><span class="action-divider"></span><button @onclick="() => ExportQueryAsync(false, false)">Query to Excel</button><button @onclick="() => ExportQueryAsync(true, false)">Query to CSV</button></div>
+    <label>@L("SQL editor", "SQL 编辑器")<textarea class="sql-editor" @bind="Model.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="@L("Enter SQL. Preview shows up to 1,000 rows.", "输入 SQL。预览最多显示 1,000 行。")"></textarea></label>
+    <div class="actions"><button class="primary" @onclick="PreviewAsync">@L("Preview query", "预览查询")</button><button @onclick="ExecuteSqlAsync">@L("Run SQL", "执行 SQL")</button><span class="action-divider"></span><button @onclick="() => ExportQueryAsync(false, false)">@L("Query to Excel", "查询结果导出为 Excel")</button><button @onclick="() => ExportQueryAsync(true, false)">@L("Query to CSV", "查询结果导出为 CSV")</button></div>
 </section>
 
 @code {

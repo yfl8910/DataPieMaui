@@ -1,8 +1,9 @@
+@inherits LocalizedComponent
 @using DataPieCore
 @using DataPieMaui.Services.Shared
 <div class="modal-overlay">
     <section class="editor-dialog analysis-calculation-dialog" role="dialog" aria-modal="true" aria-labelledby="calculation-dialog-title" tabindex="-1">
-        <div class="dialog-header"><h2 id="calculation-dialog-title">Calculations</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close calculation settings">×</button></div>
+        <div class="dialog-header"><h2 id="calculation-dialog-title">@L("Calculations", "计算项")</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close calculation settings">×</button></div>
         <div class="dialog-body">
             <label><input type="checkbox" @bind="includeCount" /> Record count</label>
             @if (includeCount) { <AnalysisNumberFormatInput @bind-Value="countFormat" /> }
@@ -36,7 +37,7 @@
             <button @onclick="AddFormula" disabled="@(aggregates.Count == 0)">Add formula</button>
             <h3>Default sort</h3>
             <div class="analysis-calculation-row">
-                <label>Sort by<select @key="AggregateOptionsKey" aria-label="Sort by" value="@sortBy" @onchange="ChangeSortBy"><option value="">No default sort</option>
+                <label>@L("Sort by", "排序字段")<select @key="AggregateOptionsKey" aria-label="@L("Sort by", "排序字段")" value="@sortBy" @onchange="ChangeSortBy"><option value="">No default sort</option>
                     @foreach (var item in aggregates) { <option value="@("aggregate:" + item.Id)">@item.ToCalculation().DisplayName</option> }
                     @if (includeCount) { <option value="count">Record count</option> }
                     @foreach (var item in formulas) { <option value="@("formula:" + (string.IsNullOrEmpty(item.Id) ? item.Name.Trim() : item.Id))">@item.Name</option> }
@@ -45,7 +46,7 @@
             </div>
             @if (error.Length > 0) { <div class="dialog-error" role="alert">@error</div> }
         </div>
-        <div class="dialog-actions"><button @onclick="OnCancel">Cancel</button><button class="primary" @onclick="ApplyAsync">Apply</button></div>
+        <div class="dialog-actions"><button @onclick="OnCancel">@L("Cancel", "取消")</button><button class="primary" @onclick="ApplyAsync">@L("Apply", "应用")</button></div>
     </section>
 </div>
 @code {

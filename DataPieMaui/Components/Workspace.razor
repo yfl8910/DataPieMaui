@@ -1,10 +1,11 @@
 @implements IDisposable
 
-<div class="workspace-shell">
+<CascadingValue Name="UiLanguage" Value="language">
+<div class="workspace-shell" lang="@language">
     <div class="workspace-body" inert="@(Controller.Context.Dialogs.Current is not null)">
         <aside class="sidebar">
-            <div class="brand"><span class="brand-icon">D</span><div>DataPie V3.0.0<span>DATABASE WORKSPACE</span></div></div>
-            <nav aria-label="Workspace sections">
+            <div class="brand"><span class="brand-icon">D</span><div>DataPie V3.0.0<span>@L("DATABASE WORKSPACE", "数据库工作台")</span></div></div>
+            <nav aria-label="@L("Workspace sections", "工作台导航")">
                 @foreach (var item in navigation)
                 {
                     bool enabled = item.Id is "Connections" or "About" || Controller.Context.State.IsConnected;
@@ -17,13 +18,23 @@
                             </svg>
                         }
                         else { @item.Icon }
-                    </span>@item.Label</button>
+                    </span>@L(item.Label, item.ChineseLabel)</button>
                 }
             </nav>
-            <div class="sidebar-note">Local desktop workspace<br />SQL Server &amp; SQLite</div>
+            <div class="sidebar-note">@L("Local desktop workspace", "本地桌面工作台")<br />SQL Server &amp; SQLite</div>
         </aside>
         <div class="workspace-main">
-            <header class="topbar"><span>Workspace / <strong>@Title</strong></span><span class="connection-pill"><i class="@(Controller.Context.State.IsConnected ? "connected" : "")"></i>@Controller.Context.State.Connection</span></header>
+            <header class="topbar">
+                <span>@L("Workspace", "工作台") / <strong>@Title</strong></span>
+                <span class="connection-pill"><i class="@(Controller.Context.State.IsConnected ? "connected" : "")"></i>@(Controller.Context.State.IsConnected ? Controller.Context.State.Connection : L("Not connected", "未连接"))</span>
+                <label class="language-picker">
+                    <span>@L("Language", "界面语言")</span>
+                    <select value="@language" @onchange="ChangeLanguage" disabled="@Controller.Context.State.Busy">
+                        <option value="en" lang="en">English</option>
+                        <option value="zh-CN" lang="zh-CN">简体中文</option>
+                    </select>
+                </label>
+            </header>
             <main class="page-content">
                 <div class="page-heading"><p>@Description</p></div>
                 <CascadingValue Value="Controller" IsFixed="true">
@@ -44,42 +55,53 @@
                                 }
                             </fieldset>
                         </ChildContent>
-                        <ErrorContent><div class="callout danger">The page could not be displayed. <button @onclick="Recover">Reload page</button></div></ErrorContent>
+                        <ErrorContent><div class="callout danger">@L("The page could not be displayed.", "无法显示此页面。") <button @onclick="Recover">@L("Reload page", "重新加载页面")</button></div></ErrorContent>
                     </ErrorBoundary>
                 </CascadingValue>
             </main>
         </div>
         <footer class="statusbar" aria-live="polite">
             <span class="status-dot @(Controller.Context.State.Busy ? "working" : "")"></span>
-            <span class="status-text">@Controller.Context.State.Status</span>
-            @if (Controller.Context.State.Converting) { <button class="danger" @onclick="Controller.Conversion.CancelConversion">Cancel conversion</button> }
+            <span class="status-text">@(Controller.Context.State.Status == "Select or create a database connection." ? L("Select or create a database connection.", "请选择或创建数据库连接。") : Controller.Context.State.Status)</span>
+            @if (Controller.Context.State.Converting) { <button class="danger" @onclick="Controller.Conversion.CancelConversion">@L("Cancel conversion", "取消转换")</button> }
         </footer>
     </div>
     <WorkspaceDialogView Dialogs="Controller.Context.Dialogs" />
 </div>
+</CascadingValue>
 
 @code {
     [Parameter, EditorRequired] public WorkspaceController Controller { get; set; } = default!;
+    [Parameter] public string InitialLanguage { get; set; } = "en";
+    [Parameter] public Action<string>? SaveLanguage { get; set; }
+    private string language = "en";
     private bool disposed;
     private ErrorBoundary? boundary;
-    private readonly (string Id, string Label, string Icon, string Description)[] navigation =
+    private readonly (string Id, string Label, string ChineseLabel, string Icon, string Description, string ChineseDescription)[] navigation =
     [
-        ("Connections", "Database connection", "◎", "Connect to a database or manage your saved connections."),
-        ("DatabaseSchema", "Database schema", "▤", "Browse tables, views, procedures and column information."),
-        ("Query", "SQL query", "⌘", "Write SQL, preview results, and export your data."),
-        ("Import", "Import data", "↓", "Bring files into an existing database table."),
-        ("Export", "Batch export", "↑", "Export selected tables and views to Excel or CSV."),
-        ("Procedures", "Stored procedures", "▷", "Run selected procedures in sequence."),
-        ("Migration", "Database migration", "⇄", "Convert SQL Server to SQLite or generate SQL Server object scripts from the connected database."),
-        ("TableDesign", "Table design", "", "Create table structure from Excel or drop a table."),
-        ("About", "About", "ⓘ", "A local workspace for your database tasks.")
+        ("Connections", "Database connection", "数据库连接", "◎", "Connect to a database or manage your saved connections.", "连接数据库或管理已保存的连接。"),
+        ("DatabaseSchema", "Database schema", "数据库结构", "▤", "Browse tables, views, procedures and column information.", "浏览表、视图、存储过程和字段信息。"),
+        ("Query", "SQL query", "SQL 查询", "⌘", "Write SQL, preview results, and export your data.", "编写 SQL、预览查询结果并导出数据。"),
+        ("Import", "Import data", "导入数据", "↓", "Bring files into an existing database table.", "将文件导入现有数据库表。"),
+        ("Export", "Batch export", "批量导出", "↑", "Export selected tables and views to Excel or CSV.", "将选中的表和视图导出为 Excel 或 CSV。"),
+        ("Procedures", "Stored procedures", "存储过程", "▷", "Run selected procedures in sequence.", "按顺序运行选中的存储过程。"),
+        ("Migration", "Database migration", "数据库迁移", "⇄", "Convert SQL Server to SQLite or generate SQL Server object scripts from the connected database.", "将 SQL Server 转换为 SQLite，或为当前数据库生成 SQL Server 对象脚本。"),
+        ("TableDesign", "Table design", "表设计", "", "Create table structure from Excel or drop a table.", "根据 Excel 创建表结构，或删除表。"),
+        ("About", "About", "关于", "ⓘ", "A local workspace for your database tasks.", "在本地桌面上处理数据库任务。")
     ];
-    private string Title => navigation.First(x => x.Id == Controller.Context.Section).Label;
-    private string Description => navigation.First(x => x.Id == Controller.Context.Section).Description;
+    private string Title => L(navigation.First(x => x.Id == Controller.Context.Section).Label, navigation.First(x => x.Id == Controller.Context.Section).ChineseLabel);
+    private string Description => L(navigation.First(x => x.Id == Controller.Context.Section).Description, navigation.First(x => x.Id == Controller.Context.Section).ChineseDescription);
+    private string L(string english, string chinese) => language == "zh-CN" ? chinese : english;
+    private void ChangeLanguage(ChangeEventArgs args)
+    {
+        if (args.Value is not string value || value is not ("en" or "zh-CN") || language == value) return;
+        language = value;
+        SaveLanguage?.Invoke(value);
+    }
     protected override void OnInitialized()
     {
+        language = InitialLanguage == "zh-CN" ? "zh-CN" : "en";
         Controller.Changed += Refresh;
-
     }
     private void Refresh() => _ = InvokeAsync(() => { if (!disposed) StateHasChanged(); });
     private void Recover() => boundary?.Recover();

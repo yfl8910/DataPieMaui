@@ -1,3 +1,4 @@
+@inherits LocalizedComponent
 @using DataPieMaui.Services.Shared
 
 <p class="definition-target">Database: <strong>@Session.Database</strong> · @Session.Target.Kind: <strong>@Session.Target.DisplayName</strong></p>
@@ -6,7 +7,7 @@
 @if (Session.DiscardAction is not null)
 {
     <p role="alert">Discard your unsaved changes?</p>
-    <div class="actions"><button @onclick="Discard">Discard changes</button><button @onclick="Session.KeepEditing">Keep editing</button></div>
+    <div class="actions"><button @onclick="Discard">@L("Discard changes", "放弃更改")</button><button @onclick="Session.KeepEditing">@L("Keep editing", "继续编辑")</button></div>
 }
 else if (Session.ReviewSql is not null)
 {
@@ -23,10 +24,10 @@ else if (Session.Editing)
 else
 {
     <SqlDefinitionView Sql="@Session.Original.Sql" />
-    @if (Session.Original.CanEdit) { <button @onclick="Session.BeginEdit">Edit</button> }
+    @if (Session.Original.CanEdit) { <button @onclick="Session.BeginEdit">@L("Edit", "编辑")</button> }
     else if (!string.IsNullOrEmpty(Session.Original.EditRestriction)) { <p class="muted">@Session.Original.EditRestriction</p> }
 }
-<div class="actions dialog-actions"><button data-dismiss disabled="@Session.Saving" @onclick="Close">Close</button></div>
+<div class="actions dialog-actions"><button data-dismiss disabled="@Session.Saving" @onclick="Close">@L("Close", "关闭")</button></div>
 
 @code {
     [Parameter, EditorRequired] public DefinitionEditorSession Session { get; set; } = default!;

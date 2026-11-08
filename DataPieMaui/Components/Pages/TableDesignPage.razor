@@ -1,8 +1,8 @@
 @using DataPieCore
 @inherits WorkspacePageBase
 <section class="card table-design-card">
-    <div class="tabs" aria-label="Table design actions">
-        @foreach (var tab in new[] { ("Create", "Create table"), ("Drop", "Drop table") })
+    <div class="tabs" aria-label="@L("Table design actions", "表设计操作")">
+        @foreach (var tab in new[] { ("Create", L("Create table", "创建表")), ("Drop", L("Drop table", "删除表")) })
         {
             <button class="@(Form.TableDesignTab == tab.Item1 ? "active" : "")" aria-pressed="@(Form.TableDesignTab == tab.Item1)" @onclick="() => ChangeTab(tab.Item1)">@tab.Item2</button>
         }
@@ -10,27 +10,27 @@
 @if (Form.TableDesignTab == "Create")
 {
 <div class="table-design-panel">
-    <h2>Excel worksheet</h2>
-    <p class="muted">The first row supplies column names. The worksheet name becomes the table name; edit it directly in the SQL below.</p>
+    <h2>@L("Excel worksheet", "Excel 工作表")</h2>
+    <p class="muted">@L("The first row supplies column names. The worksheet name becomes the table name; edit it directly in the SQL below.", "首行用作字段名称，工作表名称用作表名。可在下方直接编辑 SQL。")</p>
     <div class="actions align-end">
-        <label class="grow">Excel file<input value="@Form.CreateTablePath" readonly placeholder="Select an Excel file" /></label>
-        <button @onclick="BrowseAsync">Browse file</button>
-        <label class="grow">Worksheet<select @bind="Form.CreateTableSheet"><option value="">Select a worksheet</option>@foreach (var sheet in Form.CreateTableSheets) { <option value="@sheet">@sheet</option> }</select></label>
-        <button @onclick="GenerateAsync" disabled="@(string.IsNullOrEmpty(Form.CreateTableSheet))">Generate SQL</button>
+        <label class="grow">@L("Excel file", "Excel 文件")<input value="@Form.CreateTablePath" readonly placeholder="@L("Select an Excel file", "选择 Excel 文件")" /></label>
+        <button @onclick="BrowseAsync">@L("Browse file", "浏览文件")</button>
+        <label class="grow">@L("Worksheet", "工作表")<select @bind="Form.CreateTableSheet"><option value="">@L("Select a worksheet", "选择工作表")</option>@foreach (var sheet in Form.CreateTableSheets) { <option value="@sheet">@sheet</option> }</select></label>
+        <button @onclick="GenerateAsync" disabled="@(string.IsNullOrEmpty(Form.CreateTableSheet))">@L("Generate SQL", "生成 SQL")</button>
     </div>
 </div>
 <div class="table-design-sql">
-    <label>SQL editor<textarea class="sql-editor" @bind="Form.CreateTableSql" @bind:event="oninput" spellcheck="false" placeholder="Generate CREATE TABLE SQL from an Excel worksheet"></textarea></label>
-    <details class="table-design-notes"><summary>Type inference and creation notes</summary><p class="muted">Types are inferred from the first 1,000 data rows after the header; blank cells and whitespace-only text are ignored. Later rows may require wider types or text lengths. Review the SQL before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.</p></details>
-    <div class="actions"><button class="primary" @onclick="CreateAsync" disabled="@(string.IsNullOrWhiteSpace(Form.CreateTableSql))">Create table</button></div>
+    <label>@L("SQL editor", "SQL 编辑器")<textarea class="sql-editor" @bind="Form.CreateTableSql" @bind:event="oninput" spellcheck="false" placeholder="@L("Generate CREATE TABLE SQL from an Excel worksheet", "根据 Excel 工作表生成 CREATE TABLE 语句")"></textarea></label>
+    <details class="table-design-notes"><summary>@L("Type inference and creation notes", "类型推断和建表说明")</summary><p class="muted">Types are inferred from the first 1,000 data rows after the header; blank cells and whitespace-only text are ignored. Later rows may require wider types or text lengths. Review the SQL before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.</p></details>
+    <div class="actions"><button class="primary" @onclick="CreateAsync" disabled="@(string.IsNullOrWhiteSpace(Form.CreateTableSql))">@L("Create table", "创建表")</button></div>
 </div>
 
 }
 else
 {
-    <div class="table-design-panel"><h2>Drop table</h2>
-        <p class="callout danger">Permanently delete the table structure and all its data from @State.Connection. This cannot be undone.</p>
-        <div class="actions align-end"><label class="grow">Table to delete<select @bind="Form.DropTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@DataPieMaui.Services.Shared.TableSelection.Key(table, Type)">@DataPieMaui.Services.Shared.TableSelection.Label(table, Type)</option> }</select></label><button class="danger" @onclick="DropTableAsync" disabled="@(string.IsNullOrEmpty(Form.DropTable))">Drop table</button></div>
+    <div class="table-design-panel"><h2>@L("Drop table", "删除表")</h2>
+        <p class="callout danger">@L($"Permanently delete the table structure and all its data from {State.Connection}. This cannot be undone.", $"将从 {State.Connection} 永久删除表结构及其全部数据。此操作无法撤销。")</p>
+        <div class="actions align-end"><label class="grow">@L("Table to delete", "要删除的表")<select @bind="Form.DropTable"><option value="">@L("Select a table", "选择表")</option>@foreach (var table in Database.Schema!.Tables) { <option value="@DataPieMaui.Services.Shared.TableSelection.Key(table, Type)">@DataPieMaui.Services.Shared.TableSelection.Label(table, Type)</option> }</select></label><button class="danger" @onclick="DropTableAsync" disabled="@(string.IsNullOrEmpty(Form.DropTable))">@L("Drop table", "删除表")</button></div>
     </div>
 }
 </section>

@@ -1,3 +1,4 @@
+@inherits LocalizedComponent
 @using DataPieCore
 <div class="@(Inline ? "advanced-search-inline-container" : "modal-overlay")">
     <section class="@(Inline ? "advanced-search-inline advanced-search-dialog" : "editor-dialog analysis-calculation-dialog advanced-search-dialog")" role="@(Inline ? "region" : "dialog")" aria-modal="@(Inline ? null : "true")" aria-label="@(Inline ? "Search conditions" : null)" aria-labelledby="@(Inline ? null : "filter-settings-title")" tabindex="@(Inline ? null : "-1")">
@@ -12,9 +13,9 @@
                     {
                         <div class="analysis-filter-rule" @key="rule.Id">
                             <span>@(rules.IndexOf(rule) == 0 ? "" : "AND")</span>
-                            <label>Field<select value="@rule.Column" @onchange="e => ChangeField(rule, e.Value?.ToString() ?? string.Empty)"><option value="">All text fields</option>@foreach (var field in AvailableFields) { <option value="@field.Name">@(string.IsNullOrEmpty(field.DisplayName) ? field.Name : field.DisplayName)</option> }</select></label>
+                            <label>Field<select value="@rule.Column" @onchange="e => ChangeField(rule, e.Value?.ToString() ?? string.Empty)"><option value="">@L("All text fields", "所有文本字段")</option>@foreach (var field in AvailableFields) { <option value="@field.Name">@(string.IsNullOrEmpty(field.DisplayName) ? field.Name : field.DisplayName)</option> }</select></label>
                             <label>Operator<select value="@rule.Operation" @onchange="e => ChangeOperation(rule, e.Value?.ToString() ?? string.Empty)">@foreach (string operation in Choices(rule)) { <option value="@operation">@OperationName(operation)</option> }</select></label>
-                            <button @onclick="() => rules.Remove(rule)" aria-label="Remove condition">×</button>
+                            <button @onclick="() => rules.Remove(rule)" aria-label="@L("Remove condition", "移除条件")">×</button>
                             @if (rule.Operation is not ("IsNull" or "IsNotNull"))
                             {
                                 <AnalysisFilterValues Kind="@Kind(rule)" Operation="@rule.Operation" Values="rule.Values" ValueChanged="v => ChangeValues(rule, v)" Label="@rule.Column" />
@@ -22,7 +23,7 @@
                             }
                         </div>
                     }
-                    <button @onclick="AddRule">Add condition</button>
+                    <button @onclick="AddRule">@L("Add condition", "添加条件")</button>
                 </section>
             @if (error.Length > 0) { <p class="dialog-error" role="alert">@error</p> }
             @if (!string.IsNullOrEmpty(ExternalError)) { <p class="dialog-error" role="alert">@ExternalError</p> }
@@ -31,7 +32,7 @@
         @if (ShowActions)
         {
         <div class="@(Inline ? "toolbar advanced-search-actions" : "dialog-actions")">
-            @if (!Inline) { <button @onclick="OnCancel" disabled="@Disabled">Cancel</button> }
+            @if (!Inline) { <button @onclick="OnCancel" disabled="@Disabled">@L("Cancel", "取消")</button> }
             <button class="primary" @onclick="ApplyAsync" disabled="@Disabled">@ApplyLabel</button>
             @if (Inline) { @if (ShowClear) { <button @onclick="OnClear" disabled="@Disabled">Clear search</button> } @Actions }
         </div>

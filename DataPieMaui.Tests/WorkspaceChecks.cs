@@ -481,6 +481,21 @@ internal static class WorkspaceChecks
                 if (section == "Export") Check(html.Contains("View definition") && !html.Contains("SQL definition"), "Definition action missing or SQL eagerly shown");
                 Check(!html.Contains("<script>alert(1)</script>"), "SQL rendered as markup");
                 Check(!html.Contains("workspace-body\" inert"), "Idle workspace is inert");
+                if (section is "Connections" or "Query")
+                {
+                    string chinese = await renderer.Dispatcher.InvokeAsync(async () =>
+                    {
+                        var component = await renderer.RenderComponentAsync<Workspace>(ParameterView.FromDictionary(new Dictionary<string, object?>
+                        {
+                            ["Controller"] = workspace, ["InitialLanguage"] = "zh-CN"
+                        }));
+                        return System.Net.WebUtility.HtmlDecode(component.ToHtmlString());
+                    });
+                    Check(chinese.Contains("lang=\"zh-CN\"") && chinese.Contains("界面语言")
+                        && chinese.Contains(section == "Connections" ? "连接 SQL Server" : "SQL 编辑器"),
+                        "Chinese language did not reach the workspace and its active page");
+                    Check(workspace.Context.Form.Sql == "SELECT '<script>alert(1)</script>'", "Localization changed the SQL draft");
+                }
                 if (renderUi) SaveHtml(section, html);
             }
             await using (var definitionRenderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>()))

@@ -4,16 +4,16 @@
 <section class="card">
     @if (IsSqlServer)
     {
-        <div class="tabs" aria-label="Procedure types">
-            <button class="@(!ParameterizedTab ? "active" : "")" aria-pressed="@(!ParameterizedTab)" @onclick='() => ChangeTab("WithoutParameters")'>Without parameters</button>
-            <button class="@(ParameterizedTab ? "active" : "")" aria-pressed="@ParameterizedTab" @onclick='() => ChangeTab("WithParameters")'>With parameters</button>
+        <div class="tabs" aria-label="@L("Procedure types", "存储过程类型")">
+            <button class="@(!ParameterizedTab ? "active" : "")" aria-pressed="@(!ParameterizedTab)" @onclick='() => ChangeTab("WithoutParameters")'>@L("Without parameters", "无参数")</button>
+            <button class="@(ParameterizedTab ? "active" : "")" aria-pressed="@ParameterizedTab" @onclick='() => ChangeTab("WithParameters")'>@L("With parameters", "有参数")</button>
         </div>
     }
-    else { <h2>Available procedures</h2> }
-    <ObjectSelection Items="VisibleProcedures" Label="Procedures" AllowSelection="@(!ParameterizedTab)" OnDefinition="Context.Definitions.ShowAsync" OnRunParameters="ParameterAction" />
+    else { <h2>@L("Available procedures", "可用存储过程")</h2> }
+    <ObjectSelection Items="VisibleProcedures" Label="@L("Procedures", "存储过程")" AllowSelection="@(!ParameterizedTab)" OnDefinition="Context.Definitions.ShowAsync" OnRunParameters="ParameterAction" />
     @if (!ParameterizedTab)
     {
-        <div class="actions"><button class="primary" @onclick="RunProceduresAsync">Run selected procedures</button><button @onclick="ClearSelection">Clear selection</button></div>
+        <div class="actions"><button class="primary" @onclick="RunProceduresAsync">@L("Run selected procedures", "运行选中的存储过程")</button><button @onclick="ClearSelection">@L("Clear selection", "清除选择")</button></div>
     }
 </section>
 

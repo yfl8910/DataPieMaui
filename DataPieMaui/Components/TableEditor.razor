@@ -1,3 +1,4 @@
+@inherits LocalizedComponent
 @using System.Data
 @using System.Globalization
 @using DataPieCore
@@ -6,40 +7,42 @@
 @inject IJSRuntime JS
 
 @implements IDisposable
+<CascadingValue Name="UiLanguage" Value="CurrentLanguage">
+<div lang="@CurrentLanguage" style="display: contents">
 @if (Preview != null)
 {
 <main class="preview-page" inert="@searchDialogOpen">
-    <header class="preview-header"><span title="@previewSnapshot?.Connection">@previewSnapshot?.Connection</span><span title="@previewSnapshot?.Source">@previewSnapshot?.Source</span><span class="badge">Read-only</span>@if (previewSnapshot != null) { <span>@previewSnapshot.RowCount.ToString("N0") rows · @previewSnapshot.ColumnCount columns</span> }</header>
+    <header class="preview-header"><span title="@previewSnapshot?.Connection">@previewSnapshot?.Connection</span><span title="@previewSnapshot?.Source">@previewSnapshot?.Source</span><span class="badge">@L("Read-only", "只读")</span>@if (previewSnapshot != null) { <span>@previewSnapshot.RowCount.ToString("N0") rows · @previewSnapshot.ColumnCount columns</span> }</header>
     @if (previewSnapshot is null)
     {
-        <div class="empty">Run a query in the main window to view results.</div>
+        <div class="empty">@L("Run a query in the main window to view results.", "请在主窗口执行查询以查看结果。")</div>
     }
     else
     {
         <SimpleSearch Fields="PreviewSearchFields" Value="previewDraftConditions" ValueChanged="SetPreviewConditions" OnSearch="ApplyPreviewConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="@(previewBusy || previewSnapshot.IsCapturing)" Notice="">
-            <Actions><button type="button" @onclick="OpenAdvancedSearch" disabled="@previewSnapshot.IsCapturing">Advanced filters</button></Actions>
+            <Actions><button type="button" @onclick="OpenAdvancedSearch" disabled="@previewSnapshot.IsCapturing">@L("Advanced filters", "高级筛选")</button></Actions>
         </SimpleSearch>
         @if (previewAdvanced != null) { <p>Advanced filters are applied.</p> }
         @if (!string.IsNullOrEmpty(dialogError)) { <p class="notice" role="alert">@dialogError</p> }
         @if (previewSnapshot.IsCapturing)
         {
-            <p class="notice">Saving the full result. Search will be available when it finishes. <button type="button" @onclick="previewSnapshot.CancelCapture">Cancel</button></p>
+            <p class="notice">@L("Saving the full result. Search will be available when it finishes.", "正在保存完整结果，完成后即可搜索。") <button type="button" @onclick="previewSnapshot.CancelCapture">@L("Cancel", "取消")</button></p>
         }
-        else if (!previewSnapshot.HasFullResult) { <p class="notice">Full-result search is unavailable. Run the query again.</p> }
+        else if (!previewSnapshot.HasFullResult) { <p class="notice">@L("Full-result search is unavailable. Run the query again.", "无法搜索完整结果，请重新执行查询。")</p> }
         @if (previewSnapshot.Truncated)
         {
-            <div class="notice">Showing the first 1,000 matching rows. @if (previewSnapshot.HasFullResult) { <text>Search covers the complete query result.</text> }</div>
+            <div class="notice">Showing the first 1,000 matching rows. @if (previewSnapshot.HasFullResult) { <text>@L("Search covers the complete query result.", "搜索范围包括全部查询结果。")</text> }</div>
         }
         <TableDataGrid TRow="int" Rows="@previewOrder.Skip(previewPage * PreviewPageSize).Take(PreviewPageSize)" ColumnCount="previewSnapshot.ColumnCount"
                        CellText="previewSnapshot.FormatCell" CellIsNull="previewSnapshot.IsNull" IsSelected="@(_ => false)"
-                       SortState="PreviewSortState" EmptyText="@(PreviewHasFilter ? "No matching records in the loaded preview." : "The query returned no rows.")">
+                       SortState="PreviewSortState" EmptyText="@(PreviewHasFilter ? L("No matching records in the loaded preview.", "已加载的预览中没有匹配记录。") : L("The query returned no rows.", "查询未返回数据。"))">
             <LeadingHeader>#</LeadingHeader>
             <ColumnHeader Context="column"><button @onclick="() => Sort(column)" disabled="@(previewSnapshot.GetColumnType(column) == typeof(byte[]))">@previewSnapshot.GetColumnName(column) @(previewSortColumn == column ? (previewDescending ? "▼" : "▲") : "")</button></ColumnHeader>
             <LeadingCell Context="index">@(index + 1)</LeadingCell>
         </TableDataGrid>
         <footer>
             <span role="status">@previewMessage</span>
-            <div class="pagination"><button @onclick="Previous" disabled="@(previewPage == 0)">Previous</button><span>Page @(previewPage + 1)/@PreviewPageCount · @previewOrder.Length.ToString("N0") rows</span><button @onclick="Next" disabled="@(previewPage + 1 >= PreviewPageCount)">Next</button></div>
+            <div class="pagination"><button @onclick="Previous" disabled="@(previewPage == 0)">@L("Previous", "上一页")</button><span>Page @(previewPage + 1)/@PreviewPageCount · @previewOrder.Length.ToString("N0") rows</span><button @onclick="Next" disabled="@(previewPage + 1 >= PreviewPageCount)">@L("Next", "下一页")</button></div>
         </footer>
     }
 </main>
@@ -50,15 +53,15 @@ else
 <main inert="@(DialogOpen || searchDialogOpen)">
     <header><div><p>@ConnectionLabel</p><p>@Session.TableName</p></div><span class="badge">@(Session.CanEdit ? "Table data" : "Read-only")</span></header>
     <div class="toolbar">
-        <button @onclick="BeginAdd" disabled="@(Session.IsBusy || DialogOpen || !Session.CanInsert)">Add record</button>
-        <button @onclick="BeginImport" disabled="@(Session.IsBusy || DialogOpen || Desktop == null)">Import file</button>
-        <button @onclick="BeginEdit" disabled="@(Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit)">EDIT</button>
-        <button @onclick="ExportExcelAsync" disabled="@(Session.IsBusy || DialogOpen)" title="Export all rows matching the applied search, across all pages">Export Excel</button>
-        <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">Delete selected</button>
-        <button @onclick="() => LoadAsync(Session.Page)" disabled="@(Session.IsBusy || DialogOpen)">Refresh</button>
+        <button @onclick="BeginAdd" disabled="@(Session.IsBusy || DialogOpen || !Session.CanInsert)">@L("Add record", "新增记录")</button>
+        <button @onclick="BeginImport" disabled="@(Session.IsBusy || DialogOpen || Desktop == null)">@L("Import file", "导入文件")</button>
+        <button @onclick="BeginEdit" disabled="@(Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit)">@L("EDIT", "编辑")</button>
+        <button @onclick="ExportExcelAsync" disabled="@(Session.IsBusy || DialogOpen)" title="Export all rows matching the applied search, across all pages">@L("Export Excel", "导出 Excel")</button>
+        <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">@L("Delete selected", "删除选中项")</button>
+        <button @onclick="() => LoadAsync(Session.Page)" disabled="@(Session.IsBusy || DialogOpen)">@L("Refresh", "刷新")</button>
     </div>
     <SimpleSearch Fields="EditorSearchFields" Value="editorConditions" ValueChanged="SetEditorConditions" OnSearch="ApplyEditorConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="@(Session.IsBusy || DialogOpen)">
-        <Actions><button type="button" @onclick="OpenAdvancedSearch">Advanced filters</button></Actions>
+        <Actions><button type="button" @onclick="OpenAdvancedSearch">@L("Advanced filters", "高级筛选")</button></Actions>
     </SimpleSearch>
     @if (Session.AdvancedFilters != null) { <p>Advanced filters are applied. A simple search replaces them.</p> }
     @if (!string.IsNullOrEmpty(dialogError)) { <p class="notice" role="alert">@dialogError</p> }
@@ -68,14 +71,14 @@ else
     <TableDataGrid TRow="DataRow" Rows="@(Session.Data.Rows.Cast<DataRow>())" ColumnCount="Session.Data.Columns.Count"
                    CellText="EditorCellText" CellIsNull="EditorCellIsNull" IsSelected="selected.Contains"
                    EmptyText="@(Session.SearchColumn != null || Session.AdvancedFilters != null ? "No matching records." : "No records.")">
-        <LeadingHeader><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> Select all</label></LeadingHeader>
+        <LeadingHeader><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> @L("Select all", "全选")</label></LeadingHeader>
         <ColumnHeader Context="column">@Session.Data.Columns[column].ColumnName</ColumnHeader>
         <LeadingCell Context="row"><input type="checkbox" aria-label="Select record" checked="@selected.Contains(row)" @onchange="e => Select(row, e.Value is true)" disabled="@(Session.IsBusy || DialogOpen)" /></LeadingCell>
     </TableDataGrid>
     <footer><span role="status" style="white-space:pre-wrap">@message</span><div class="pagination">
-        <button @onclick="() => LoadAsync(Session.Page - 1, refreshCount: false)" disabled="@(Session.Page == 0 || Session.IsBusy || DialogOpen)">Previous</button>
+        <button @onclick="() => LoadAsync(Session.Page - 1, refreshCount: false)" disabled="@(Session.Page == 0 || Session.IsBusy || DialogOpen)">@L("Previous", "上一页")</button>
         <span>Page @(Session.Page + 1)/@(Math.Max(1L, Session.TotalRows / TableEditorSession.PageSize + (Session.TotalRows % TableEditorSession.PageSize > 0 ? 1 : 0))) · @Session.TotalRows.ToString("N0") rows</span>
-        <button @onclick="() => LoadAsync(Session.Page + 1, refreshCount: false)" disabled="@(!Session.HasNext || Session.IsBusy || DialogOpen)">Next</button>
+        <button @onclick="() => LoadAsync(Session.Page + 1, refreshCount: false)" disabled="@(!Session.HasNext || Session.IsBusy || DialogOpen)">@L("Next", "下一页")</button>
     </div></footer>
 </main>
 
@@ -83,7 +86,7 @@ else
 {
     <div class="modal-overlay">
         <section class="editor-dialog" role="dialog" aria-modal="true" aria-labelledby="editor-dialog-title" data-busy="@(Session.IsBusy ? "true" : "false")" tabindex="-1">
-            <div class="dialog-header"><h2 id="editor-dialog-title">Import file</h2><button aria-label="Close dialog" data-dialog-close @onclick="RequestClose" disabled="@Session.IsBusy">×</button></div>
+            <div class="dialog-header"><h2 id="editor-dialog-title">@L("Import file", "导入文件")</h2><button aria-label="@L("Close dialog", "关闭对话框")" data-dialog-close @onclick="RequestClose" disabled="@Session.IsBusy">×</button></div>
             <div class="dialog-body">
                 <p>@ConnectionLabel</p>
                 <TableImportView Options="importOptions!" Disabled="Session.IsBusy" OnComplete="CompleteImportAsync" />
@@ -100,7 +103,7 @@ else if (DialogOpen)
                 <h2 id="editor-dialog-title">@(confirmDelete ? "Delete selected records" : adding ? "New record" : "Edit record")</h2>
                 <div class="dialog-window-actions">
                     @if (!confirmDelete) { <button type="button" aria-label="Maximize dialog" title="Maximize dialog" data-dialog-maximize disabled="@Session.IsBusy">□</button> }
-                    <button aria-label="Close dialog" data-dialog-close @onclick="RequestClose" disabled="@Session.IsBusy">×</button>
+                    <button aria-label="@L("Close dialog", "关闭对话框")" data-dialog-close @onclick="RequestClose" disabled="@Session.IsBusy">×</button>
                 </div>
             </div>
             <div class="dialog-body">
@@ -139,14 +142,14 @@ else if (DialogOpen)
             <div class="dialog-actions">
                 @if (confirmDiscard)
                 {
-                    <button @onclick="DiscardDraft" disabled="@Session.IsBusy">Discard changes</button>
-                    <button @onclick="() => confirmDiscard = false" disabled="@Session.IsBusy">Keep editing</button>
+                    <button @onclick="DiscardDraft" disabled="@Session.IsBusy">@L("Discard changes", "放弃更改")</button>
+                    <button @onclick="() => confirmDiscard = false" disabled="@Session.IsBusy">@L("Keep editing", "继续编辑")</button>
                 }
                 else
                 {
-                    @if (confirmDelete) { <button class="danger" @onclick="DeleteAsync" disabled="@Session.IsBusy">Confirm delete</button> }
-                    else { <button class="primary" @onclick="SaveAsync" disabled="@Session.IsBusy">Save</button> }
-                    <button @onclick="RequestClose" disabled="@Session.IsBusy">Cancel</button>
+                    @if (confirmDelete) { <button class="danger" @onclick="DeleteAsync" disabled="@Session.IsBusy">@L("Confirm delete", "确认删除")</button> }
+                    else { <button class="primary" @onclick="SaveAsync" disabled="@Session.IsBusy">@L("Save", "保存")</button> }
+                    <button @onclick="RequestClose" disabled="@Session.IsBusy">@L("Cancel", "取消")</button>
                 }
             </div>
             @if (!confirmDelete) { <button type="button" class="dialog-resize-handle" data-dialog-resize aria-label="Resize dialog using arrow keys or drag" title="Drag to resize; arrow keys also adjust size" disabled="@Session.IsBusy">◢</button> }
@@ -159,7 +162,11 @@ else if (DialogOpen)
 {
     <AdvancedSearch Fields="AdvancedFields" Settings="AdvancedSettings" Validate="ValidateAdvanced" ExternalError="@dialogError" OnApply="ApplyAdvancedAsync" OnCancel="CloseAdvancedSearch" />
 }
+</div>
+</CascadingValue>
 @code {
+    [Parameter] public string InitialLanguage { get; set; } = "en";
+    protected override string CurrentLanguage => Language ?? InitialLanguage;
     [Parameter] public TableEditorSession Session { get; set; } = default!;
     [Parameter] public string ConnectionLabel { get; set; } = "";
     private readonly HashSet<DataRow> selected = [];

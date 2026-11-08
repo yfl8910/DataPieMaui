@@ -1,14 +1,14 @@
 @using DBUtil
 @inherits WorkspacePageBase
 
-<section class="card schema-toolbar" aria-label="Schema search and filters">
-    <input @bind="search" @bind:event="oninput" aria-label="Search objects" placeholder="Search objects by name or schema" />
-    <select @bind="kind" aria-label="Object type"><option value="All">All types</option><option value="Table">Tables</option><option value="View">Views</option><option value="Procedure">Stored procedures</option></select>
-    <button @onclick="RefreshAsync">Refresh schema</button>
+<section class="card schema-toolbar" aria-label="@L("Schema search and filters", "结构搜索和筛选")">
+    <input @bind="search" @bind:event="oninput" aria-label="@L("Search objects", "搜索对象")" placeholder="@L("Search objects by name or schema", "按名称或架构搜索对象")" />
+    <select @bind="kind" aria-label="@L("Object type", "对象类型")"><option value="All">@L("All types", "所有类型")</option><option value="Table">@L("Tables", "表")</option><option value="View">@L("Views", "视图")</option><option value="Procedure">@L("Stored procedures", "存储过程")</option></select>
+    <button @onclick="RefreshAsync">@L("Refresh schema", "刷新数据库结构")</button>
 </section>
 <section class="card schema-browser">
-    <div class="schema-object-list" aria-label="Database objects">
-        @foreach (var category in new[] { (Kind: "Table", Label: "Tables"), (Kind: "View", Label: "Views"), (Kind: "Procedure", Label: "Stored procedures") })
+    <div class="schema-object-list" aria-label="@L("Database objects", "数据库对象")">
+        @foreach (var category in new[] { (Kind: "Table", Label: L("Tables", "表")), (Kind: "View", Label: L("Views", "视图")), (Kind: "Procedure", Label: L("Stored procedures", "存储过程")) })
         {
             var items = Objects.Where(o => o.Kind == category.Kind).OrderBy(o => o.Schema).ThenBy(o => o.Name).ToArray();
             @if (kind == "All" || kind == category.Kind)
@@ -18,19 +18,19 @@
                 {
                     <button class="@(selected == item ? "primary" : "")" @onclick="() => SelectAsync(item)">@item.DisplayName</button>
                 }
-                @if (items.Length == 0) { <p class="muted">No matching objects.</p> }
+                @if (items.Length == 0) { <p class="muted">@L("No matching objects.", "没有匹配的对象。")</p> }
             }
         }
     </div>
     <div class="schema-details">
-        @if (selected is null) { <p>Select a table, view or procedure to inspect it.</p> }
+        @if (selected is null) { <p>@L("Select a table, view or procedure to inspect it.", "选择表、视图或存储过程以查看详情。")</p> }
         else
         {
             <h2>@selected.DisplayName</h2><p>@selected.Kind</p>
             @if (selected.Kind == "Table")
             {
                 <TableActionBar OnImport="ImportSelectedTableAsync" OnExport="ExportSelectedTableAsync" OnEdit="EditSelectedTableAsync" OnAnalyze="AnalyzeSelectedTableAsync" OnClear="ClearSelectedTableAsync" OnDrop="DropSelectedTableAsync" />
-                <div class="actions"><button @onclick="ToggleStructureAsync" aria-expanded="@showStructure" aria-controls="table-structure" disabled="@IsOperationRunning">@(showStructure ? "Hide structure" : "Show structure")</button></div>
+                <div class="actions"><button @onclick="ToggleStructureAsync" aria-expanded="@showStructure" aria-controls="table-structure" disabled="@IsOperationRunning">@(showStructure ? L("Hide structure", "隐藏结构") : L("Show structure", "显示结构"))</button></div>
                 @if (showStructure)
                 {
                     <div id="table-structure" class="schema-columns">
@@ -48,9 +48,9 @@
                 @if (selected.Kind == "Procedure") { <p>Has parameters: @(Type == "SQLSERVER" ? YesNo(selected.HasParameters) : "Not loaded")</p> }
                 <p class="muted">The SQL definition is loaded only when requested.</p>
                 <div class="actions">
-                    @if (selected.Kind == "View") { <button @onclick="QuerySelectedViewAsync">Query data</button><button @onclick="AnalyzeSelectedViewAsync">Data analysis</button> }
-                    @if (selected.Kind == "Procedure") { <button @onclick="RunSelectedProcedureAsync">Run</button> }
-                    <button @onclick="ShowDefinitionAsync">View definition</button>
+                    @if (selected.Kind == "View") { <button @onclick="QuerySelectedViewAsync">@L("Query data", "查询数据")</button><button @onclick="AnalyzeSelectedViewAsync">@L("Data analysis", "数据分析")</button> }
+                    @if (selected.Kind == "Procedure") { <button @onclick="RunSelectedProcedureAsync">@L("Run", "运行")</button> }
+                    <button @onclick="ShowDefinitionAsync">@L("View definition", "查看定义")</button>
                 </div>
             }
         }

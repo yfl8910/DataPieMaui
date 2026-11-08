@@ -1,34 +1,35 @@
+@inherits LocalizedComponent
 @using DataPieCore
-<form class="condition-search" aria-label="Simple search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-    <fieldset disabled="@Disabled" aria-label="Search conditions (AND)">
-        <legend>Simple search</legend>
+<form class="condition-search" aria-label="@L("Simple search", "简单搜索")" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+    <fieldset disabled="@Disabled" aria-label="@L("Search conditions (AND)", "搜索条件（全部匹配）")">
+        <legend>@L("Simple search", "简单搜索")</legend>
         @for (int index = 0; index < DisplayConditions.Count; index++)
         {
             int position = index;
             var condition = DisplayConditions[index];
             <div class="condition-search-row">
-                @if (index > 0) { <span>AND</span> }
-                <select aria-label="Search field" value="@condition.Column" @onchange="e => ChangeColumnAsync(position, e.Value?.ToString() ?? string.Empty)">
-                    @if (AllowAllText) { <option value="">All text fields</option> }
+                @if (index > 0) { <span>@L("AND", "且")</span> }
+                <select aria-label="@L("Search field", "搜索字段")" value="@condition.Column" @onchange="e => ChangeColumnAsync(position, e.Value?.ToString() ?? string.Empty)">
+                    @if (AllowAllText) { <option value="">@L("All text fields", "所有文本字段")</option> }
                     @foreach (var field in Fields) { <option value="@field.Key">@field.Name</option> }
                 </select>
-                <input aria-label="Search value" type="search" value="@condition.Text" @oninput="e => ChangeTextAsync(position, e.Value?.ToString() ?? string.Empty)" placeholder="@(Fields.FirstOrDefault(f => f.Key == condition.Column)?.Hint ?? "Contains text")" />
+                <input aria-label="@L("Search value", "搜索值")" type="search" value="@condition.Text" @oninput="e => ChangeTextAsync(position, e.Value?.ToString() ?? string.Empty)" placeholder="@SearchHint(condition)" />
                 @if (DisplayConditions.Count > 1)
                 {
-                    <button type="button" @onclick="() => RemoveAsync(position)" aria-label="Remove search condition">×</button>
+                    <button type="button" @onclick="() => RemoveAsync(position)" aria-label="@L("Remove search condition", "移除搜索条件")">×</button>
                 }
                 @if (index == 0)
                 {
                     <div class="condition-search-actions">
-                        <button type="button" @onclick="AddAsync" disabled="@(Fields.Count == 0)">Add condition</button>
-                        <button type="submit" class="primary">@SearchLabel</button>
-                        <button type="button" @onclick="ClearAsync">Clear search</button>
+                        <button type="button" @onclick="AddAsync" disabled="@(Fields.Count == 0)">@L("Add condition", "添加条件")</button>
+                        <button type="submit" class="primary">@(SearchLabel == "Search" ? L("Search", "搜索") : SearchLabel)</button>
+                        <button type="button" @onclick="ClearAsync">@L("Clear search", "清除搜索")</button>
                         @Actions
                     </div>
                 }
             </div>
         }
-        @if (!string.IsNullOrEmpty(Notice)) { <p>@Notice</p> }
+        @if (!string.IsNullOrEmpty(Notice)) { <p>@(Notice == DefaultNotice ? L(DefaultNotice, "所有条件都必须匹配，空值条件会被忽略。") : Notice)</p> }
     </fieldset>
 </form>
 @code {
@@ -41,7 +42,16 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool AllowAllText { get; set; }
     [Parameter] public string SearchLabel { get; set; } = "Search";
-    [Parameter] public string Notice { get; set; } = "All conditions must match. Empty values are ignored.";
+    private const string DefaultNotice = "All conditions must match. Empty values are ignored.";
+    [Parameter] public string Notice { get; set; } = DefaultNotice;
+    private string SearchHint(SearchCondition condition) => (Fields.FirstOrDefault(f => f.Key == condition.Column)?.Hint ?? "Contains text") switch
+    {
+        "Contains text" => L("Contains text", "包含文本"),
+        "Contains displayed text" => L("Contains displayed text", "包含显示文本"),
+        "Exact value" => L("Exact value", "精确匹配"),
+        "yyyy-MM-dd or exact date/time" => L("yyyy-MM-dd or exact date/time", "yyyy-MM-dd 或精确日期时间"),
+        var hint => hint
+    };
     private IReadOnlyList<SearchCondition> DisplayConditions => Value.Count > 0 ? Value : new[] { new SearchCondition(Fields.FirstOrDefault()?.Key ?? "", "") };
     public Task AddAsync() => Disabled || Fields.Count == 0 ? Task.CompletedTask : ValueChanged.InvokeAsync(DisplayConditions.Append(new SearchCondition(Fields[0].Key, "")).ToArray());
     public Task ChangeAsync(int index, SearchCondition value) => Disabled ? Task.CompletedTask : ValueChanged.InvokeAsync(DisplayConditions.Select((c, i) => i == index ? value : c).ToArray());

@@ -1,3 +1,4 @@
+@inherits LocalizedComponent
 <div class="object-list" role="group" aria-label="@Label">
     @if (Items.Count == 0) { <p class="empty">No @Label.ToLowerInvariant() available in this database.</p> }
     @foreach (var item in Items)
@@ -6,15 +7,15 @@
             <label class="object-choice">@if (AllowSelection) { <input type="checkbox" @bind="item.Selected" @bind:after="NotifySelectionChanged" /> }<span class="type-badge">@item.Kind</span><span>@item.DisplayName</span></label>
             @if (OnDefinition.HasDelegate && item.DefinitionObject is not null)
             {
-                <button aria-label="@($"View definition: {item.DisplayName}")" @onclick="() => OnDefinition.InvokeAsync(item)">View definition</button>
+                <button aria-label="@($"View definition: {item.DisplayName}")" @onclick="() => OnDefinition.InvokeAsync(item)">@L("View definition", "查看定义")</button>
             }
             @if (OnPreviewItem.HasDelegate)
             {
-                <button class="object-preview" aria-label="@($"Query data: {item.DisplayName}")" @onclick="() => OnPreviewItem.InvokeAsync(item)">Query data</button>
+                <button class="object-preview" aria-label="@($"Query data: {item.DisplayName}")" @onclick="() => OnPreviewItem.InvokeAsync(item)">@L("Query data", "查询数据")</button>
             }
             else if (OnPreview.HasDelegate)
             {
-                <button class="object-preview" aria-label="@($"Query data: {item.Name}")" @onclick="() => OnPreview.InvokeAsync(item.Name)">Query data</button>
+                <button class="object-preview" aria-label="@($"Query data: {item.Name}")" @onclick="() => OnPreview.InvokeAsync(item.Name)">@L("Query data", "查询数据")</button>
             }
             @if (OnRunParameters.HasDelegate)
             {

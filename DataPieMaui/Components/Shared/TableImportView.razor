@@ -1,25 +1,26 @@
+@inherits LocalizedComponent
 @using DataPieMaui.Services.Shared
 @if (!Embedded) { <p>Target table: <strong>@Options.Table</strong></p> }
-<div class="tabs" aria-label="Import methods">
-    <button class="@(!Options.Batch ? "active" : "")" aria-pressed="@(!Options.Batch)" @onclick="() => Options.Batch = false" disabled="@Busy">Import a file</button>
-    <button class="@(Options.Batch ? "active" : "")" aria-pressed="@Options.Batch" @onclick="() => Options.Batch = true" disabled="@Busy">Batch import</button>
+<div class="tabs" aria-label="@L("Import methods", "导入方式")">
+    <button class="@(!Options.Batch ? "active" : "")" aria-pressed="@(!Options.Batch)" @onclick="() => Options.Batch = false" disabled="@Busy">@L("Import a file", "导入单个文件")</button>
+    <button class="@(Options.Batch ? "active" : "")" aria-pressed="@Options.Batch" @onclick="() => Options.Batch = true" disabled="@Busy">@L("Batch import", "批量导入")</button>
 </div>
 @if (Options.Batch)
 {
-    <p class="muted">Append each CSV and XLSX file in the folder to the target table.</p>
-    <div class="import-source-row"><label>Source folder<input @bind="Options.Folder" @bind:event="oninput" placeholder="Select an import folder" disabled="@Busy" /></label><button @onclick="BrowseAsync" disabled="@Busy">Browse folder</button></div>
+    <p class="muted">@L("Append each CSV and XLSX file in the folder to the target table.", "将文件夹中的每个 CSV 和 XLSX 文件追加到目标表。")</p>
+    <div class="import-source-row"><label>@L("Source folder", "源文件夹")<input @bind="Options.Folder" @bind:event="oninput" placeholder="@L("Select an import folder", "选择导入文件夹")" disabled="@Busy" /></label><button @onclick="BrowseAsync" disabled="@Busy">@L("Browse folder", "浏览文件夹")</button></div>
 }
 else
 {
-    <p class="muted">Append data from Excel, CSV, or a SQLite database containing a table with the same name.</p>
-    <div class="import-source-row"><label>Source file<input @bind="Options.Path" @bind:event="oninput" placeholder="Select a file to import" disabled="@Busy" /></label><button @onclick="BrowseAsync" disabled="@Busy">Browse file</button></div>
+    <p class="muted">@L("Append data from Excel, CSV, or a SQLite database containing a table with the same name.", "从 Excel、CSV 或含有同名表的 SQLite 数据库追加数据。")</p>
+    <div class="import-source-row"><label>@L("Source file", "源文件")<input @bind="Options.Path" @bind:event="oninput" placeholder="@L("Select a file to import", "选择要导入的文件")" disabled="@Busy" /></label><button @onclick="BrowseAsync" disabled="@Busy">@L("Browse file", "浏览文件")</button></div>
 }
-<p class="muted">Auto-generated ID columns are skipped and filled by the database.</p>
-<label><input type="checkbox" @bind="Options.ValidateLengths" disabled="@Busy" /> Validate field lengths before importing</label>
+<p class="muted">@L("Auto-generated ID columns are skipped and filled by the database.", "自动生成的 ID 列由数据库填写，导入时会跳过这些列。")</p>
+<label><input type="checkbox" @bind="Options.ValidateLengths" disabled="@Busy" /> @L("Validate field lengths before importing", "导入前验证字段长度")</label>
 @if (!string.IsNullOrEmpty(error)) { <p role="alert">@error</p> }
 <div class="actions dialog-actions">
-    @if (!Embedded) { <button data-dismiss @onclick="() => OnComplete.InvokeAsync(false)" disabled="@Busy">Cancel</button> }
-    <button class="primary" data-accept @onclick="() => OnComplete.InvokeAsync(true)" disabled="@(Busy || !CanImport || !(Options.Batch ? System.IO.Directory.Exists(Options.Folder) : System.IO.File.Exists(Options.Path)))">@(Options.Batch ? "Import folder" : "Import file")</button>
+    @if (!Embedded) { <button data-dismiss @onclick="() => OnComplete.InvokeAsync(false)" disabled="@Busy">@L("Cancel", "取消")</button> }
+    <button class="primary" data-accept @onclick="() => OnComplete.InvokeAsync(true)" disabled="@(Busy || !CanImport || !(Options.Batch ? System.IO.Directory.Exists(Options.Folder) : System.IO.File.Exists(Options.Path)))">@(Options.Batch ? L("Import folder", "导入文件夹") : L("Import file", "导入文件"))</button>
 </div>
 @code {
     [Parameter, EditorRequired] public TableImportOptions Options { get; set; } = default!;

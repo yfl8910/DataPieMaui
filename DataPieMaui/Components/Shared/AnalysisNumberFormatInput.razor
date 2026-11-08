@@ -1,6 +1,7 @@
+@inherits LocalizedComponent
 @using DataPieCore
 <div class="analysis-number-format">
-    <label>Format<select aria-label="Number format" value="@Current.Kind" @onchange="KindChanged"><option value="Auto">Auto (legacy)</option><option value="Number">Number</option><option value="Percent">Percent</option><option value="Currency">Currency</option></select></label>
+    <label>@L("Format", "应用格式")<select aria-label="Number format" value="@Current.Kind" @onchange="KindChanged"><option value="Auto">Auto (legacy)</option><option value="Number">Number</option><option value="Percent">Percent</option><option value="Currency">Currency</option></select></label>
     @if (Current.Kind != "Auto")
     {
         <label>Decimals<input aria-label="Decimal places" type="number" min="0" max="10" value="@Current.Decimals" @onchange="DecimalsChanged" /></label>

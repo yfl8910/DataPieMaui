@@ -3,32 +3,32 @@
 <section class="card">
     @if (State.DatabaseType == "SQLSERVER")
     {
-        <div class="migration-mark">SQL Server <span>→</span> SQLite</div><h2>Create a SQLite database</h2>
-        <p>Export tables, supported views, and procedure scripts from the current SQL Server database.</p>
+        <div class="migration-mark">SQL Server <span>→</span> SQLite</div><h2>@L("Create a SQLite database", "创建 SQLite 数据库")</h2>
+        <p>@L("Export tables, supported views, and procedure scripts from the current SQL Server database.", "导出当前 SQL Server 数据库中的表、受支持的视图和存储过程脚本。")</p>
         <div class="callout">Keep the generated <strong>StoredProcedures</strong> folder alongside the output database. Unsupported SQL is reported in the conversion results.</div>
         <p class="muted">Progress appears in the status bar. You can request cancellation while conversion is running. A canceled or failed conversion may leave an incomplete database.</p>
-        <div class="actions"><button class="primary" disabled="@(Model.State.DatabaseType != "SQLSERVER")" @onclick="ConvertSqliteAsync">Choose destination and convert</button></div>
+        <div class="actions"><button class="primary" disabled="@(Model.State.DatabaseType != "SQLSERVER")" @onclick="ConvertSqliteAsync">@L("Choose destination and convert", "选择保存位置并转换")</button></div>
     }
     else if (State.DatabaseType == "SQLITE")
     {
-        <div class="migration-mark">SQLite <span>→</span> SQL Server</div><h2>Generate SQL Server script</h2>
+        <div class="migration-mark">SQLite <span>→</span> SQL Server</div><h2>@L("Generate SQL Server script", "生成 SQL Server 脚本")</h2>
         <p>Export table columns, primary keys and supported foreign keys to a SQL file. No data is copied and no SQL Server connection is required.</p>
         <div class="callout">Only procedure records with Status = Success are eligible. Current SQLite .txt bodies are translated, including edits. Without an index, standalone scripts are supported. Unsupported syntax is skipped with warnings. Only a .sql structure script is saved; no data is copied and no SQL is executed.</div>
         <p class="muted">Tables are mapped to dbo. Review types, defaults, constraints and warnings before executing. Views, triggers and additional indexes require manual conversion. Existing destination tables are not dropped.</p>
-        <div class="actions"><button class="primary" disabled="@(Model.State.DatabaseType != "SQLITE")" @onclick="ExportSqlServerAsync">Choose destination and generate script</button></div>
+        <div class="actions"><button class="primary" disabled="@(Model.State.DatabaseType != "SQLITE")" @onclick="ExportSqlServerAsync">@L("Choose destination and generate script", "选择保存位置并生成脚本")</button></div>
     }
     else
     {
-        <p class="muted">Connect to SQL Server or SQLite to use database migration.</p>
+        <p class="muted">@L("Connect to SQL Server or SQLite to use database migration.", "连接 SQL Server 或 SQLite 后即可使用数据库迁移。")</p>
     }
 </section>
 @if (State.DatabaseType == "SQLSERVER")
 {
     <section class="card">
-        <h2>SQL Server object script</h2>
-        <p>Generate creation SQL for schemas, supported tables, primary keys, defaults, views and stored procedures from the current database.</p>
+        <h2>@L("SQL Server object script", "SQL Server 对象脚本")</h2>
+        <p>@L("Generate creation SQL for schemas, supported tables, primary keys, defaults, views and stored procedures from the current database.", "为当前数据库的架构、受支持的表、主键、默认值、视图和存储过程生成创建脚本。")</p>
         <p class="muted">No data is copied and no generated SQL is executed. Other indexes and constraints, functions, triggers and user-defined types are excluded. Missing dependencies and skipped objects are reported; review the script before running it in an empty target database.</p>
-        <div class="actions"><button @onclick="ExportSqlServerObjectsAsync">Generate SQL Server script</button></div>
+        <div class="actions"><button @onclick="ExportSqlServerObjectsAsync">@L("Generate SQL Server script", "生成 SQL Server 脚本")</button></div>
     </section>
 }
 @code {

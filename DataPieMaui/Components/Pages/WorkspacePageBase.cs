@@ -7,7 +7,7 @@ using DataPieMaui.ViewModels;
 namespace DataPieMaui.Components.Pages;
 
 /// <summary>Connects page components to persistent workspace state and shared services.</summary>
-public abstract class WorkspacePageBase : ComponentBase
+public abstract class WorkspacePageBase : LocalizedComponent
 {
     [CascadingParameter] public WorkspaceController Workspace { get; set; } = default!;
     private protected WorkspaceContext Context => Workspace.Context;

@@ -1,6 +1,6 @@
 namespace DataPieMaui.Services;
 
-internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServices
+internal sealed class WindowsDesktopServices(Func<Window?> owner, Func<string> language) : IDesktopServices
 {
     private Window? resultWindow;
     private readonly Dictionary<Window, DataPieCore.TableEditorSession> editorWindows = [];
@@ -23,8 +23,9 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
             }
             return;
         }
-        var page = new Controls.TableEditorHostPage(session, this);
-        var window = new Window(page) { Title = "DataPieMaui · Table editor · Read-only preview", Width = 1100, Height = 750, MinimumWidth = 640, MinimumHeight = 420 };
+        string locale = language();
+        var page = new Controls.TableEditorHostPage(session, this, locale);
+        var window = new Window(page) { Title = locale == "zh-CN" ? "DataPieMaui · 只读预览" : "DataPieMaui · Table editor · Read-only preview", Width = 1100, Height = 750, MinimumWidth = 640, MinimumHeight = 420 };
         window.Destroying += (_, _) =>
         {
             if (ReferenceEquals(resultWindow, window)) resultWindow = null;
@@ -37,8 +38,9 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
     });
     public Task ShowTableEditorAsync(DataPieCore.TableEditorSession session, string connectionLabel) => MainThread.InvokeOnMainThreadAsync(() =>
     {
-        var page = new Controls.TableEditorHostPage(session, connectionLabel, this);
-        var window = new Window(page) { Title = "DataPieMaui · Table editor · " + session.TableName, Width = 1100, Height = 750, MinimumWidth = 640, MinimumHeight = 420 };
+        string locale = language();
+        var page = new Controls.TableEditorHostPage(session, connectionLabel, this, locale);
+        var window = new Window(page) { Title = "DataPieMaui · " + page.Title + " · " + session.TableName, Width = 1100, Height = 750, MinimumWidth = 640, MinimumHeight = 420 };
         bool allowClose = false, confirming = false;
         window.Created += (_, _) =>
         {
@@ -69,8 +71,8 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner) : IDesktopServ
     });
     public Task ShowDataAnalysisAsync(Shared.DataAnalysisSession session) => MainThread.InvokeOnMainThreadAsync(() =>
     {
-        var page = new Controls.DataAnalysisHostPage(session, this);
-        var window = new Window(page) { Title = "DataPieMaui · Data analysis · " + session.Source.TableName, Width = 1200, Height = 850, MinimumWidth = 640, MinimumHeight = 500 };
+        var page = new Controls.DataAnalysisHostPage(session, this, language());
+        var window = new Window(page) { Title = "DataPieMaui · " + page.Title + " · " + session.Source.TableName, Width = 1200, Height = 850, MinimumWidth = 640, MinimumHeight = 500 };
         window.Created += (_, _) =>
         {
             if (window.Handler?.PlatformView is Microsoft.UI.Xaml.Window native)

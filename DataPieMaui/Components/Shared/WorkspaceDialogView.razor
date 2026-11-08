@@ -1,3 +1,4 @@
+@inherits LocalizedComponent
 @inject IJSRuntime JS
 @inject Microsoft.Extensions.Logging.ILogger<WorkspaceDialogView> Logger
 @implements IDisposable
@@ -7,7 +8,7 @@
     <dialog id="workspace-dialog" open="@fallback" class="app-dialog @(dialog.Sql is not null ? "definition-dialog" : "")" aria-labelledby="dialog-title" aria-describedby="dialog-message">
         <h2 id="dialog-title">@dialog.Title</h2>
         <p id="dialog-message">@dialog.Message</p>
-        @if (fallback) { <p role="alert">The modal window could not open. You can use the controls below to continue or close it.</p> }
+        @if (fallback) { <p role="alert">@L("The modal window could not open. You can use the controls below to continue or close it.", "无法打开模态窗口。可以使用下方按钮继续或关闭。")</p> }
         @if (dialog.Editor is { } editor)
         {
             <DefinitionEditorView Session="editor" OnClose="() => Dialogs.Complete(true)" />
@@ -24,7 +25,7 @@
         {
             @if (!string.IsNullOrEmpty(dialog.Sql)) { <SqlDefinitionView Sql="@dialog.Sql" /> }
             <div class="actions dialog-actions">
-                @if (dialog.CanCancel) { <button data-dismiss @onclick="() => Dialogs.Complete(false)">Cancel</button> }
+                @if (dialog.CanCancel) { <button data-dismiss @onclick="() => Dialogs.Complete(false)">@L("Cancel", "取消")</button> }
                 <button class="primary" data-accept @onclick="() => Dialogs.Complete(true)">@dialog.Accept</button>
             </div>
         }

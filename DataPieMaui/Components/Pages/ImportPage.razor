@@ -5,7 +5,7 @@
 
 
     <section class="card">
-        <div class="actions align-end"><label class="grow">Target table<select @bind="Form.ImportTable"><option value="">Select a table</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label><button @onclick="EditImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">Query&amp;Edit</button><button @onclick="ExportTemplateAsync">Export template</button><button class="danger" @onclick="ClearTableAsync">Clear data</button></div>
+        <div class="actions align-end"><label class="grow">@L("Target table", "目标表")<select @bind="Form.ImportTable"><option value="">@L("Select a table", "选择表")</option>@foreach (var table in Database.Schema!.Tables) { <option value="@TableSelection.Key(table, Type)">@TableSelection.Label(table, Type)</option> }</select></label><button @onclick="EditImportTableAsync" disabled="@(string.IsNullOrEmpty(Form.ImportTable))">@L("Query&Edit", "查询并编辑")</button><button @onclick="ExportTemplateAsync">@L("Export template", "导出模板")</button><button class="danger" @onclick="ClearTableAsync">@L("Clear data", "清空数据")</button></div>
     </section>
 <section class="card">
     <TableImportView Options="Form.ImportOptions" Embedded="true" Disabled="IsOperationRunning" CanImport="@(!string.IsNullOrEmpty(Form.ImportTable))" OnBrowse="() => BrowseImportAsync(Form.ImportOptions.Batch)" OnComplete="ImportAsync" />

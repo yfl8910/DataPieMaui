@@ -1,10 +1,11 @@
-<div class="actions" aria-label="Table actions">
-    <button @onclick="OnImport">Import file</button>
-    <button @onclick="OnExport">Export Excel</button>
-    <button @onclick="OnEdit">Query&amp;Edit</button>
-    <button @onclick="OnAnalyze">Data analysis</button>
-    <button class="danger" @onclick="OnClear">Clear Data</button>
-    <button class="danger" @onclick="OnDrop">DROP TABLE</button>
+@inherits LocalizedComponent
+<div class="actions" aria-label="@L("Table actions", "表操作")">
+    <button @onclick="OnImport">@L("Import file", "导入文件")</button>
+    <button @onclick="OnExport">@L("Export Excel", "导出 Excel")</button>
+    <button @onclick="OnEdit">@L("Query&Edit", "查询并编辑")</button>
+    <button @onclick="OnAnalyze">@L("Data analysis", "数据分析")</button>
+    <button class="danger" @onclick="OnClear">@L("Clear Data", "清空数据")</button>
+    <button class="danger" @onclick="OnDrop">@L("DROP TABLE", "删除表")</button>
 </div>
 
 @code {

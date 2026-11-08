@@ -2,18 +2,18 @@
 @using DataPieMaui.Services.Shared
 @inherits WorkspacePageBase
 <section class="card">
-    <div class="tabs" aria-label="Export object types">
-        @foreach (var tab in new[] { ("Table", "Tables"), ("View", "Views") })
+    <div class="tabs" aria-label="@L("Export object types", "导出对象类型")">
+        @foreach (var tab in new[] { ("Table", L("Tables", "表")), ("View", L("Views", "视图")) })
         {
             <button class="@(Model.Form.ExportTab == tab.Item1 ? "active" : "")" aria-pressed="@(Model.Form.ExportTab == tab.Item1)" @onclick="() => ChangeTab(tab.Item1)">@tab.Item2</button>
         }
     </div>
     <div class="section-heading">
         <span class="muted">Selected across both tabs: @Model.Exports.Count(x => x.Selected && x.Kind == "Table") tables, @Model.Exports.Count(x => x.Selected && x.Kind == "View") views</span>
-        <div class="actions"><button @onclick="() => SelectAll(true)">Select all</button><button @onclick="() => SelectAll(false)">Clear selection</button></div>
+        <div class="actions"><button @onclick="() => SelectAll(true)">@L("Select all", "全选")</button><button @onclick="() => SelectAll(false)">@L("Clear selection", "清除选择")</button></div>
     </div>
     <ObjectSelection Items="VisibleItems" Label="@(Model.Form.ExportTab == "Table" ? "Tables" : "Views")" OnPreviewItem="PreviewItemAsync" OnDefinition="Context.Definitions.ShowAsync" OnSelectionChanged="SelectionChanged" />
-    <div class="actions"><button @onclick='() => ExportBatchAsync("standard")' title="Export all selected objects without formatting">Excel (Standard)</button><button class="primary" @onclick='() => ExportBatchAsync("mini")'>Excel (MiniExcel)</button><button @onclick='() => ExportBatchAsync("csv")'>CSV folder</button></div>
+    <div class="actions"><button @onclick='() => ExportBatchAsync("standard")' title="@L("Export all selected objects without formatting", "导出全部选中对象，省略格式")">@L("Excel (Standard)", "Excel（标准）")</button><button class="primary" @onclick='() => ExportBatchAsync("mini")'>@L("Excel (MiniExcel)", "Excel（MiniExcel）")</button><button @onclick='() => ExportBatchAsync("csv")'>@L("CSV folder", "导出到 CSV 文件夹")</button></div>
 </section>
 
 @code {

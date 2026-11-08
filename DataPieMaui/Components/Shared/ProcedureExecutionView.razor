@@ -1,3 +1,4 @@
+@inherits LocalizedComponent
 @using DataPieMaui.Services.Shared
 <p>Database: <strong>@Session.Database</strong><br />Procedure: <strong>@Session.Target.DisplayName</strong></p>
 @if (!string.IsNullOrEmpty(Session.Error)) { <p class="callout danger" role="alert">@Session.Error</p> }
@@ -29,7 +30,7 @@ else
     @if (Session.Inputs.Count == 0) { <p>This procedure has no parameters.</p> }
     <div class="actions"><button class="primary" disabled="@(!Session.Supported)" @onclick="Session.Review">Review and run…</button></div>
 }
-<div class="actions dialog-actions"><button data-dismiss disabled="@Session.Running" @onclick="Close">Close</button></div>
+<div class="actions dialog-actions"><button data-dismiss disabled="@Session.Running" @onclick="Close">@L("Close", "关闭")</button></div>
 @code {
     [Parameter, EditorRequired] public ProcedureExecutionSession Session { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
