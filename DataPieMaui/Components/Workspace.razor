@@ -27,13 +27,10 @@
             <header class="topbar">
                 <span>@L("Workspace", "工作台") / <strong>@Title</strong></span>
                 <span class="connection-pill"><i class="@(Controller.Context.State.IsConnected ? "connected" : "")"></i>@(Controller.Context.State.IsConnected ? Controller.Context.State.Connection : L("Not connected", "未连接"))</span>
-                <label class="language-picker">
-                    <span>@L("Language", "界面语言")</span>
-                    <select value="@language" @onchange="ChangeLanguage" disabled="@Controller.Context.State.Busy">
-                        <option value="en" lang="en">English</option>
-                        <option value="zh-CN" lang="zh-CN">简体中文</option>
-                    </select>
-                </label>
+                <select class="language-picker" aria-label="@L("Language", "界面语言")" value="@language" @onchange="ChangeLanguage" disabled="@Controller.Context.State.Busy">
+                    <option value="en" lang="en">English</option>
+                    <option value="zh-CN" lang="zh-CN">简体中文</option>
+                </select>
             </header>
             <main class="page-content">
                 <div class="page-heading"><p>@Description</p></div>

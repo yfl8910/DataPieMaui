@@ -23,8 +23,7 @@ nav { display: grid; gap: 7px; }
 .workspace-main { display: flex; min-height: 0; flex-direction: column; }
 .topbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 12px 32px; background: #fff; border-bottom: 1px solid var(--border); color: #82909c; }
 .topbar strong { color: #536677; font-weight: 500; }
-.language-picker { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.language-picker select { width: auto; }
+.topbar .language-picker { flex: none; width: auto; padding: 4px 6px; font-size: 12px; border-color: var(--border); color: #536677; }
 .connection-pill { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); padding: 6px 12px; border-radius: 18px; font-size: 12px; color: #536677; overflow-wrap: anywhere; }
 .connection-pill i, .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #a3afba; display: inline-block; flex-shrink: 0; }
 .connection-pill i.connected { background: #31957a; }
