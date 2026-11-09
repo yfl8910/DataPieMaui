@@ -2,6 +2,8 @@
 
 English | [简体中文](README.zh-CN.md)
 
+For step-by-step instructions, see the [English user guide](USER-GUIDE.md) or [中文操作指南](USER-GUIDE.zh-CN.md).
+
 A Windows desktop workspace for querying, importing, exporting, designing tables, and converting SQL Server and SQLite data. Built with .NET 11 RC3 and .NET MAUI Blazor Hybrid, with a Blazor interface throughout the workspace, a unified Table editor page for read-only query previews and independent editable table windows.
 
 <img width="1262" height="937" alt="image" src="https://github.com/user-attachments/assets/b3ca694d-e905-4772-8ec2-1fb8b9aeb46b" />
@@ -16,9 +18,9 @@ A Windows desktop workspace for querying, importing, exporting, designing tables
 - Save and manage database connections.
 - Browse tables, views, and stored procedures in a dedicated Database schema page, with search, type filtering, and column details.
 - Generate SELECT, UPDATE, and DELETE statements and execute SQL.
-- Preview query results in a separate, resizable Blazor window with dynamic columns, typed sorting, pagination, and copying.
+- Preview query results in a separate, resizable Blazor window with dynamic columns, typed sorting, pagination, and full-result search.
 - Export queries and tables to Excel or CSV; export multiple tables or views to worksheets or separate CSV files.
-- Import Excel, CSV, or a matching table from a SQLite database through Import a file; use Batch import for CSV/XLSX folders. Optional single-file and automatic batch length validation report SQL Server field-length problems.
+- Import Excel, CSV, or a matching table from a SQLite database through Import a file; use Batch import for CSV/XLSX folders. Optional field-length validation reports SQL Server field-length problems.
 - Design tables from Excel worksheets, review CREATE TABLE SQL, and open a separate table data editor from SQL query, Import data or Database schema.
 - Add, edit, and delete table records in independent editor windows, with full-table paging, current-page selection, modal dialogs, and conflict checks; drop entire tables separately through Table design.
 - Run selected procedures without parameters, or run SQL Server procedures individually with typed parameter inputs, review, OUTPUT values, and RETURN codes.
@@ -123,9 +125,9 @@ The top card contains **Target table**, **Query&Edit**, **Export template**, and
 
 SQL Server bulk import uses a 600-second timeout, including when field-length validation is enabled.
 
-**Import a file** supports XLSX, XLS, CSV, and a SQLite database containing the matching source table. SQL Server import normalizes blank strings and whitespace to NULL for numeric, date/time, and bit destination columns in both normal and length-validation modes; text columns retain their contents. NOT NULL constraints without a usable default can still reject missing values. SQLite import resets parameter types for each row. Blank strings and whitespace in numeric/date destination columns become NULL; text columns retain empty strings and whitespace. NOT NULL constraints still apply. A failed SQLite file import is rolled back, and its errors identify the target table and data-row number. **Validate lengths and import** additionally checks SQL Server destination field lengths. **Batch import** appends supported CSV/XLSX files sequentially and enables length validation. A failed batch retains data already imported; the status identifies the failing file. **Export template** writes the selected table's columns to an empty Excel workbook. **Clear data** requires confirmation and retains the table structure.
+**Import a file** supports XLSX, XLS, CSV, and a SQLite database containing the matching source table. SQL Server import normalizes blank strings and whitespace to NULL for numeric, date/time, and bit destination columns in both normal and length-validation modes; text columns retain their contents. NOT NULL constraints without a usable default can still reject missing values. SQLite import resets parameter types for each row, matches shared destination columns case-insensitively, and ignores extra source columns. Blank strings and whitespace in numeric/date destination columns become NULL; text columns retain empty strings and whitespace. NOT NULL constraints still apply. A failed SQLite file import is rolled back, and its errors identify the target table and data-row number. Select **Validate field lengths before importing** to check SQL Server destination field lengths. **Batch import** appends supported CSV/XLSX files sequentially; validation is optional. A failed batch retains data already imported; the status identifies the failing file. **Export template** writes the selected table's columns to an empty Excel workbook. **Clear data** requires confirmation and retains the table structure.
 
-The two single-file buttons are distinct: **Import file** uses the normal import path, while **Validate lengths and import** checks SQL Server `nvarchar`/`nchar` lengths as rows are read. A length failure reports the source file, data-row number excluding the header, column, actual length, and allowed length in UTF-16 units. Values are not truncated. SQL Server bulk import may retain records written before a failure; SQLite file imports use a rollback transaction.
+When selected, **Validate field lengths before importing** checks SQL Server `nvarchar`/`nchar` lengths as rows are read. A length failure reports the source file, data-row number excluding the header, column, actual length, and allowed length in UTF-16 units. Values are not truncated. SQL Server bulk import may retain records written before a failure; SQLite file imports use a rollback transaction.
 
 ### Running SQL Server procedures with parameters
 
@@ -155,7 +157,7 @@ The table action bar shows **Import file → Export Excel → Query&Edit → Dat
 
 View details also provide **Query data**, reusing Table editor in read-only mode with a 1,000-row preview limit and truncation notice. SQL Server views are addressed by schema and name, including from Batch export. Procedure details provide **Run** for the current procedure only: SQL Server procedures with parameters use the existing parameter input, review and confirmation dialog; other procedures require execution confirmation. SQLite conversion warnings are retained. These actions share the existing query and procedure execution services and operation gate; running a procedure here does not change the Stored procedures page's checked items. Parameters are loaded only when Run is clicked.
 
-The import dialog supports **Import a file** and **Batch import** tabs. Each source input and browse button share one row; switching tabs retains both paths and the target table. Batch import appends the folder's CSV and XLSX files using the same sequential importer, progress and partial-failure reporting as Import data. Length validation in this dialog remains optional and off by default for both modes; the existing Import data batch action retains its length validation.
+The import dialog supports **Import a file** and **Batch import** tabs. Each source input and browse button share one row; switching tabs retains both paths and the target table. Batch import appends the folder's CSV and XLSX files using the same sequential importer, progress and partial-failure reporting as Import data. Length validation is optional and off by default for both modes.
 
 ### Table design: Create table
 
@@ -230,8 +232,7 @@ Drafts block paging and refresh. Closing an editor with a modified draft asks wh
 ### Query preview behavior
 
 - Previews display up to 1,000 rows in pages of 100. Search scans the complete captured first result set; paging and sorting operate on the displayed matches only.
-- Query preview uses a 30-second command timeout.
-- **Export Excel** writes all rows matching the applied search from the captured result, without rerunning the query. Column-header sorting affects the displayed preview only; export retains the original query order.
+- Query preview uses a 1,000-second command timeout. Search is available once the background capture completes; capture can be canceled.
 - The main SQL query page's separate full export runs the SQL again. Data may have changed since the preview.
 - The result table is read-only; SQL entered in the editor can still modify the database.
 

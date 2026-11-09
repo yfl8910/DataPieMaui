@@ -2,6 +2,8 @@
 
 [English](README.md) | 简体中文
 
+逐步操作说明请参阅[中文用户指南](USER-GUIDE.zh-CN.md)或 [English user guide](USER-GUIDE.md)。
+
 面向 Windows的数据库桌面工具，支持 SQL Server 和 SQLite 的查询、导入、导出、表设计、存储过程及数据库转换、表数据行的增删改、查询。程序使用 .NET 11、.NET MAUI Blazor Hybrid，工作区界面采用 Blazor。
 
 
@@ -12,9 +14,10 @@
 - 创建空白 SQLite 数据库并自动连接，不保存该连接配置。
 - 保存和管理数据库连接，切换页面时保留输入内容。
 - 生成 SELECT、UPDATE、DELETE 语句，预览查询或执行 SQL。
-- 查询结果支持动态列、类型排序、分页、行选择和复制。
+- 查询结果支持动态列、类型排序、分页和完整结果搜索。
 - 将查询或整张表导出为 Excel、CSV，批量导出多个表或视图。
 - 单文件导入 Excel、CSV、SQLite；从文件夹批量导入 CSV 和 XLSX，支持 SQL Server 字段长度校验。
+- 浏览数据库结构，对表或视图执行分组、汇总和数据分析，并保存分析模板。
 - 从 Excel 工作表生成建表 SQL，审核后创建表；在独立 TAB 中删除表。
 - 批量运行无参数存储过程，或填写参数后单独执行 SQL Server 存储过程。
 - 按需查看视图和存储过程定义，支持的对象可编辑、查看差异并确认保存。
@@ -24,7 +27,7 @@
 
 - Windows x64；项目声明的最低系统版本为 Windows 10 1809。
 - `global.json` 指定的 .NET SDK：`11.0.100-rc.3.26522.148`，以及匹配的 `maui-windows` 工作负载。
-- 当前目标框架为 `net11.0-windows10.0.19041.0`；MAUI Controls 和 Blazor WebView 包版本为 `11.0.0-rc.1.26451.6`。
+- 当前目标框架为 `net11.0-windows10.0.19041.0`；MAUI Controls 和 Blazor WebView.Maui 包版本为 `11.0.0-rc.2.26505.5`。
 - Microsoft Edge WebView2 Runtime。开发和发布版本都需要；缺少时原生宿主会显示安装提示。
 - 首次还原依赖需要访问 NuGet。
 
@@ -66,27 +69,26 @@ Saved connections 可重新连接或删除配置。删除连接配置不会删�
 
 选择表后可生成 SELECT、UPDATE、DELETE，或在 **SQL editor** 中输入自己的 SQL。**Preview query** 打开独立结果窗口；**Run SQL** 在确认后执行编辑器中的语句。查询和整表均可导出为 Excel 或 CSV。
 
-结果窗口支持列排序、分页、选择行、复制选中行和复制全部预览行。后续查询更新同一个窗口；**Open results** 可重新打开结果窗口而无需再次查询。
+结果窗口支持列排序、分页和搜索。后续查询更新同一个窗口；**Open Table editor** 可重新打开结果窗口而无需再次查询。
 
-- 预览最多读取 1,000 行，每页显示 100 行；排序和分页只针对已加载的预览。
-- 预览查询使用 30 秒命令超时。
-- **Copy all preview rows** 按当前排序复制数据，包含列标题。
+- 预览最多显示 1,000 条匹配记录，每页显示 100 行；后台快照保存完成后可搜索完整查询结果，排序和分页针对已显示的预览。
+- 预览查询使用 1,000 秒命令超时；原始 SQL 中的 TOP 或 LIMIT 仍限制结果范围。
 - 完整导出会重新执行查询，不受预览行数限制；数据可能与先前预览不同。
 - 结果表格只读；SQL editor 中的 SQL 可以修改数据库。
 
 ### Import data：数据导入
 
-顶部卡片放置 **Target table、Query data、Export template、Clear data**。下方白色卡片包含 **Import a file / Batch import** 两个 TAB，切换时只改变导入内容，并保留目标表、文件及文件夹路径。
+顶部卡片放置 **Target table、Query&Edit、Export template、Clear data**。下方白色卡片包含 **Import a file / Batch import** 两个 TAB，切换时只改变导入内容，并保留目标表、文件及文件夹路径。
 
-**Import a file** 支持 XLSX、XLS、CSV，以及包含对应源表的 SQLite 数据库。SQL Server 普通导入和长度校验导入均将数字、日期时间、bit 目标列中的空字符串及纯空格转为 NULL，文本列保留原内容。没有适用默认值的 NOT NULL 列仍可能拒绝缺失值。SQLite 导入逐行重置参数类型，数字/日期目标列中的空字符串及纯空格转为 NULL；文本列保留空字符串和空格。NOT NULL 约束仍生效，文件导入失败会回滚，错误包含目标表名及数据行号。**Import file** 执行导入，**Validate lengths and import** 额外检查 SQL Server 目标字段长度。
+**Import a file** 支持 XLSX、XLS、CSV，以及包含对应源表的 SQLite 数据库。SQL Server 普通导入和长度校验导入均将数字、日期时间、bit 目标列中的空字符串及纯空格转为 NULL，文本列保留原内容。没有适用默认值的 NOT NULL 列仍可能拒绝缺失值。SQLite 导入逐行重置参数类型，数字/日期目标列中的空字符串及纯空格转为 NULL；文本列保留空字符串和空格。NOT NULL 约束仍生效，文件导入失败会回滚，错误包含目标表名及数据行号。勾选 **Validate field lengths before importing** 可检查 SQL Server 目标字段长度，再点击 **Import file** 导入。SQL Server 批量写入超时为 600 秒。
 
-**Batch import** 顺序导入文件夹中的 CSV 和 XLSX，并启用字段长度校验。如果某个文件失败，已导入的数据会保留，状态信息指出失败文件。
+**Batch import** 顺序导入文件夹中的 CSV 和 XLSX，可选择是否进行字段长度校验。如果某个文件失败，已导入的数据会保留，状态信息指出失败文件。
 
-**Query data** 预览目标表，**Export template** 导出只包含列结构的空白 Excel 模板。**Clear data** 经确认后清空数据，保留表结构。永久删除表位于 Table design 页面。
+**Query&Edit** 打开目标表的数据编辑窗口，**Export template** 导出只包含列结构的空白 Excel 模板。**Clear data** 经确认后清空数据，保留表结构。永久删除表位于 Table design 页面。
 
 ### Batch export：批量导出
 
-通过 **Tables / Views** TAB 选择对象，支持 MiniExcel 或 EPPlus 多工作表导出，以及每个对象一个文件的 CSV 导出。两个 TAB 的选择会保留；Select all 只作用于当前分类。CSV 同名文件覆盖前需要确认。
+通过 **Tables / Views** TAB 选择对象，支持 Excel（Standard）或 Excel（MiniExcel）多工作表导出，以及每个对象一个文件的 CSV 导出。两个 TAB 的选择会保留；Select all 只作用于当前分类。CSV 同名文件覆盖前需要确认。
 
 每个表或视图的 **Query data** 与导出勾选独立，复用查询结果窗口，不改变 SQL editor。视图旁的 **View definition** 按需读取 SQL 定义。
 
@@ -221,8 +223,8 @@ dotnet run --project DataPieMaui.Tests/DataPieMaui.Tests.csproj -c Release -- --
 
 ## 代码结构
 
-- `MainPage.cs` 承载主 BlazorWebView；`Controls/QueryResultsHostPage.cs` 承载独立结果窗口。
-- `Components/Workspace.razor` 管理导航和状态栏，`Components/QueryResults.razor` 管理结果显示及交互。
+- `MainPage.cs` 承载主 BlazorWebView；`Controls/TableEditorHostPage.cs` 承载独立的表编辑和只读预览窗口。
+- `Components/Workspace.razor` 管理导航和状态栏，`Components/TableEditor.razor` 管理表编辑及查询预览。
 - 各业务页面的标记和页面专属逻辑放在同一个 `.razor` 文件的 `@code` 中；静态 About 页面无需代码块。
 - `WorkspaceController` 协调工作区和窗口生命周期，`WorkspacePageBase` 为页面提供共享状态和操作能力。
 - `WorkspaceContext` 与 `WorkspaceForm` 保存跨页面状态；共享架构刷新方法同步建表和删表后的列表。
