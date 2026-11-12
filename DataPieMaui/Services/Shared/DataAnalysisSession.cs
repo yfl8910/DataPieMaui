@@ -9,6 +9,13 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
     public string ConnectionLabel { get; } = connectionLabel;
     public bool Busy { get; private set; }
     public string Status { get; private set; } = "Choose grouping fields and calculations, then analyze.";
+    public string ChineseStatus { get; private set; } = "选择分组字段和计算项，然后运行分析。";
+    private void SetStatus(string english, string chinese) => (Status, ChineseStatus) = (english, chinese);
+    private void SetError(Exception error)
+    {
+        Trace.TraceError("{0}", error);
+        SetStatus(error.Message, "操作失败：" + error.Message);
+    }
     public QueryResultSnapshot? Result { get; private set; }
     public QueryResultSnapshot? Totals { get; private set; }
     public AnalysisRequest? LastRequest { get; private set; }
@@ -21,9 +28,9 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         try
         {
             Templates = await Task.Run(() => templateStore.List(Source.TemplateTableName));
-            Status = $"Loaded {Templates.Count} templates for {Source.TableName}.";
+            SetStatus($"Loaded {Templates.Count} templates for {Source.TableName}.", $"已加载 {Source.TableName} 的 {Templates.Count} 个模板。");
         }
-        catch (Exception ex) { Status = ex.ToString(); }
+        catch (Exception ex) { SetError(ex); }
         finally { Busy = false; }
     }
     public async Task<long?> SaveTemplateAsync(string name, AnalysisRequest request, bool createOnly = false)
@@ -36,10 +43,11 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
             Source.ValidateRequest(request);
             long id = await Task.Run(() => templateStore.Save(Source.TemplateTableName, name, request, createOnly));
             Templates = await Task.Run(() => templateStore.List(Source.TemplateTableName));
-            Status = createOnly ? $"New template '{name.Trim()}' saved." : $"Template '{name.Trim()}' saved. An existing template with the same table and name is replaced.";
+            SetStatus(createOnly ? $"New template '{name.Trim()}' saved." : $"Template '{name.Trim()}' saved. An existing template with the same table and name is replaced.",
+                createOnly ? $"已保存新模板「{name.Trim()}」。" : $"已保存模板「{name.Trim()}」，同一表下的同名模板已替换。");
             return id;
         }
-        catch (Exception ex) { Status = ex.ToString(); return null; }
+        catch (Exception ex) { SetError(ex); return null; }
         finally { Busy = false; }
     }
     public async Task<bool> UpdateTemplateAsync(long id, string name, AnalysisRequest request)
@@ -52,10 +60,10 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
             Source.ValidateRequest(request);
             await Task.Run(() => templateStore.Update(Source.TemplateTableName, id, name, request));
             Templates = await Task.Run(() => templateStore.List(Source.TemplateTableName));
-            Status = $"Template '{name.Trim()}' updated.";
+            SetStatus($"Template '{name.Trim()}' updated.", $"已更新模板「{name.Trim()}」。");
             return true;
         }
-        catch (Exception ex) { Status = ex.ToString(); return false; }
+        catch (Exception ex) { SetError(ex); return false; }
         finally { Busy = false; }
     }
     public async Task<AnalysisRequest?> LoadTemplateAsync(long id, bool clearResults = true)
@@ -70,12 +78,14 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
             if (unavailable.Length > 0) throw new InvalidOperationException("Template fields are missing or incompatible: " + string.Join(", ", unavailable));
             if (clearResults || !AnalysisFilters.NeedsReview(request.Filters)) Source.ValidateRequest(request);
             if (clearResults) { Result = null; Totals = null; LastRequest = null; }
-            Status = AnalysisFilters.NeedsReview(request.Filters)
-                ? "Legacy parameters need review. Enter fixed values or dates in Default filter conditions, then Update selected."
-                : "Template settings loaded.";
+            if (AnalysisFilters.NeedsReview(request.Filters))
+                SetStatus("Legacy parameters need review. Enter fixed values or dates in Default filter conditions, then Update selected.",
+                    "请检查旧版参数。在默认筛选条件中输入固定值或日期，然后点击“更新所选模板”。");
+            else
+                SetStatus("Template settings loaded.", "已加载模板设置。");
             return request;
         }
-        catch (Exception ex) { Status = ex.ToString(); return null; }
+        catch (Exception ex) { SetError(ex); return null; }
         finally { Busy = false; }
     }
     public async Task<bool> DeleteTemplateAsync(long id)
@@ -86,10 +96,10 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         {
             await Task.Run(() => templateStore.Delete(Source.TemplateTableName, id));
             Templates = await Task.Run(() => templateStore.List(Source.TemplateTableName));
-            Status = "Template deleted. Current analysis settings are retained.";
+            SetStatus("Template deleted. Current analysis settings are retained.", "已删除模板，当前分析设置已保留。");
             return true;
         }
-        catch (Exception ex) { Status = ex.ToString(); return false; }
+        catch (Exception ex) { SetError(ex); return false; }
         finally { Busy = false; }
     }
     public bool Matches(AnalysisRequest request) => LastRequest is { } last && last.Groups.SequenceEqual(request.Groups)
@@ -121,7 +131,7 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
     {
         if (Busy) return;
         Busy = true;
-        Status = "Analyzing all matching source rows…";
+        SetStatus("Analyzing all matching source rows…", "正在分析所有匹配的源数据…");
         var watch = Stopwatch.StartNew();
         try
         {
@@ -132,9 +142,10 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
             Result = new QueryResultSnapshot(data, ConnectionLabel, Source.TableName + " · Analysis", TableAnalysis.ResultFormats(request));
             Totals = preview.Totals == null ? null : new QueryResultSnapshot(preview.Totals, ConnectionLabel, Source.TableName + " · Overall totals", TableAnalysis.ResultFormats(request, true));
             LastRequest = request;
-            Status = $"Analysis completed in {watch.Elapsed.TotalSeconds:F1} s · {data.RowCount:N0} groups";
+            SetStatus($"Analysis completed in {watch.Elapsed.TotalSeconds:F1} s · {data.RowCount:N0} groups",
+                $"分析完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒，共 {data.RowCount:N0} 个分组。");
         }
-        catch (Exception ex) { Status = ex.ToString(); }
+        catch (Exception ex) { SetError(ex); }
         finally { Busy = false; }
     }
     public async Task ExportAsync(IDesktopServices desktop, string templateName = "", bool formatted = true)
@@ -145,18 +156,18 @@ public sealed class DataAnalysisSession(TableAnalysis source, string connectionL
         {
             var request = LastRequest;
             var path = await desktop.SaveAsync(string.IsNullOrWhiteSpace(templateName) ? "Analysis" : templateName.Trim(), ".xlsx");
-            if (path == null) { Status = "Export canceled."; return; }
-            Status = "Exporting all analysis groups…";
+            if (path == null) { SetStatus("Export canceled.", "已取消导出。"); return; }
+            SetStatus("Exporting all analysis groups…", "正在导出全部分析分组…");
             await Task.Run(() => Source.Export(request, path, formatted));
-            Status = "Analysis exported · File: " + Path.GetFullPath(path);
+            SetStatus("Analysis exported · File: " + Path.GetFullPath(path), "分析结果已导出。文件：" + Path.GetFullPath(path));
         }
-        catch (Exception ex) { Status = ex.ToString(); }
+        catch (Exception ex) { SetError(ex); }
         finally { Busy = false; }
     }
     public void Reset()
     {
         if (Busy) return;
         Result = null; Totals = null; LastRequest = null;
-        Status = "Choose grouping fields and calculations, then analyze.";
+        SetStatus("Choose grouping fields and calculations, then analyze.", "选择分组字段和计算项，然后运行分析。");
     }
 }

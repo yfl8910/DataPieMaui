@@ -2,17 +2,17 @@
 @using DataPieCore
 <div class="modal-overlay">
     <section class="editor-dialog" role="dialog" aria-modal="true" aria-labelledby="group-dialog-title" tabindex="-1">
-        <div class="dialog-header"><h2 id="group-dialog-title">@L("Group by", "分组字段")</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close grouping settings">×</button></div>
+        <div class="dialog-header"><h2 id="group-dialog-title">@L("Group by", "分组字段")</h2><button data-dialog-close @onclick="OnCancel" aria-label="@L("Close grouping settings", "关闭分组设置")">×</button></div>
         <div class="dialog-body">
-            <p>Select fields in the desired grouping order. Leave empty for a total. Dates group by their original value.</p>
-            <label>Search fields<input type="search" @bind="search" @bind:event="oninput" placeholder="Search field names" /></label>
+            <p>@L("Select fields in the desired grouping order. Leave empty for a total. Dates group by their original value.", "按所需顺序选择分组字段。留空时仅显示合计。日期按原值分组。")</p>
+            <label>@L("Search fields", "搜索字段")<input type="search" @bind="search" @bind:event="oninput" placeholder="@L("Search field names", "搜索字段名称")" /></label>
             <div class="analysis-group-list">
                 @foreach (var field in Source.Fields.Where(f => f.Name.Contains(search, StringComparison.OrdinalIgnoreCase)))
                 {
                     <label title="@field.Notice"><input type="checkbox" checked="@draft.Contains(field.Name)" @onchange="e => Toggle(field.Name, e.Value is true)" disabled="@(!field.CanGroup)" /> <span>@field.Name <small>@field.Type @field.Notice</small></span></label>
                 }
             </div>
-            <h3>Selected order (@draft.Count)</h3>
+            <h3>@L("Selected order", "已选顺序") (@draft.Count)</h3>
             @foreach (var name in draft.ToArray())
             {
                 <div class="analysis-selected"><span>@name</span><button @onclick="() => Move(name, -1)" disabled="@(draft.IndexOf(name) == 0)" aria-label="@($"Move {name} up")">↑</button><button @onclick="() => Move(name, 1)" disabled="@(draft.IndexOf(name) == draft.Count - 1)" aria-label="@($"Move {name} down")">↓</button><button @onclick="() => draft.Remove(name)" aria-label="@($"Remove {name}")">×</button></div>

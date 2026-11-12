@@ -81,7 +81,8 @@ public sealed class TableActionService(WorkspaceContext context)
             ExcelIO.SaveMiniExcel(path, reader, table.Name);
         });
         watch.Stop();
-        context.State.Status = $"Export data completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}";
+        context.State.SetStatus($"Export data completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}",
+            $"数据导出完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。文件：{Path.GetFullPath(path)}");
     });
 
     public Task AnalyzeAsync(TableStruct table) => context.Operations.RunAsync("Open data analysis", async watch =>
@@ -150,10 +151,14 @@ public sealed class TableActionService(WorkspaceContext context)
         context.Tables = context.Database.Schema.Tables.Select(t => t.Name).ToArray();
         if (!context.Database.Schema.Tables.Any(t => t.Name == table.Name))
             context.Exports.RemoveAll(x => x.Kind == "Table" && x.Name == table.Name);
-        context.State.Status = $"Table {label} deleted in {watch.Elapsed.TotalSeconds:F1} s.";
+        context.State.SetStatus($"Table {label} deleted in {watch.Elapsed.TotalSeconds:F1} s.", $"已删除表 {label}，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。");
         context.Notify();
         try { await context.RefreshSchemaAsync(); }
-        catch (Exception ex) { await context.Dialogs.AlertAsync("Table deleted", "The table was deleted, but refreshing the schema failed. Reconnect to reload the table list. " + ex.Message); }
+        catch (Exception ex)
+        {
+            await context.Dialogs.AlertAsync("Table deleted", "The table was deleted, but refreshing the schema failed. Reconnect to reload the table list. " + ex.Message,
+                "表已删除", "表已删除，但刷新结构失败。请重新连接以加载表列表。" + ex.Message);
+        }
     });
 
     private void ForgetBatches(string table)

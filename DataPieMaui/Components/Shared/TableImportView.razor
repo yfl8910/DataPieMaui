@@ -1,6 +1,6 @@
 @inherits LocalizedComponent
 @using DataPieMaui.Services.Shared
-@if (!Embedded) { <p>Target table: <strong>@Options.Table</strong></p> }
+@if (!Embedded) { <p>@L("Target table:", "目标表：") <strong>@Options.Table</strong></p> }
 <div class="tabs" aria-label="@L("Import methods", "导入方式")">
     <button class="@(!Options.Batch ? "active" : "")" aria-pressed="@(!Options.Batch)" @onclick="() => Options.Batch = false" disabled="@Busy">@L("Import a file", "导入单个文件")</button>
     <button class="@(Options.Batch ? "active" : "")" aria-pressed="@Options.Batch" @onclick="() => Options.Batch = true" disabled="@Busy">@L("Batch import", "批量导入")</button>

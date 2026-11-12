@@ -21,7 +21,7 @@
 </div>
 <div class="table-design-sql">
     <label>@L("SQL editor", "SQL 编辑器")<textarea class="sql-editor" @bind="Form.CreateTableSql" @bind:event="oninput" spellcheck="false" placeholder="@L("Generate CREATE TABLE SQL from an Excel worksheet", "根据 Excel 工作表生成 CREATE TABLE 语句")"></textarea></label>
-    <details class="table-design-notes"><summary>@L("Type inference and creation notes", "类型推断和建表说明")</summary><p class="muted">Types are inferred from the first 1,000 data rows after the header; blank cells and whitespace-only text are ignored. Later rows may require wider types or text lengths. Review the SQL before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.</p></details>
+    <details class="table-design-notes"><summary>@L("Type inference and creation notes", "类型推断和建表说明")</summary><p class="muted">@L("Types are inferred from the first 1,000 data rows after the header; blank cells and whitespace-only text are ignored. Later rows may require wider types or text lengths. Review the SQL before creating the table. Text stays text; mixed or empty columns use text. An Id column defaults to an auto-incrementing primary key (case-insensitive); edit the SQL to change this. Generated SQL does not replace existing tables. This operation creates the structure only.", "系统根据表头后的前 1,000 行推断类型，忽略空单元格和纯空白文本。后续行可能需要更大的数值范围或文本长度，请在建表前检查 SQL。文本列、混合类型列和空列均使用文本类型。Id 列默认设为自增主键（不区分大小写），可在 SQL 中调整。此操作仅创建表结构，已有表会保留。")</p></details>
     <div class="actions"><button class="primary" @onclick="CreateAsync" disabled="@(string.IsNullOrWhiteSpace(Form.CreateTableSql))">@L("Create table", "创建表")</button></div>
 </div>
 
@@ -55,8 +55,8 @@ else
     });
     public Task GenerateAsync() => RunAsync("Generate table SQL", async watch =>
     {
-        var path = Required(Form.CreateTablePath, "Select an Excel file.");
-        var sheet = Required(Form.CreateTableSheet, "Select a worksheet.");
+        var path = Required(Form.CreateTablePath, L("Select an Excel file.", "请选择 Excel 文件。"));
+        var sheet = Required(Form.CreateTableSheet, L("Select a worksheet.", "请选择工作表。"));
         var type = Type;
         watch.Start();
         var sql = await Task.Run(() => ExcelTableSql.Generate(path, sheet, type));
@@ -64,19 +64,21 @@ else
     });
     public Task CreateAsync() => RunAsync("Create table", async watch =>
     {
-        var sql = Required(Form.CreateTableSql, "Generate and review the SQL first.");
-        if (!await Dialogs.ConfirmAsync("Create table", "Execute the SQL currently shown in the editor against " + State.Connection + "? Review all changes before continuing.", "Create")) return;
+        var sql = Required(Form.CreateTableSql, L("Generate and review the SQL first.", "请先生成并检查 SQL。"));
+        if (!await Dialogs.ConfirmAsync("Create table", "Execute the SQL currently shown in the editor against " + State.Connection + "? Review all changes before continuing.", "Create",
+            "创建表", $"将在 {State.Connection} 中执行编辑器显示的 SQL。请核对更改后继续。", "创建")) return;
         watch.Start();
         await Task.Run(() => { using var access = Database.OpenAccess(); access.ExecuteSql(sql); });
         watch.Stop();
-        State.Status = $"Table creation completed in {watch.Elapsed.TotalSeconds:F1} s.";
+        State.SetStatus($"Table creation completed in {watch.Elapsed.TotalSeconds:F1} s.", $"建表完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。");
         try
         {
             await Context.RefreshSchemaAsync();
         }
         catch (Exception ex)
         {
-            await Dialogs.AlertAsync("Table created", "The SQL completed, but refreshing the table list failed. Reconnect to reload the schema. " + ex.Message);
+            await Dialogs.AlertAsync("Table created", "The SQL completed, but refreshing the table list failed. Reconnect to reload the schema. " + ex.Message,
+                "已创建表", "SQL 已执行，但刷新表列表失败。请重新连接以加载数据库结构。" + ex.Message);
         }
     });
 }

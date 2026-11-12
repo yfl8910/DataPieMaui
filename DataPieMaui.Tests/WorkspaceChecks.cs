@@ -447,12 +447,17 @@ internal static class WorkspaceChecks
             workspace.Context.Form.Sql = "SELECT '<script>alert(1)</script>'";
             var pages = new[]
             {
-                ("Connections", "Connect to SQL Server"), ("Query", "SQL editor"), ("TableDesign", "Excel worksheet"), ("TableDesign", "Table to delete"), ("DatabaseSchema", "Database schema"), ("Import", "Source folder"),
-                ("Export", "Excel (MiniExcel)"), ("Procedures", "Run selected procedures"), ("Migration", "Choose destination and convert"), ("Migration", "Choose destination and generate script"), ("About", "Blazor Hybrid")
+                ("Connections", "Connect to SQL Server", "Windows 身份验证"), ("Query", "SQL editor", "SQL 编辑器"),
+                ("TableDesign", "Excel worksheet", "忽略空单元格"), ("TableDesign", "Table to delete", "要删除的表"),
+                ("DatabaseSchema", "Database schema", "按名称或架构搜索对象"), ("Import", "Source folder", "源文件夹"),
+                ("Export", "Excel (MiniExcel)", "已选中："), ("Procedures", "Run selected procedures", "运行选中的存储过程"),
+                ("Migration", "Choose destination and convert", "进度显示在状态栏"),
+                ("Migration", "Choose destination and generate script", "转换以当前 SQLite .txt 文件内容为准"),
+                ("About", "Blazor Hybrid", "在同一个桌面工作台中")
             };
             // Render the conversion page without connecting to an external SQL Server.
             workspace.Context.State.DatabaseType = "SQLSERVER";
-            foreach (var (section, expected) in pages)
+            foreach (var (section, expected, expectedChinese) in pages)
             {
                 workspace.Navigate(section);
                 if (section == "Export") exportPage.ChangeTab("View");
@@ -481,21 +486,17 @@ internal static class WorkspaceChecks
                 if (section == "Export") Check(html.Contains("View definition") && !html.Contains("SQL definition"), "Definition action missing or SQL eagerly shown");
                 Check(!html.Contains("<script>alert(1)</script>"), "SQL rendered as markup");
                 Check(!html.Contains("workspace-body\" inert"), "Idle workspace is inert");
-                if (section is "Connections" or "Query")
+                string chinese = await renderer.Dispatcher.InvokeAsync(async () =>
                 {
-                    string chinese = await renderer.Dispatcher.InvokeAsync(async () =>
+                    var component = await renderer.RenderComponentAsync<Workspace>(ParameterView.FromDictionary(new Dictionary<string, object?>
                     {
-                        var component = await renderer.RenderComponentAsync<Workspace>(ParameterView.FromDictionary(new Dictionary<string, object?>
-                        {
-                            ["Controller"] = workspace, ["InitialLanguage"] = "zh-CN"
-                        }));
-                        return System.Net.WebUtility.HtmlDecode(component.ToHtmlString());
-                    });
-                    Check(chinese.Contains("lang=\"zh-CN\"") && chinese.Contains("界面语言")
-                        && chinese.Contains(section == "Connections" ? "连接 SQL Server" : "SQL 编辑器"),
-                        "Chinese language did not reach the workspace and its active page");
-                    Check(workspace.Context.Form.Sql == "SELECT '<script>alert(1)</script>'", "Localization changed the SQL draft");
-                }
+                        ["Controller"] = workspace, ["InitialLanguage"] = "zh-CN"
+                    }));
+                    return System.Net.WebUtility.HtmlDecode(component.ToHtmlString());
+                });
+                Check(chinese.Contains("lang=\"zh-CN\"") && chinese.Contains("界面语言")
+                    && chinese.Contains(expectedChinese), "Missing Chinese content for " + section);
+                Check(workspace.Context.Form.Sql == "SELECT '<script>alert(1)</script>'", "Localization changed the SQL draft");
                 if (renderUi) SaveHtml(section, html);
             }
             await using (var definitionRenderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>()))

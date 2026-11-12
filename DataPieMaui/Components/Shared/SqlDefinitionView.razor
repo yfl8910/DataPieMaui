@@ -1,11 +1,12 @@
+@inherits LocalizedComponent
 @inject IJSRuntime JS
 <div class="schema-definition">
     <div class="actions">
-        <h3>SQL definition</h3>
-        <button @onclick="CopyAsync">Copy SQL</button>
+        <h3>@L("SQL definition", "SQL 定义")</h3>
+        <button @onclick="CopyAsync">@L("Copy SQL", "复制 SQL")</button>
         <span role="status">@message</span>
     </div>
-    <pre tabindex="0" aria-label="SQL definition"><code>@Sql</code></pre>
+    <pre tabindex="0" aria-label="@L("SQL definition", "SQL 定义")"><code>@Sql</code></pre>
 </div>
 
 @code {
@@ -20,7 +21,7 @@
     }
     public async Task CopyAsync()
     {
-        try { await JS.InvokeVoidAsync("dataPie.copyText", Sql); message = "SQL copied."; }
-        catch { message = "Copy failed. Select the SQL text and press Ctrl+C."; }
+        try { await JS.InvokeVoidAsync("dataPie.copyText", Sql); message = L("SQL copied.", "已复制 SQL。"); }
+        catch { message = L("Copy failed. Select the SQL text and press Ctrl+C.", "复制失败。请选择 SQL 文本并按 Ctrl+C。"); }
     }
 }

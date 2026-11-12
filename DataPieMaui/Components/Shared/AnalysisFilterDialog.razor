@@ -1,20 +1,20 @@
 @inherits LocalizedComponent
 @using DataPieCore
 <div class="@(Inline ? "advanced-search-inline-container" : "modal-overlay")">
-    <section class="@(Inline ? "advanced-search-inline advanced-search-dialog" : "editor-dialog analysis-calculation-dialog advanced-search-dialog")" role="@(Inline ? "region" : "dialog")" aria-modal="@(Inline ? null : "true")" aria-label="@(Inline ? "Search conditions" : null)" aria-labelledby="@(Inline ? null : "filter-settings-title")" tabindex="@(Inline ? null : "-1")">
+    <section class="@(Inline ? "advanced-search-inline advanced-search-dialog" : "editor-dialog analysis-calculation-dialog advanced-search-dialog")" role="@(Inline ? "region" : "dialog")" aria-modal="@(Inline ? null : "true")" aria-label="@(Inline ? L("Search conditions", "搜索条件") : null)" aria-labelledby="@(Inline ? null : "filter-settings-title")" tabindex="@(Inline ? null : "-1")">
         @if (!Inline) {
-        <div class="dialog-header"><h2 id="filter-settings-title">@Title</h2><button data-dialog-close @onclick="OnCancel" aria-label="Close filter settings">×</button></div>
+        <div class="dialog-header"><h2 id="filter-settings-title">@(Title == "Advanced search" ? L("Advanced search", "高级搜索") : Title)</h2><button data-dialog-close @onclick="OnCancel" aria-label="@L("Close filter settings", "关闭筛选设置")">×</button></div>
         }
         <div class="@(Inline ? "advanced-search-inline-body" : "dialog-body")">
             <fieldset class="advanced-search-fields" disabled="@Disabled">
-            <p>All conditions must match (AND).</p>
+            <p>@L("All conditions must match (AND).", "所有条件都必须匹配（且）。")</p>
                 <section class="advanced-search-conditions">
                     @foreach (var rule in rules)
                     {
                         <div class="analysis-filter-rule" @key="rule.Id">
-                            <span>@(rules.IndexOf(rule) == 0 ? "" : "AND")</span>
-                            <label>Field<select value="@rule.Column" @onchange="e => ChangeField(rule, e.Value?.ToString() ?? string.Empty)"><option value="">@L("All text fields", "所有文本字段")</option>@foreach (var field in AvailableFields) { <option value="@field.Name">@(string.IsNullOrEmpty(field.DisplayName) ? field.Name : field.DisplayName)</option> }</select></label>
-                            <label>Operator<select value="@rule.Operation" @onchange="e => ChangeOperation(rule, e.Value?.ToString() ?? string.Empty)">@foreach (string operation in Choices(rule)) { <option value="@operation">@OperationName(operation)</option> }</select></label>
+                            <span>@(rules.IndexOf(rule) == 0 ? "" : L("AND", "且"))</span>
+                            <label>@L("Field", "字段")<select value="@rule.Column" @onchange="e => ChangeField(rule, e.Value?.ToString() ?? string.Empty)"><option value="">@L("All text fields", "所有文本字段")</option>@foreach (var field in AvailableFields) { <option value="@field.Name">@(string.IsNullOrEmpty(field.DisplayName) ? field.Name : field.DisplayName)</option> }</select></label>
+                            <label>@L("Operator", "运算符")<select value="@rule.Operation" @onchange="e => ChangeOperation(rule, e.Value?.ToString() ?? string.Empty)">@foreach (string operation in Choices(rule)) { <option value="@operation">@FilterOperation(operation)</option> }</select></label>
                             <button @onclick="() => rules.Remove(rule)" aria-label="@L("Remove condition", "移除条件")">×</button>
                             @if (rule.Operation is not ("IsNull" or "IsNotNull"))
                             {
@@ -33,8 +33,8 @@
         {
         <div class="@(Inline ? "toolbar advanced-search-actions" : "dialog-actions")">
             @if (!Inline) { <button @onclick="OnCancel" disabled="@Disabled">@L("Cancel", "取消")</button> }
-            <button class="primary" @onclick="ApplyAsync" disabled="@Disabled">@ApplyLabel</button>
-            @if (Inline) { @if (ShowClear) { <button @onclick="OnClear" disabled="@Disabled">Clear search</button> } @Actions }
+            <button class="primary" @onclick="ApplyAsync" disabled="@Disabled">@(ApplyLabel == "Apply" ? L("Apply", "应用") : ApplyLabel == "Search" ? L("Search", "搜索") : ApplyLabel)</button>
+            @if (Inline) { @if (ShowClear) { <button @onclick="OnClear" disabled="@Disabled">@L("Clear search", "清除搜索")</button> } @Actions }
         </div>
         }
     </section>
@@ -68,7 +68,6 @@
     private string Kind(Rule rule) => AvailableFields.FirstOrDefault(f => f.Name == rule.Column)?.Kind ?? "Text";
     private IEnumerable<string> Choices(Rule rule) => string.IsNullOrEmpty(rule.Column) ? new[] { "Contains" } : AnalysisFilters.Operations.Where(o =>
         (o != "Contains" || Kind(rule) == "Text") && (o != "Range" || Kind(rule) is "Number" or "Date"));
-    private static string OperationName(string op) => op switch { "Equals" => "Equals", "NotEquals" => "Not equal", "Contains" => "Contains", "Range" => "Range (inclusive)", "In" => "In multiple values", "IsNull" => "Is NULL", "IsNotNull" => "Is not NULL", "Greater" => ">", "GreaterOrEqual" => ">=", "Less" => "<", "LessOrEqual" => "<=", _ => op };
     private void ChangeField(Rule rule, string field) { rule.Column = field; rule.Operation = Kind(rule) == "Text" ? "Contains" : "Equals"; rule.Values = []; rule.ReviewReason = ""; }
     private void ChangeOperation(Rule rule, string operation) { rule.Operation = operation; rule.Values = []; rule.ReviewReason = ""; }
     private void AddRule() => rules.Add(new Rule());

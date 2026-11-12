@@ -4,22 +4,22 @@
     @foreach (var item in Items)
     {
         <div class="object-row" @key="item">
-            <label class="object-choice">@if (AllowSelection) { <input type="checkbox" @bind="item.Selected" @bind:after="NotifySelectionChanged" /> }<span class="type-badge">@item.Kind</span><span>@item.DisplayName</span></label>
+            <label class="object-choice">@if (AllowSelection) { <input type="checkbox" @bind="item.Selected" @bind:after="NotifySelectionChanged" /> }<span class="type-badge">@ObjectKind(item.Kind)</span><span>@item.DisplayName</span></label>
             @if (OnDefinition.HasDelegate && item.DefinitionObject is not null)
             {
-                <button aria-label="@($"View definition: {item.DisplayName}")" @onclick="() => OnDefinition.InvokeAsync(item)">@L("View definition", "查看定义")</button>
+                <button aria-label="@L($"View definition: {item.DisplayName}", $"查看定义：{item.DisplayName}")" @onclick="() => OnDefinition.InvokeAsync(item)">@L("View definition", "查看定义")</button>
             }
             @if (OnPreviewItem.HasDelegate)
             {
-                <button class="object-preview" aria-label="@($"Query data: {item.DisplayName}")" @onclick="() => OnPreviewItem.InvokeAsync(item)">@L("Query data", "查询数据")</button>
+                <button class="object-preview" aria-label="@L($"Query data: {item.DisplayName}", $"查询数据：{item.DisplayName}")" @onclick="() => OnPreviewItem.InvokeAsync(item)">@L("Query data", "查询数据")</button>
             }
             else if (OnPreview.HasDelegate)
             {
-                <button class="object-preview" aria-label="@($"Query data: {item.Name}")" @onclick="() => OnPreview.InvokeAsync(item.Name)">@L("Query data", "查询数据")</button>
+                <button class="object-preview" aria-label="@L($"Query data: {item.Name}", $"查询数据：{item.Name}")" @onclick="() => OnPreview.InvokeAsync(item.Name)">@L("Query data", "查询数据")</button>
             }
             @if (OnRunParameters.HasDelegate)
             {
-                <button @onclick="() => OnRunParameters.InvokeAsync(item)">Run with parameters</button>
+                <button @onclick="() => OnRunParameters.InvokeAsync(item)">@L("Run with parameters", "带参数运行")</button>
             }
         </div>
     }

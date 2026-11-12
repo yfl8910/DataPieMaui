@@ -5,16 +5,16 @@
     {
         <div class="migration-mark">SQL Server <span>→</span> SQLite</div><h2>@L("Create a SQLite database", "创建 SQLite 数据库")</h2>
         <p>@L("Export tables, supported views, and procedure scripts from the current SQL Server database.", "导出当前 SQL Server 数据库中的表、受支持的视图和存储过程脚本。")</p>
-        <div class="callout">Keep the generated <strong>StoredProcedures</strong> folder alongside the output database. Unsupported SQL is reported in the conversion results.</div>
-        <p class="muted">Progress appears in the status bar. You can request cancellation while conversion is running. A canceled or failed conversion may leave an incomplete database.</p>
+        <div class="callout">@L("Keep the generated", "请将生成的") <strong>StoredProcedures</strong> @L("folder alongside the output database. Unsupported SQL is reported in the conversion results.", "文件夹与输出数据库放在同一目录。转换结果会列出不支持的 SQL。")</div>
+        <p class="muted">@L("Progress appears in the status bar. You can request cancellation while conversion is running. A canceled or failed conversion may leave an incomplete database.", "进度显示在状态栏，转换期间可以取消。转换取消或失败时，输出数据库可能不完整。")</p>
         <div class="actions"><button class="primary" disabled="@(Model.State.DatabaseType != "SQLSERVER")" @onclick="ConvertSqliteAsync">@L("Choose destination and convert", "选择保存位置并转换")</button></div>
     }
     else if (State.DatabaseType == "SQLITE")
     {
         <div class="migration-mark">SQLite <span>→</span> SQL Server</div><h2>@L("Generate SQL Server script", "生成 SQL Server 脚本")</h2>
-        <p>Export table columns, primary keys and supported foreign keys to a SQL file. No data is copied and no SQL Server connection is required.</p>
-        <div class="callout">Only procedure records with Status = Success are eligible. Current SQLite .txt bodies are translated, including edits. Without an index, standalone scripts are supported. Unsupported syntax is skipped with warnings. Only a .sql structure script is saved; no data is copied and no SQL is executed.</div>
-        <p class="muted">Tables are mapped to dbo. Review types, defaults, constraints and warnings before executing. Views, triggers and additional indexes require manual conversion. Existing destination tables are not dropped.</p>
+        <p>@L("Export table columns, primary keys and supported foreign keys to a SQL file. No data is copied and no SQL Server connection is required.", "将表字段、主键和受支持的外键导出为 SQL 文件。此操作仅生成结构脚本，可离线完成。")</p>
+        <div class="callout">@L("Only procedure records with Status = Success are eligible. Current SQLite .txt bodies are translated, including edits. Without an index, standalone scripts are supported. Unsupported syntax is skipped with warnings. Only a .sql structure script is saved; no data is copied and no SQL is executed.", "仅处理状态为 Success 的过程记录。转换以当前 SQLite .txt 文件内容为准，包括编辑后的内容。没有索引时也支持独立脚本。不支持的语法会被跳过并报告。此操作仅保存 .sql 结构脚本。")</div>
+        <p class="muted">@L("Tables are mapped to dbo. Review types, defaults, constraints and warnings before executing. Views, triggers and additional indexes require manual conversion. Existing destination tables are not dropped.", "表将映射到 dbo。执行前请检查类型、默认值、约束和警告。视图、触发器和额外索引需要手动转换。目标库已有的表会保留。")</p>
         <div class="actions"><button class="primary" disabled="@(Model.State.DatabaseType != "SQLITE")" @onclick="ExportSqlServerAsync">@L("Choose destination and generate script", "选择保存位置并生成脚本")</button></div>
     }
     else
@@ -27,33 +27,34 @@
     <section class="card">
         <h2>@L("SQL Server object script", "SQL Server 对象脚本")</h2>
         <p>@L("Generate creation SQL for schemas, supported tables, primary keys, defaults, views and stored procedures from the current database.", "为当前数据库的架构、受支持的表、主键、默认值、视图和存储过程生成创建脚本。")</p>
-        <p class="muted">No data is copied and no generated SQL is executed. Other indexes and constraints, functions, triggers and user-defined types are excluded. Missing dependencies and skipped objects are reported; review the script before running it in an empty target database.</p>
+        <p class="muted">@L("No data is copied and no generated SQL is executed. Other indexes and constraints, functions, triggers and user-defined types are excluded. Missing dependencies and skipped objects are reported; review the script before running it in an empty target database.", "此操作仅生成脚本。其他索引、约束、函数、触发器和用户定义类型不在导出范围内。报告会列出缺失的依赖项和跳过的对象。请检查脚本后再在空目标库中执行。")</p>
         <div class="actions"><button @onclick="ExportSqlServerObjectsAsync">@L("Generate SQL Server script", "生成 SQL Server 脚本")</button></div>
     </section>
 }
 @code {
     public Task ExportSqlServerObjectsAsync() => RunAsync("Generate SQL Server object script", async watch =>
     {
-        if (Type != "SQLSERVER") throw new InvalidOperationException("Connect to SQL Server first.");
+        if (Type != "SQLSERVER") throw new InvalidOperationException(L("Connect to SQL Server first.", "请先连接 SQL Server。"));
         var connection = Database.Connection!;
         var path = await Desktop.SaveAsync(Database.Schema!.Name + "_schema", ".sql");
         if (path == null) return;
         watch.Start();
         var result = await Task.Run(() => SqlServerScriptExporter.Export(connection.ConnectionString, path));
         watch.Stop();
-        State.Status = $"SQL Server object script generated{(result.Warnings.Count > 0 ? " with warnings" : "")} in {watch.Elapsed.TotalSeconds:F1} s · {result.Tables} tables · {result.Views} views · {result.Procedures} procedures · {result.Warnings.Count} warnings · File: {Path.GetFullPath(path)}";
-        if (result.Warnings.Count > 0) await Dialogs.AlertAsync("SQL Server script export warnings", string.Join(Environment.NewLine, result.Warnings));
+        State.SetStatus($"SQL Server object script generated{(result.Warnings.Count > 0 ? " with warnings" : "")} in {watch.Elapsed.TotalSeconds:F1} s · {result.Tables} tables · {result.Views} views · {result.Procedures} procedures · {result.Warnings.Count} warnings · File: {Path.GetFullPath(path)}",
+            $"SQL Server 对象脚本已生成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。{result.Tables} 张表、{result.Views} 个视图、{result.Procedures} 个过程、{result.Warnings.Count} 条警告。文件：{Path.GetFullPath(path)}");
+        if (result.Warnings.Count > 0) await Dialogs.AlertAsync("SQL Server script export warnings", string.Join(Environment.NewLine, result.Warnings), "SQL Server 脚本导出警告");
     });
     public Task ConvertSqliteAsync() => RunAsync("Convert to SQLite", async watch =>
     {
-        if (Type != "SQLSERVER") throw new InvalidOperationException("Connect to SQL Server first.");
+        if (Type != "SQLSERVER") throw new InvalidOperationException(L("Connect to SQL Server first.", "请先连接 SQL Server。"));
         var path = await Desktop.SaveAsync(Database.Schema!.Name, ".db");
         if (path == null) return;
         await Workspace.Conversion.ConvertAsync(path, watch);
     });
     public Task ExportSqlServerAsync() => RunAsync("Generate SQL Server script", async watch =>
     {
-        if (Type != "SQLITE") throw new InvalidOperationException("Connect to SQLite first.");
+        if (Type != "SQLITE") throw new InvalidOperationException(L("Connect to SQLite first.", "请先连接 SQLite。"));
         var path = await Desktop.SaveAsync(Database.Schema!.Name + "_SQLServer", ".sql");
         if (path == null) return;
         var connection = Database.Connection!.ConnectionString;
@@ -65,7 +66,8 @@
             return export;
         });
         watch.Stop();
-        State.Status = $"SQL Server script generated in {watch.Elapsed.TotalSeconds:F1} s · {result.Tables} tables · {result.Procedures} procedures · {result.Warnings.Count} warnings · File: {path}";
-        if(result.Warnings.Count > 0) await Dialogs.AlertAsync("Script export warnings", string.Join(Environment.NewLine,result.Warnings));
+        State.SetStatus($"SQL Server script generated in {watch.Elapsed.TotalSeconds:F1} s · {result.Tables} tables · {result.Procedures} procedures · {result.Warnings.Count} warnings · File: {path}",
+            $"SQL Server 脚本已生成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。{result.Tables} 张表、{result.Procedures} 个过程、{result.Warnings.Count} 条警告。文件：{path}");
+        if (result.Warnings.Count > 0) await Dialogs.AlertAsync("Script export warnings", string.Join(Environment.NewLine, result.Warnings), "脚本导出警告");
     });
 }

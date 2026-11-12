@@ -11,8 +11,8 @@
     {
         <h2>@L("Connect to SQL Server", "连接 SQL Server")</h2>
         <div class="form-grid">
-            <label>@L("Server", "服务器")<input @bind="Model.Form.Server" @bind:event="oninput" placeholder="(local) or server\instance" /></label>
-            <label>@L("Authentication", "身份验证")<select @bind="Model.Form.Authentication"><option>Windows</option><option>SQL Server</option></select></label>
+            <label>@L("Server", "服务器")<input @bind="Model.Form.Server" @bind:event="oninput" placeholder="@L("(local) or server\\instance", "本机 (local) 或 服务器\\实例")" /></label>
+            <label>@L("Authentication", "身份验证")<select @bind="Model.Form.Authentication"><option value="Windows">@L("Windows", "Windows 身份验证")</option><option value="SQL Server">@L("SQL Server", "SQL Server 身份验证")</option></select></label>
             <label>@L("Username", "用户名")<input @bind="Model.Form.UserName" @bind:event="oninput" disabled="@(Model.Form.Authentication == "Windows")" autocomplete="off" /></label>
             <label>@L("Password", "密码")<input type="password" @bind="Model.Form.Password" @bind:event="oninput" disabled="@(Model.Form.Authentication == "Windows")" autocomplete="off" /></label>
         </div>
@@ -33,9 +33,9 @@
         <hr /><h2>@L("Connection details", "连接详情")</h2>
         @if (Model.Connections.FirstOrDefault(c => c.Id == Model.Form.SelectedConnectionId)?.Dbtype == "SQLITE")
         {
-            <label>SQLite password (optional, not saved)<input type="password" @bind="Model.Form.SqlitePassword" @bind:event="oninput" autocomplete="off" /></label>
+            <label>@L("SQLite password (optional, not saved)", "SQLite 密码（可选，仅用于当前会话）")<input type="password" @bind="Model.Form.SqlitePassword" @bind:event="oninput" autocomplete="off" /></label>
         }
-        <label>Connection string<input type="text" value="@Model.Form.ConnectionString" readonly autocomplete="off" /></label>
+        <label>@L("Connection string", "连接字符串")<input type="text" value="@Model.Form.ConnectionString" readonly autocomplete="off" /></label>
     }
 </section>
 
@@ -61,17 +61,26 @@
         Form.SqlitePassword = "";
         Notify();
     }
-    private Dbinfo SelectedConnection() => Connections.FirstOrDefault(x => x.Id == Form.SelectedConnectionId) ?? throw new InvalidOperationException("Select a connection.");
+    private Dbinfo SelectedConnection() => Connections.FirstOrDefault(x => x.Id == Form.SelectedConnectionId) ?? throw new InvalidOperationException(L("Select a connection.", "请选择连接。"));
     private static DatabaseConnectionInfo Info(Dbinfo record) => new(record.Dbtype, record.ConnectionStrings, record.Dbname);
 
     private async Task ConnectAsync(Dbinfo record, bool save)
     {
         bool connecting = true;
-        var progress = new Progress<string>(value => { if (connecting && State.Busy) State.Status = value; });
+        var progress = new Progress<string>(value =>
+        {
+            if (connecting && State.Busy)
+                State.SetStatus(value, value switch
+                {
+                    "Connecting to database…" => "正在连接数据库…",
+                    "Reading database object list…" => "正在读取数据库对象列表…",
+                    _ => null
+                });
+        });
         try { await Database.ConnectAsync(Info(record), progress); }
         catch (Exception) when (record.Dbtype == "SQLITE")
         {
-            throw new InvalidOperationException("Unable to open the SQLite database. Check the file, permissions and password. Encrypted files must use SQLCipher 4 with default encryption settings.");
+            throw new InvalidOperationException(L("Unable to open the SQLite database. Check the file, permissions and password. Encrypted files must use SQLCipher 4 with default encryption settings.", "无法打开 SQLite 数据库。请检查文件、权限和密码。加密文件须使用 SQLCipher 4 的默认加密设置。"));
         }
         finally { connecting = false; }
         var setupWatch = System.Diagnostics.Stopwatch.StartNew();
@@ -96,7 +105,8 @@
         if (record.Dbtype == "SQLITE") Form.SqlitePassword = "";
         Section = "Query";
         setupWatch.Stop();
-        State.Status = "Connected · " + Database.ConnectionTiming + $" · Workspace {setupWatch.Elapsed.TotalSeconds:F2}s";
+        State.SetStatus("Connected · " + Database.ConnectionTiming + $" · Workspace {setupWatch.Elapsed.TotalSeconds:F2}s",
+            "已连接 · " + Database.ChineseConnectionTiming + $" · 工作台初始化 {setupWatch.Elapsed.TotalSeconds:F2} 秒");
     }
 
     public Task ConnectSavedAsync() => RunAsync("Connect to database", async watch =>
@@ -116,7 +126,8 @@
     public Task DeleteConnectionAsync() => RunAsync("Delete connection", async watch =>
     {
         var item = SelectedConnection();
-        if (!await Dialogs.ConfirmAsync("Delete connection", "Delete only the saved connection configuration: " + item.Dbname, "Delete")) return;
+        if (!await Dialogs.ConfirmAsync("Delete connection", "Delete only the saved connection configuration: " + item.Dbname, "Delete",
+            "删除连接", $"将删除已保存的连接配置「{item.Dbname}」。", "删除")) return;
         watch.Start();
         await Task.Run(() => Store.Delete(item.Id));
         Form.SelectedConnectionId = 0;
@@ -125,7 +136,7 @@
     });
     private DBConfig SqlConfig(string name) => new()
     {
-        ProviderName = "SQLSERVER", ServerName = Required(Form.Server, "Enter a server address.").Trim(), DataBase = name,
+        ProviderName = "SQLSERVER", ServerName = Required(Form.Server, L("Enter a server address.", "请输入服务器地址。")).Trim(), DataBase = name,
         ValidataType = Form.Authentication, UserName = Form.UserName, UserPwd = Form.Password
     };
     public Task LoadDatabasesAsync() => RunAsync("Load databases", async watch =>
@@ -136,7 +147,7 @@
     });
     public Task ConnectServerAsync() => RunAsync("Connect to SQL Server", async watch =>
     {
-        var name = Required(Form.DatabaseName, "Select a database."); watch.Start();
+        var name = Required(Form.DatabaseName, L("Select a database.", "请选择数据库。")); watch.Start();
         await ConnectAsync(new Dbinfo { Dbname = name, Dbtype = "SQLSERVER", ConnectionStrings = SqlConfig(name).GetConstring() }, true);
     });
     public Task BrowseSqliteAsync() => RunAsync("Select SQLite file", async watch =>
@@ -154,7 +165,7 @@
 
     public Task CreateSqliteAsync() => RunAsync("Create SQLite database", async watch =>
     {
-        if (Form.SqlitePassword.Length > 0) throw new InvalidOperationException("Clear the password to create a blank, unencrypted database. Creating encrypted databases is not supported.");
+        if (Form.SqlitePassword.Length > 0) throw new InvalidOperationException(L("Clear the password to create a blank, unencrypted database. Creating encrypted databases is not supported.", "请清除密码以创建未加密的空数据库。"));
         var selectedPath = await Desktop.SelectNewFilePathAsync("NewDatabase", ".db");
         if (selectedPath == null) return;
         var path = Path.GetFullPath(selectedPath);
@@ -189,13 +200,15 @@
         Form.SqlitePath = path;
         await ConnectAsync(new Dbinfo { Dbname = Path.GetFileNameWithoutExtension(path), Dbtype = "SQLITE", ConnectionStrings = new DBConfig { ProviderName = "SQLITE", DataBase = path }.GetConstring() }, false);
         watch.Stop();
-        State.Status = $"Blank SQLite database created and connected in {watch.Elapsed.TotalSeconds:F1} s · File: {path}";
+        State.SetStatus($"Blank SQLite database created and connected in {watch.Elapsed.TotalSeconds:F1} s · File: {path}",
+            $"已创建并连接空 SQLite 数据库，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。文件：{path}");
     });
 
     private async Task ShowExistingDatabaseAsync(string path)
     {
-        State.Status = "Database creation canceled: the selected file already exists.";
-        await Dialogs.AlertAsync("File already exists", $"{path} already exists. Choose a new filename to create a blank database. To open this database, use Browse file and Connect and save.");
+        State.SetStatus("Database creation canceled: the selected file already exists.", "所选文件已存在，已取消创建数据库。");
+        await Dialogs.AlertAsync("File already exists", $"{path} already exists. Choose a new filename to create a blank database. To open this database, use Browse file and Connect and save.",
+            "文件已存在", $"文件 {path} 已存在。请使用新文件名创建空数据库。要打开此数据库，请使用“浏览文件”和“连接并保存”。");
     }
 
     private void Select(ChangeEventArgs e)

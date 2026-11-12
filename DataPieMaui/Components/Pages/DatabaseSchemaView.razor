@@ -26,7 +26,7 @@
         @if (selected is null) { <p>@L("Select a table, view or procedure to inspect it.", "选择表、视图或存储过程以查看详情。")</p> }
         else
         {
-            <h2>@selected.DisplayName</h2><p>@selected.Kind</p>
+            <h2>@selected.DisplayName</h2><p>@ObjectKind(selected.Kind)</p>
             @if (selected.Kind == "Table")
             {
                 <TableActionBar OnImport="ImportSelectedTableAsync" OnExport="ExportSelectedTableAsync" OnEdit="EditSelectedTableAsync" OnAnalyze="AnalyzeSelectedTableAsync" OnClear="ClearSelectedTableAsync" OnDrop="DropSelectedTableAsync" />
@@ -35,18 +35,18 @@
                 {
                     <div id="table-structure" class="schema-columns">
                         <TableDataGrid TRow="Column" Rows="columns" ColumnCount="7" ShowLeadingColumn="false"
-                                       CellText="StructureCell" CellIsNull="@((Column row, int column) => false)" IsSelected="@((Column row) => false)" EmptyText="No columns found.">
-                            <ColumnHeader Context="column">@StructureHeaders[column]</ColumnHeader>
+                                       CellText="StructureCell" CellIsNull="@((Column row, int column) => false)" IsSelected="@((Column row) => false)" EmptyText="@L("No columns found.", "未找到字段。")">
+                            <ColumnHeader Context="column">@L(StructureHeaders[column].English, StructureHeaders[column].Chinese)</ColumnHeader>
                             <LeadingCell Context="row"></LeadingCell>
                         </TableDataGrid>
                     </div>
-                    <p class="muted">Indexes, unique/check constraints and foreign key details are not loaded in this view.</p>
+                    <p class="muted">@L("Indexes, unique/check constraints and foreign key details are not loaded in this view.", "此处仅显示字段信息。索引、唯一约束、检查约束及外键详情可在数据库中查看。")</p>
                 }
             }
             else
             {
-                @if (selected.Kind == "Procedure") { <p>Has parameters: @(Type == "SQLSERVER" ? YesNo(selected.HasParameters) : "Not loaded")</p> }
-                <p class="muted">The SQL definition is loaded only when requested.</p>
+                @if (selected.Kind == "Procedure") { <p>@L("Has parameters:", "有参数：") @(Type == "SQLSERVER" ? YesNo(selected.HasParameters) : L("Not loaded", "未加载"))</p> }
+                <p class="muted">@L("The SQL definition is loaded only when requested.", "点击“查看定义”以加载 SQL。")</p>
                 <div class="actions">
                     @if (selected.Kind == "View") { <button @onclick="QuerySelectedViewAsync">@L("Query data", "查询数据")</button><button @onclick="AnalyzeSelectedViewAsync">@L("Data analysis", "数据分析")</button> }
                     @if (selected.Kind == "Procedure") { <button @onclick="RunSelectedProcedureAsync">@L("Run", "运行")</button> }
@@ -62,27 +62,29 @@
     private DefinitionObject? selected;
     private IReadOnlyList<Column> columns = [];
     private bool showStructure;
-    private static readonly string[] StructureHeaders = ["Column", "Type", "Primary key", "Auto-generated ID", "Nullable", "Computed", "Default"];
+    private static readonly (string English, string Chinese)[] StructureHeaders =
+        [("Column", "字段"), ("Type", "类型"), ("Primary key", "主键"), ("Auto-generated ID", "自动生成 ID"),
+         ("Nullable", "允许空值"), ("Computed", "计算列"), ("Default", "默认值")];
     private string StructureCell(Column column, int index) => index switch
     {
         0 => column.Name, 1 => column.DisplayType(Type), 2 => YesNo(column.IsPrimaryKey),
         3 => YesNo(column.IsIdentity), 4 => YesNo(column.IsNullable),
-        5 => column.IsComputed.HasValue ? YesNo(column.IsComputed.Value) : "Not loaded",
-        6 => column.DefaultLoaded ? string.IsNullOrEmpty(column.Default) ? "None" : column.Default : "Not loaded",
+        5 => column.IsComputed.HasValue ? YesNo(column.IsComputed.Value) : L("Not loaded", "未加载"),
+        6 => column.DefaultLoaded ? string.IsNullOrEmpty(column.Default) ? "None" : column.Default : L("Not loaded", "未加载"),
         _ => ""
     };
     private IReadOnlyList<DefinitionObject> Definitions => Database.Schema?.DefinitionObjects ?? [];
     private IEnumerable<DefinitionObject> Objects => (Database.Schema?.Tables.Select(t => new DefinitionObject("Table", Type == "SQLSERVER" ? t.TableSchemaName : "main", t.Name)) ?? [])
         .Concat(Definitions).Where(o => (kind == "All" || o.Kind == kind) && o.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase));
-    private static string YesNo(bool value) => value ? "Yes" : "No";
+    private string YesNo(bool value) => value ? L("Yes", "是") : L("No", "否");
     public Task QuerySelectedViewAsync() => selected is { Kind: "View" } item ? Context.Preview.PreviewObjectAsync(item) : Task.CompletedTask;
     public Task AnalyzeSelectedViewAsync() => selected is { Kind: "View" } item ? Context.TableActions.AnalyzeViewAsync(item) : Task.CompletedTask;
     public Task RunSelectedProcedureAsync() => selected is { Kind: "Procedure" } item ? Context.ProcedureActions.RunSingleAsync(item) : Task.CompletedTask;
     private TableStruct SelectedTable()
     {
-        if (selected is not { Kind: "Table" } item) throw new InvalidOperationException("Select a table.");
+        if (selected is not { Kind: "Table" } item) throw new InvalidOperationException(L("Select a table.", "请选择表。"));
         return Database.Schema!.Tables.SingleOrDefault(t => t.Name == item.Name && (Type != "SQLSERVER" || t.TableSchemaName == item.Schema))
-            ?? throw new InvalidOperationException("The table is no longer available. Refresh the schema.");
+            ?? throw new InvalidOperationException(L("The table is no longer available. Refresh the schema.", "此表已不可用，请刷新数据库结构。"));
     }
     public Task ImportSelectedTableAsync() => Context.TableActions.ImportAsync(SelectedTable());
     public Task ExportSelectedTableAsync() => Context.TableActions.ExportExcelAsync(SelectedTable());
@@ -99,7 +101,7 @@
     {
         if (selected is not { Kind: "Table" } item) return;
         var table = Database.Schema!.Tables.SingleOrDefault(t => t.Name == item.Name && (Type != "SQLSERVER" || t.TableSchemaName == item.Schema))
-            ?? throw new InvalidOperationException("The table is no longer available. Refresh the schema.");
+            ?? throw new InvalidOperationException(L("The table is no longer available. Refresh the schema.", "此表已不可用，请刷新数据库结构。"));
         await OpenTableEditorAsync(table, watch);
     });
     public Task SelectAsync(DefinitionObject item) => RunAsync("Select object", watch =>

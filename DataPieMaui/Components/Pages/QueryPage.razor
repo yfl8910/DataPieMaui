@@ -19,7 +19,7 @@
 </section>
 
 @code {
-    private DBUtil.TableStruct SelectedQueryTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.QueryTable, "Select a table."), Type);
+    private DBUtil.TableStruct SelectedQueryTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.QueryTable, L("Select a table.", "请选择表。")), Type);
     public Task EditQueryTableAsync() => RunAsync("Open table editor", watch => OpenTableEditorAsync(SelectedQueryTable(), watch));
     private async Task Generate(string kind)
     {
@@ -52,8 +52,9 @@
 
     public Task ExecuteSqlAsync() => RunAsync("Run SQL", async watch =>
     {
-        var sql = Required(Form.Sql, "Enter SQL.");
-        if (!await Dialogs.ConfirmAsync("Run SQL", "Run the SQL in the editor against the current database?", "Run")) return;
+        var sql = Required(Form.Sql, L("Enter SQL.", "请输入 SQL。"));
+        if (!await Dialogs.ConfirmAsync("Run SQL", "Run the SQL in the editor against the current database?", "Run",
+            "执行 SQL", "在当前数据库执行编辑器中的 SQL 吗？", "执行")) return;
         watch.Start();
         int count = await Task.Run(() =>
         {
@@ -61,13 +62,14 @@
             return access.ExecuteSql(sql);
         });
         watch.Stop();
-        State.Status = $"SQL completed in {watch.Elapsed.TotalSeconds:F1} s: {count:N0} rows affected";
+        State.SetStatus($"SQL completed in {watch.Elapsed.TotalSeconds:F1} s: {count:N0} rows affected",
+            $"SQL 执行完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒，影响 {count:N0} 行。");
     });
     public Task ExportQueryAsync(bool csv, bool wholeTable) => wholeTable && !csv ? Context.TableActions.ExportExcelAsync(SelectedQueryTable()) : RunAsync("Export data", async watch =>
     {
         var table = wholeTable ? SelectedQueryTable() : null;
         string name = table?.Name ?? "Query";
-        string sql = table != null ? TableSelection.SelectAll(table, Type) : Required(Form.Sql, "Enter SQL.");
+        string sql = table != null ? TableSelection.SelectAll(table, Type) : Required(Form.Sql, L("Enter SQL.", "请输入 SQL。"));
         var path = await Desktop.SaveAsync(name, csv ? ".csv" : ".xlsx");
         if (path == null) return;
         watch.Start();
@@ -79,7 +81,8 @@
             else ExcelIO.SaveMiniExcel(path, reader, name);
         });
         watch.Stop();
-        State.Status = $"Export data completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}";
+        State.SetStatus($"Export data completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}",
+            $"数据导出完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。文件：{Path.GetFullPath(path)}");
     });
 
     public Task ExportCapturedAsync(bool csv) => RunAsync("Export preview", async watch =>

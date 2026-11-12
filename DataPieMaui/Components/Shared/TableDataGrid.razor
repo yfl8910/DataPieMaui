@@ -1,5 +1,6 @@
+@inherits LocalizedComponent
 @typeparam TRow
-<div class="table-scroll" tabindex="0" aria-label="Table data">
+<div class="table-scroll" tabindex="0" aria-label="@L("Table data", "表数据")">
     <table>
         <thead><tr>
             @if (ShowLeadingColumn) { <th>@LeadingHeader</th> }
@@ -20,7 +21,7 @@
                     }
                 </tr>
             }
-            @if (!Rows.Any()) { <tr><td colspan="@(ColumnCount + (ShowLeadingColumn ? 1 : 0))" class="empty">@EmptyText</td></tr> }
+            @if (!Rows.Any()) { <tr><td colspan="@(ColumnCount + (ShowLeadingColumn ? 1 : 0))" class="empty">@(EmptyText ?? L("No records.", "没有记录。"))</td></tr> }
         </tbody>
         @if (ShowFooter && Footer != null) { <tfoot>@Footer</tfoot> }
     </table>
@@ -39,7 +40,7 @@
     [Parameter] public Func<int, string>? SortState { get; set; }
     [Parameter] public bool SelectRows { get; set; }
     [Parameter] public EventCallback<TRow> OnSelect { get; set; }
-    [Parameter] public string EmptyText { get; set; } = "No records.";
+    [Parameter] public string? EmptyText { get; set; }
     [Parameter] public RenderFragment? Footer { get; set; }
     [Parameter] public bool ShowFooter { get; set; } = true;
     private Task SelectAsync(TRow row) => SelectRows ? OnSelect.InvokeAsync(row) : Task.CompletedTask;

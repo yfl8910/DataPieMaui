@@ -1,34 +1,34 @@
 @inherits LocalizedComponent
 @using DataPieMaui.Services.Shared
-<p>Database: <strong>@Session.Database</strong><br />Procedure: <strong>@Session.Target.DisplayName</strong></p>
+<p>@L("Database:", "数据库：") <strong>@Session.Database</strong><br />@L("Procedure:", "存储过程：") <strong>@Session.Target.DisplayName</strong></p>
 @if (!string.IsNullOrEmpty(Session.Error)) { <p class="callout danger" role="alert">@Session.Error</p> }
 @if (Session.Result is { } result)
 {
-    <p role="status">Completed in @Session.ElapsedSeconds.ToString("F1") s. Return value: @result.ReturnValue. Rows affected: @(result.RowsAffected < 0 ? "Not reported" : result.RowsAffected.ToString()).</p>
+    <p role="status">@L($"Completed in {Session.ElapsedSeconds:F1} s. Return value: {result.ReturnValue}. Rows affected:", $"执行完成，耗时 {Session.ElapsedSeconds:F1} 秒。返回值：{result.ReturnValue}。受影响的行数：") @(result.RowsAffected < 0 ? L("Not reported", "未报告") : result.RowsAffected.ToString()).</p>
     @foreach (var output in result.Outputs) { <p><strong>@output.Key:</strong> @(output.Value is null or DBNull ? "NULL" : Convert.ToString(output.Value, System.Globalization.CultureInfo.InvariantCulture))</p> }
-    <p class="muted">Result sets are not displayed in this execution window.</p>
+    <p class="muted">@L("Result sets are not displayed in this execution window.", "此执行窗口仅显示运行状态和输出参数。")</p>
 }
 else if (Session.Reviewing)
 {
-    <p>This procedure may modify data. Confirm the database and parameter values before running.</p>
-    <pre class="procedure-summary">@Session.Summary</pre>
-    <div class="actions"><button class="primary" disabled="@Session.Running" @onclick="Session.ConfirmAsync">@(Session.Running ? "Running…" : "Confirm run")</button><button disabled="@Session.Running" @onclick="Session.Back">Back</button></div>
+    <p>@L("This procedure may modify data. Confirm the database and parameter values before running.", "此存储过程可能修改数据。运行前请核对数据库和参数值。")</p>
+    <pre class="procedure-summary">@L(Session.Summary, Session.ChineseSummary)</pre>
+    <div class="actions"><button class="primary" disabled="@Session.Running" @onclick="Session.ConfirmAsync">@(Session.Running ? L("Running…", "正在运行…") : L("Confirm run", "确认运行"))</button><button disabled="@Session.Running" @onclick="Session.Back">@L("Back", "返回")</button></div>
 }
 else
 {
-    <p class="muted">Choose Value, NULL, or Omit (server default if available). Empty text is an empty string. Use ISO dates and a decimal point. OUTPUT parameters can also accept an initial value.</p>
-    @if (!Session.Supported) { <p class="callout danger">This procedure has unsupported parameter types. Execution from this window is unavailable.</p> }
+    <p class="muted">@L("Choose Value, NULL, or Omit (server default if available). Empty text is an empty string. Use ISO dates and a decimal point. OUTPUT parameters can also accept an initial value.", "请选择输入值、NULL 或省略（如有服务器默认值则使用默认值）。空文本表示空字符串。日期使用 ISO 格式，小数使用点号。OUTPUT 参数也可以提供初始值。")</p>
+    @if (!Session.Supported) { <p class="callout danger">@L("This procedure has unsupported parameter types. Execution from this window is unavailable.", "此存储过程含有不受支持的参数类型，无法在此窗口执行。")</p> }
     @foreach (var input in Session.Inputs)
     {
         <div class="procedure-parameter">
             <label>@input.Parameter.Name · @input.Parameter.Description · @input.Parameter.Direction
-                <select @bind="input.Mode" disabled="@(!input.Parameter.Supported)"><option value="Value">Value</option><option value="NULL">NULL</option><option value="Omit">Omit (default if available)</option></select>
+                <select @bind="input.Mode" disabled="@(!input.Parameter.Supported)"><option value="Value">@L("Value", "值")</option><option value="NULL">NULL</option><option value="Omit">@L("Omit (default if available)", "省略（如有默认值则使用）")</option></select>
             </label>
-            @if (input.Mode == "Value") { <label>Value for @input.Parameter.Name<input @bind="input.Text" @bind:event="oninput" disabled="@(!input.Parameter.Supported)" autocomplete="off" /></label> }
+            @if (input.Mode == "Value") { <label>@L($"Value for {input.Parameter.Name}", $"{input.Parameter.Name} 的值")<input @bind="input.Text" @bind:event="oninput" disabled="@(!input.Parameter.Supported)" autocomplete="off" /></label> }
         </div>
     }
-    @if (Session.Inputs.Count == 0) { <p>This procedure has no parameters.</p> }
-    <div class="actions"><button class="primary" disabled="@(!Session.Supported)" @onclick="Session.Review">Review and run…</button></div>
+    @if (Session.Inputs.Count == 0) { <p>@L("This procedure has no parameters.", "此存储过程没有参数。")</p> }
+    <div class="actions"><button class="primary" disabled="@(!Session.Supported)" @onclick="Session.Review">@L("Review and run…", "检查并运行…")</button></div>
 }
 <div class="actions dialog-actions"><button data-dismiss disabled="@Session.Running" @onclick="Close">@L("Close", "关闭")</button></div>
 @code {

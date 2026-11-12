@@ -1,12 +1,13 @@
+@inherits LocalizedComponent
 <div class="analysis-filter-values">
     @if (Operation == "In")
     {
         @for (int index = 0; index < Values.Count; index++)
         {
             int slot = index;
-            <div class="analysis-filter-value"><input aria-label="@($"{Label} value {slot + 1}")" type="@InputType" step="any" value="@Values[slot]" @onchange="e => Change(slot, e.Value?.ToString() ?? string.Empty)" /><button type="button" @onclick="() => Remove(slot)" aria-label="Remove value">×</button></div>
+            <div class="analysis-filter-value"><input aria-label="@($"{Label} value {slot + 1}")" type="@InputType" step="any" value="@Values[slot]" @onchange="e => Change(slot, e.Value?.ToString() ?? string.Empty)" /><button type="button" @onclick="() => Remove(slot)" aria-label="@L("Remove value", "移除值")">×</button></div>
         }
-        <button type="button" @onclick="Add">Add value</button>
+        <button type="button" @onclick="Add">@L("Add value", "添加值")</button>
     }
     else if (Operation is not ("IsNull" or "IsNotNull"))
     {
@@ -15,11 +16,11 @@
             int slot = index;
             @if (Kind == "Boolean")
             {
-                <select aria-label="@Label" value="@At(slot)" @onchange="e => Change(slot, e.Value?.ToString() ?? string.Empty)"><option value="">Not set</option><option value="true">True</option><option value="false">False</option></select>
+                <select aria-label="@Label" value="@At(slot)" @onchange="e => Change(slot, e.Value?.ToString() ?? string.Empty)"><option value="">@L("Not set", "未设置")</option><option value="true">@L("True", "是")</option><option value="false">@L("False", "否")</option></select>
             }
             else
             {
-                <input aria-label="@(Operation == "Range" ? Label + (slot == 0 ? " start" : " end") : Label)" type="@InputType" step="any" value="@At(slot)" placeholder="@(Operation == "Range" ? (slot == 0 ? "From" : "To") : "Value")" @onchange="e => Change(slot, e.Value?.ToString() ?? string.Empty)" />
+                <input aria-label="@(Operation == "Range" ? Label + (slot == 0 ? L(" start", "起始值") : L(" end", "结束值")) : Label)" type="@InputType" step="any" value="@At(slot)" placeholder="@(Operation == "Range" ? (slot == 0 ? L("From", "起始值") : L("To", "结束值")) : L("Value", "值"))" @onchange="e => Change(slot, e.Value?.ToString() ?? string.Empty)" />
             }
         }
     }

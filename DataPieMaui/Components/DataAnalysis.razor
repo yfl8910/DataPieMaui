@@ -17,12 +17,12 @@
                 <button @onclick="OpenTemplateManager">@L("Manage templates", "管理模板")</button>
                 <button @onclick="NewTemplateAsync">@L("New template", "新建模板")</button>
             </div>
-            @if (isNewTemplateDraft) { <p class="notice">New template, not saved. Adjust settings and click Save to enter a new name.</p> }
+            @if (isNewTemplateDraft) { <p class="notice">@L("New template, not saved. Adjust settings and click Save to enter a new name.", "新模板尚未保存。调整设置后点击“保存”并输入名称。")</p> }
         }
         <div class="analysis-config-bar">
-            <button @onclick="OpenGroupSettings">Group by (@groups.Count)</button>
-            <span title="@string.Join(", ", groups)">@(groups.Count == 0 ? "Total (no grouping)" : string.Join(", ", groups))</span>
-            <button @onclick="OpenCalculationSettings">Calculations (@(calculations.Count + formulas.Count + (includeCount ? 1 : 0)))</button>
+            <button @onclick="OpenGroupSettings">@L("Group by", "分组字段") (@groups.Count)</button>
+            <span title="@string.Join(", ", groups)">@(groups.Count == 0 ? L("Total (no grouping)", "合计（不分组）") : string.Join(", ", groups))</span>
+            <button @onclick="OpenCalculationSettings">@L("Calculations", "计算项") (@(calculations.Count + formulas.Count + (includeCount ? 1 : 0)))</button>
             <span title="@CalculationSummary">@CalculationSummary</span>
             @if (templateConditions.Count > 0 || templateFilters != null)
             {
@@ -33,15 +33,15 @@
             <Actions><button type="button" @onclick="OpenFilterSettings">@L("Advanced search", "高级搜索")</button><button type="button" @onclick="Reset">@L("Reset", "重置")</button><label><input type="checkbox" @bind="exportFormatted" /> @L("Format", "应用格式")</label><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">@L("Export", "导出")</button></Actions>
         </SimpleSearch>
 
-        @if (filters != null && (filters.Groups.Any(g => g.Rules.Count > 0) || filters.CommonRules?.Count > 0)) { <p>Advanced filters: @AnalysisFilters.Summary(filters)</p> }
-        <p>Analysis includes all matching source rows. NULL values are ignored by numeric calculations. Export reruns the same analysis against the current source data.</p>
-        @if (Session.Source.Provider == "SQLITE") { <p>SQLite uses native numeric precision; nonnumeric values in calculation fields are rejected.</p> }
+        @if (filters != null && (filters.Groups.Any(g => g.Rules.Count > 0) || filters.CommonRules?.Count > 0)) { <p>@L("Advanced filters:", "高级筛选：") @FilterSummary(filters)</p> }
+        <p>@L("Analysis includes all matching source rows. NULL values are ignored by numeric calculations. Export reruns the same analysis against the current source data.", "分析覆盖所有匹配的源数据。数值计算会忽略 NULL。导出会用当前源数据重新运行分析。")</p>
+        @if (Session.Source.Provider == "SQLITE") { <p>@L("SQLite uses native numeric precision; nonnumeric values in calculation fields are rejected.", "SQLite 使用原生数值精度。计算字段必须为数值或 NULL。")</p> }
     </fieldset>
     </div>
     @if (Session.Result is { } result)
     {
-        @if (!Session.Matches(Request)) { <p class="notice">Settings changed. Analyze again to update these results.</p> }
-        @if (result.Truncated) { <p class="notice">Showing the first 1,000 groups. Calculations include the full matching source. Export Excel retrieves all groups.</p> }
+        @if (!Session.Matches(Request)) { <p class="notice">@L("Settings changed. Analyze again to update these results.", "设置已更改，请重新分析以更新结果。")</p> }
+        @if (result.Truncated) { <p class="notice">@L("Showing the first 1,000 groups. Calculations include the full matching source. Export Excel retrieves all groups.", "当前显示前 1,000 个分组，计算覆盖所有匹配数据。导出 Excel 可获取全部分组。")</p> }
         <TableDataGrid TRow="int" Rows="@order.Skip(page * 100).Take(100)" ColumnCount="result.ColumnCount" CellText="result.FormatGroupedCell" CellIsNull="result.IsNull"
                        IsSelected="IsSelected" SelectRows="true" OnSelect="Select" SortState="SortState" ShowFooter="@(Session.Totals != null && Session.Matches(Request))">
             <LeadingHeader>#</LeadingHeader>
@@ -50,7 +50,7 @@
             <Footer>
                 @if (Session.Totals is { } totals && Session.LastRequest is { } analyzed)
                 {
-                    <tr class="analysis-total-row"><th scope="row" title="Overall totals for all matching source rows, including groups outside this preview">@L("Total", "合计")</th>
+                    <tr class="analysis-total-row"><th scope="row" title="@L("Overall totals for all matching source rows, including groups outside this preview", "所有匹配源数据的合计，包括预览范围之外的分组")">@L("Total", "合计")</th>
                         @for (int column = 0; column < result.ColumnCount; column++)
                         {
                             if (column < analyzed.Groups.Count) { <td></td> }
@@ -65,11 +65,11 @@
             </Footer>
         </TableDataGrid>
         <div class="toolbar"><button @onclick="() => CopyAsync(false)" disabled="@(selected == null)">@L("Copy selected row", "复制选中行")</button><button @onclick="() => CopyAsync(true)">@L("Copy preview rows", "复制预览行")</button>
-            <div class="pagination"><button @onclick="() => page--" disabled="@(page == 0)">@L("Previous", "上一页")</button><span>Page @(page + 1)/@PageCount · @result.RowCount groups</span><button @onclick="() => page++" disabled="@(page + 1 >= PageCount)">@L("Next", "下一页")</button></div>
+            <div class="pagination"><button @onclick="() => page--" disabled="@(page == 0)">@L("Previous", "上一页")</button><span>@L($"Page {page + 1}/{PageCount} · {result.RowCount} groups", $"第 {page + 1}/{PageCount} 页 · {result.RowCount} 个分组")</span><button @onclick="() => page++" disabled="@(page + 1 >= PageCount)">@L("Next", "下一页")</button></div>
         </div>
     }
     else { <div class="empty">@L("Choose fields and click Analyze to view grouped results.", "选择字段并点击“分析”，即可查看分组结果。")</div> }
-    <footer><span role="status" style="white-space:pre-wrap">@(clipboardMessage.Length > 0 ? clipboardMessage : Session.Status)</span></footer>
+    <footer><span role="status" style="white-space:pre-wrap">@(clipboardMessage.Length > 0 ? clipboardMessage : L(Session.Status, Session.ChineseStatus))</span></footer>
 </main>
 @if (settingsDialog == "groups")
 {
@@ -90,12 +90,12 @@ else if (settingsDialog == "templates")
 else if (settingsDialog == "save-template")
 {
     <div class="modal-overlay"><section class="editor-dialog" role="dialog" aria-modal="true" aria-labelledby="save-template-title" tabindex="-1">
-        <div class="dialog-header"><h2 id="save-template-title">@L("Save template", "保存模板")</h2><button data-dialog-close @onclick="CloseSettings" disabled="@Session.Busy" aria-label="Cancel saving template">×</button></div>
+        <div class="dialog-header"><h2 id="save-template-title">@L("Save template", "保存模板")</h2><button data-dialog-close @onclick="CloseSettings" disabled="@Session.Busy" aria-label="@L("Cancel saving template", "取消保存模板")">×</button></div>
         <form @onsubmit="SaveNewTemplateAsync" @onsubmit:preventDefault>
             <fieldset class="dialog-body" disabled="@Session.Busy">
                 <label>@L("Template name", "模板名称")<input @bind="NewTemplateName" @bind:event="oninput" maxlength="100" autofocus /></label>
-                <p>Saves current Group by, Calculations, default sort and nonempty search conditions. @(isNewTemplateDraft ? "Enter a different name to create a new template." : "The same table and name replaces the existing template.")</p>
-                <p role="status" style="white-space:pre-wrap">@Session.Status</p>
+                <p>@L("Saves current Group by, Calculations, default sort and nonempty search conditions.", "保存当前的分组、计算项、默认排序和非空搜索条件。") @(isNewTemplateDraft ? L("Enter a different name to create a new template.", "请输入其他名称以创建新模板。") : L("The same table and name replaces the existing template.", "同一表下的同名模板会被替换。"))</p>
+                <p role="status" style="white-space:pre-wrap">@L(Session.Status, Session.ChineseStatus)</p>
             </fieldset>
             <div class="dialog-actions"><button type="submit" disabled="@(Session.Busy || string.IsNullOrWhiteSpace(NewTemplateName))">@L("Save", "保存")</button><button type="button" @onclick="CloseSettings" disabled="@Session.Busy">@L("Cancel", "取消")</button></div>
         </form>
@@ -130,7 +130,20 @@ else if (settingsDialog == "save-template")
     public async Task ClearAllFiltersAsync() { if (Session.Busy) return; filters = null; conditions = [];  filterEditorVersion++; await AnalyzeAsync(); }
     private AnalysisRequest SaveRequest => Request;
     private IReadOnlyList<SearchCondition> templateConditions = [];
-    private string DefaultFilterSummary => string.Join(" AND ", new[] { AnalysisFilters.Summary(templateFilters), string.Join(" AND ", templateConditions.Select(c => (string.IsNullOrEmpty(c.Column) ? "All text fields" : c.Column) + " contains \"" + c.Text + "\"")) }.Where(s => !string.IsNullOrEmpty(s)));
+    private string FilterSummary(AnalysisFilterConfig? config) => AnalysisFilters.Summary(config,
+        CurrentLanguage == "zh-CN" ? key => key switch
+        {
+            "AND" => "且",
+            "All text fields" => "所有文本字段",
+            _ => FilterOperation(key)
+        } : null);
+    private string DefaultFilterSummary => string.Join(L(" AND ", " 且 "), new[]
+    {
+        FilterSummary(templateFilters),
+        string.Join(L(" AND ", " 且 "), templateConditions.Select(c =>
+            (string.IsNullOrEmpty(c.Column) ? L("All text fields", "所有文本字段") : c.Column)
+            + L(" contains ", " 包含 ") + "\"" + c.Text + "\""))
+    }.Where(s => !string.IsNullOrEmpty(s)));
     private void SetTemplateConditions(AnalysisRequest request) { templateConditions = request.Conditions?.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray() ?? []; templateFilters = AnalysisFilters.Snapshot(request.Filters); }
     private async Task TemplateSelectionChangedAsync()
     {
@@ -197,7 +210,7 @@ else if (settingsDialog == "save-template")
         displayedResult = null; order = []; page = 0; sortColumn = -1; selected = null;
         await AnalyzeAsync();
     }
-    private string CalculationSummary => string.Join(", ", calculations.Select(c => c.DisplayName).Concat(includeCount ? new[] { "Record count" } : []).Concat(formulas.Select(f => f.Name)));
+    private string CalculationSummary => string.Join(", ", calculations.Select(c => c.DisplayName).Concat(includeCount ? new[] { L("Record count", "记录数") } : []).Concat(formulas.Select(f => f.Name)));
     public void OpenGroupSettings() { if (!Session.Busy) settingsDialog = "groups"; }
     public void OpenCalculationSettings() { if (!Session.Busy) settingsDialog = "calculations"; }
     public void OpenFilterSettings() { if (!Session.Busy) settingsDialog = "filters"; }
@@ -269,7 +282,7 @@ else if (settingsDialog == "save-template")
     private async Task CopyAsync(bool all)
     {
         if (Session.Result == null || (!all && selected == null)) return;
-        try { await Desktop.CopyTextAsync(Session.Result.CopyText(all ? order : new[] { selected!.Value })); clipboardMessage = "Copied analysis rows."; }
+        try { await Desktop.CopyTextAsync(Session.Result.CopyText(all ? order : new[] { selected!.Value })); clipboardMessage = L("Copied analysis rows.", "已复制分析结果。"); }
         catch (Exception ex) { clipboardMessage = ex.ToString(); }
     }
 }

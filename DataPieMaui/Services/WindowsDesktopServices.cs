@@ -55,7 +55,10 @@ internal sealed class WindowsDesktopServices(Func<Window?> owner, Func<string> l
                     confirming = true;
                     try
                     {
-                        if (await page.DisplayAlertAsync("Unsaved changes", "Discard the draft and close the table editor?", "Discard", "Keep editing"))
+                        bool chinese = locale == "zh-CN";
+                        if (await page.DisplayAlertAsync(chinese ? "未保存的更改" : "Unsaved changes",
+                            chinese ? "放弃草稿并关闭表编辑器吗？" : "Discard the draft and close the table editor?",
+                            chinese ? "放弃" : "Discard", chinese ? "继续编辑" : "Keep editing"))
                         {
                             allowClose = true;
                             Application.Current!.CloseWindow(window);

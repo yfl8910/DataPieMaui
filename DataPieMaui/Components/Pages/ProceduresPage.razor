@@ -41,5 +41,5 @@
 
     public Task RunProceduresAsync() => ParameterizedTab ? Task.CompletedTask : Context.ProcedureActions.RunProceduresAsync(
         Procedures.Where(x => x.Selected && (!IsSqlServer || x.DefinitionObject?.HasParameters != true))
-            .Select(x => x.DefinitionObject ?? throw new InvalidOperationException("Procedure metadata is missing. Reconnect.")).ToArray());
+            .Select(x => x.DefinitionObject ?? throw new InvalidOperationException(L("Procedure metadata is missing. Reconnect.", "缺少存储过程的元数据，请重新连接。"))).ToArray());
 }

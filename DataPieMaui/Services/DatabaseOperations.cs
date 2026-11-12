@@ -9,6 +9,7 @@ internal sealed class DatabaseOperations
     public DatabaseConnectionInfo? Connection { get; private set; }
     public DbSchema? Schema { get; private set; }
     public string ConnectionTiming { get; private set; } = "";
+    public string ChineseConnectionTiming { get; private set; } = "";
     public IDbAccess OpenAccess() => Connection is { } connection
         ? DbAccessFactory.Create(connection.ConnectionString, connection.DatabaseType)
         : throw new InvalidOperationException("Connect to a database first.");
@@ -38,12 +39,14 @@ internal sealed class DatabaseOperations
             };
             var metadata = watch.Elapsed - opened;
             string timings = $"Connection {opened.TotalSeconds:F2}s · Object list {metadata.TotalSeconds:F2}s · {schema.Tables.Count:N0} tables · {schema.DefinitionObjects.Count:N0} views/procedures";
+            string chinese = $"连接 {opened.TotalSeconds:F2} 秒 · 对象列表 {metadata.TotalSeconds:F2} 秒 · {schema.Tables.Count:N0} 张表 · {schema.DefinitionObjects.Count:N0} 个视图或过程";
             Trace.TraceInformation("Database connection stages: {0}", timings);
-            return (schema, timings);
+            return (schema, timings, chinese);
         });
         Connection = connection;
         Schema = result.schema;
         ConnectionTiming = result.timings;
+        ChineseConnectionTiming = result.chinese;
     }
 
     public async Task EnsureColumnsAsync(TableStruct table)

@@ -38,7 +38,7 @@
     {
         var table = SelectedImportTable();
         string path = Form.ImportPath;
-        if (!File.Exists(path)) throw new FileNotFoundException("Select an existing file.");
+        if (!File.Exists(path)) throw new FileNotFoundException(L("Select an existing file.", "请选择已有的文件。"));
         watch.Start();
         await ImportIntoTableAsync(path, table, validateFieldLengths);
     });
@@ -57,11 +57,12 @@
             ExcelIO.SaveMiniExcel(path, reader, table.Name);
         });
         watch.Stop();
-        State.Status = $"Export template completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}";
+        State.SetStatus($"Export template completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}",
+            $"模板导出完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。文件：{Path.GetFullPath(path)}");
     });
     public Task ClearTableAsync() => Context.TableActions.ClearAsync(SelectedImportTable());
 
-    private DBUtil.TableStruct SelectedImportTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.ImportTable, "Select a table."), Type);
+    private DBUtil.TableStruct SelectedImportTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.ImportTable, L("Select a table.", "请选择表。")), Type);
 
     private Task ImportIntoTableAsync(string path, DBUtil.TableStruct table, bool validateFieldLengths)
         => Context.TableActions.ImportIntoAsync(path, table, validateFieldLengths, Form.ImportOptions.SampleCsv);

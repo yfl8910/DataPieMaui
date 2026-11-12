@@ -23,6 +23,7 @@ public sealed class ProcedureExecutionSession(string database, DefinitionObject 
     public event Action? BecameIdle;
     public string Error { get; private set; } = "";
     public string Summary { get; private set; } = "";
+    public string ChineseSummary { get; private set; } = "";
     public ProcedureExecutionResult? Result { get; private set; }
     public double ElapsedSeconds { get; private set; }
     private SqlParameter[] approved = [];
@@ -42,6 +43,8 @@ public sealed class ProcedureExecutionSession(string database, DefinitionObject 
             }
             approved = values.ToArray();
             Summary = string.Join(Environment.NewLine, Inputs.Select(p => p.Parameter.Name + " = " + (p.Mode == "Omit" ? "[omitted; server default if available]" : p.Mode == "NULL" ? "NULL" : "\"" + p.Text + "\"")));
+            ChineseSummary = string.Join(Environment.NewLine, Inputs.Select(p => p.Parameter.Name + " = " +
+                (p.Mode == "Omit" ? "［已省略，如有默认值则使用］" : p.Mode == "NULL" ? "NULL" : "\"" + p.Text + "\"")));
             Reviewing = true;
         }
         catch (Exception ex) { Error = ex.Message; Reviewing = false; approved = []; }

@@ -11,12 +11,12 @@ public sealed class WorkspaceDialogs
 
     public Task<bool> ConfirmAsync(string title, string message, string accept, string? chineseTitle = null, string? chineseMessage = null, string? chineseAccept = null)
         => ShowAsync(new(title, message, accept, true, ChineseTitle: chineseTitle, ChineseMessage: chineseMessage, ChineseAccept: chineseAccept));
-    public Task<bool> ShowTableImportAsync(Shared.TableImportOptions options) => ShowAsync(new("Import file", "", "Import file", true, TableImport: options));
+    public Task<bool> ShowTableImportAsync(Shared.TableImportOptions options) => ShowAsync(new("Import file", "", "Import file", true, TableImport: options, ChineseTitle: "导入文件"));
     public Task<bool> AlertAsync(string title, string message, string? chineseTitle = null, string? chineseMessage = null)
         => ShowAsync(new(title, message, "OK", false, ChineseTitle: chineseTitle, ChineseMessage: chineseMessage, ChineseAccept: "确定"));
-    public Task<bool> ShowProcedureAsync(Shared.ProcedureExecutionSession session) => ShowAsync(new("Run with parameters", "", "Close", false, Procedure: session));
+    public Task<bool> ShowProcedureAsync(Shared.ProcedureExecutionSession session) => ShowAsync(new("Run with parameters", "", "Close", false, Procedure: session, ChineseTitle: "带参数运行"));
 
-    public Task<bool> ShowDefinitionAsync(string title, string sql, string notice, Shared.DefinitionEditorSession? editor = null) => ShowAsync(new(title, notice, "Close", false, sql, editor));
+    public Task<bool> ShowDefinitionAsync(string title, string sql, string notice, Shared.DefinitionEditorSession? editor = null) => ShowAsync(new(title, notice, "Close", false, sql, editor, ChineseAccept: "关闭"));
 
     private Task<bool> ShowAsync(WorkspaceDialog dialog)
     {

@@ -38,13 +38,15 @@ public static class AnalysisFilters
     }
     public static bool NeedsReview(AnalysisFilterConfig config) => config != null && config.Groups.SelectMany(g => g.Rules)
         .Concat(config.CommonRules ?? Array.Empty<AnalysisFilterRule>()).Any(r => !string.IsNullOrEmpty(r.ReviewReason));
-    public static string Summary(AnalysisFilterConfig config)
+    public static string Summary(AnalysisFilterConfig config, Func<string, string> label = null)
     {
         if (config == null) return "";
-        string Describe(AnalysisFilterRule r) => (string.IsNullOrEmpty(r.Column) ? "All text fields" : r.Column) + " " + r.Operation + (r.Operation is "IsNull" or "IsNotNull" ? "" : string.IsNullOrEmpty(r.ParameterId) ? " [" + string.Join("; ", r.Values) + "]" : " @" + (config.Parameters.FirstOrDefault(p => p.Id == r.ParameterId)?.Name ?? r.ParameterId));
-        string grouped = string.Join(" AND ", config.Groups.Where(g => g.Rules.Count > 0).Select(g => "(" + string.Join(" AND ", g.Rules.Select(Describe)) + ")"));
-        string common = string.Join(" AND ", (config.CommonRules ?? Array.Empty<AnalysisFilterRule>()).Select(Describe));
-        return string.Join(" AND ", new[] { grouped.Length > 0 && common.Length > 0 ? "(" + grouped + ")" : grouped, common }.Where(s => s.Length > 0));
+        string Label(string value) => label?.Invoke(value) ?? value;
+        string and = " " + Label("AND") + " ";
+        string Describe(AnalysisFilterRule r) => (string.IsNullOrEmpty(r.Column) ? Label("All text fields") : r.Column) + " " + Label(r.Operation) + (r.Operation is "IsNull" or "IsNotNull" ? "" : string.IsNullOrEmpty(r.ParameterId) ? " [" + string.Join("; ", r.Values) + "]" : " @" + (config.Parameters.FirstOrDefault(p => p.Id == r.ParameterId)?.Name ?? r.ParameterId));
+        string grouped = string.Join(and, config.Groups.Where(g => g.Rules.Count > 0).Select(g => "(" + string.Join(and, g.Rules.Select(Describe)) + ")"));
+        string common = string.Join(and, (config.CommonRules ?? Array.Empty<AnalysisFilterRule>()).Select(Describe));
+        return string.Join(and, new[] { grouped.Length > 0 && common.Length > 0 ? "(" + grouped + ")" : grouped, common }.Where(s => s.Length > 0));
     }
     public static readonly string[] Operations = { "Equals", "NotEquals", "Contains", "Range", "In", "IsNull", "IsNotNull", "Greater", "GreaterOrEqual", "Less", "LessOrEqual" };
     public static AnalysisFilterConfig Snapshot(AnalysisFilterConfig config)

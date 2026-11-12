@@ -28,9 +28,11 @@ public sealed class DatabaseConversionService(WorkspaceContext context) : Worksp
             watch.Stop();
         }
         State.Converting = false;
-        State.Status = $"Conversion completed in {watch.Elapsed.TotalSeconds:F1} s. " + result;
-        await Dialogs.AlertAsync("Conversion results", State.Status);
-        State.Status += " · File: " + Path.GetFullPath(path);
+        string english = $"Conversion completed in {watch.Elapsed.TotalSeconds:F1} s. " + result;
+        string chinese = $"转换完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。 " + result;
+        State.SetStatus(english, chinese);
+        await Dialogs.AlertAsync("Conversion results", english, "转换结果", chinese);
+        State.SetStatus(english + " · File: " + Path.GetFullPath(path), chinese + " · 文件：" + Path.GetFullPath(path));
     }
     private async Task UpdateConversionProgressAsync(CancellationToken token)
     {
@@ -38,7 +40,8 @@ public sealed class DatabaseConversionService(WorkspaceContext context) : Worksp
         {
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
             while (await timer.WaitForNextTickAsync(token))
-                State.Status = $"{(SqlServerToSQLite._cancelled ? "Canceling" : "Converting")} · {SqlServerToSQLite.currentProcessTable ?? "Reading schema"} · {SqlServerToSQLite.TotalCopyed:N0} rows copied";
+                State.SetStatus($"{(SqlServerToSQLite._cancelled ? "Canceling" : "Converting")} · {SqlServerToSQLite.currentProcessTable ?? "Reading schema"} · {SqlServerToSQLite.TotalCopyed:N0} rows copied",
+                    $"{(SqlServerToSQLite._cancelled ? "正在取消" : "正在转换")} · {SqlServerToSQLite.currentProcessTable ?? "读取数据库结构"} · 已复制 {SqlServerToSQLite.TotalCopyed:N0} 行");
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
     }
@@ -46,6 +49,6 @@ public sealed class DatabaseConversionService(WorkspaceContext context) : Worksp
     {
         if (!State.Converting) return;
         SqlServerToSQLite._cancelled = true;
-        State.Status = "Cancellation requested. Waiting for the current database operation to finish…";
+        State.SetStatus("Cancellation requested. Waiting for the current database operation to finish…", "已请求取消，正在等待当前数据库操作结束…");
     }
 }

@@ -13,51 +13,52 @@ else
 {
 <div class="modal-overlay">
     <section class="editor-dialog template-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="template-manager-title" tabindex="-1">
-        <div class="dialog-header"><h2 id="template-manager-title">@L("Manage templates", "管理模板")</h2><button data-dialog-close @onclick="CloseAsync" disabled="@Session.Busy" aria-label="Close template manager">×</button></div>
-        <div class="dialog-body template-manager-body" tabindex="0" aria-label="Template settings">
+        <div class="dialog-header"><h2 id="template-manager-title">@L("Manage templates", "管理模板")</h2><button data-dialog-close @onclick="CloseAsync" disabled="@Session.Busy" aria-label="@L("Close template manager", "关闭模板管理器")">×</button></div>
+        <div class="dialog-body template-manager-body" tabindex="0" aria-label="@L("Template settings", "模板设置")">
         <fieldset class="template-manager-fields" disabled="@Session.Busy">
             <div class="template-name-row">
                 <label>@L("Template", "模板")<select value="@selected" @onchange="SelectTemplate"><option value="0">@L("Select a template", "选择模板")</option>@foreach (var item in Session.Templates) { <option value="@item.Id">@item.Name</option> }</select></label>
-                <label>@L("Template name", "模板名称")<input @bind="TemplateName" @bind:event="oninput" maxlength="100" disabled="@(selected == 0)" placeholder="Enter a new name" /></label>
+                <label>@L("Template name", "模板名称")<input @bind="TemplateName" @bind:event="oninput" maxlength="100" disabled="@(selected == 0)" placeholder="@L("Enter a new name", "输入新名称")" /></label>
             </div>
             @if (draft != null)
             {
-                <section class="analysis-config-panel" aria-label="Group by settings">
+                <section class="analysis-config-panel" aria-label="@L("Group by settings", "分组设置")">
                 <h3>@L("Group by", "分组字段")</h3>
-                <p>@(draft.Groups.Count == 0 ? "Total (no grouping)" : string.Join(", ", draft.Groups))</p>
-                <button @onclick='() => OpenEditorAsync("groups")'>Edit Group by</button>
+                <p>@(draft.Groups.Count == 0 ? L("Total (no grouping)", "合计（不分组）") : string.Join(", ", draft.Groups))</p>
+                <button @onclick='() => OpenEditorAsync("groups")'>@L("Edit Group by", "编辑分组字段")</button>
                 </section>
-                <section class="analysis-config-panel" aria-label="Calculation settings">
+                <section class="analysis-config-panel" aria-label="@L("Calculation settings", "计算设置")">
                 <h3>@L("Calculations", "计算项")</h3>
                 <ul>
                     @foreach (var calculation in draft.Calculations) { <li>@calculation.DisplayName · @(calculation.Operation + "(" + calculation.Column + ")")</li> }
-                    @if (draft.IncludeCount) { <li>Record count</li> }
+                    @if (draft.IncludeCount) { <li>@L("Record count", "记录数")</li> }
                     @foreach (var formula in draft.Formulas ?? []) { <li>@formula.Name = @AggregateName(formula.Left) @formula.Operation @(formula.Constant?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? AggregateName(formula.Right))</li> }
                 </ul>
-                <button @onclick='() => OpenEditorAsync("calculations")'>Edit Calculations</button>
-                <p>Default sort: @(string.IsNullOrEmpty(draft.SortBy) ? "None" : (draft.SortBy.StartsWith("aggregate:") ? AggregateName(draft.SortBy.Substring(10)) : draft.SortBy.StartsWith("formula:") ? draft.SortBy.Substring(8) : "Record count") + (draft.SortDescending ? " · Descending" : " · Ascending"))</p>
+                <button @onclick='() => OpenEditorAsync("calculations")'>@L("Edit Calculations", "编辑计算项")</button>
+                <p>@L("Default sort:", "默认排序：") @(string.IsNullOrEmpty(draft.SortBy) ? L("None", "无") : (draft.SortBy.StartsWith("aggregate:") ? AggregateName(draft.SortBy.Substring(10)) : draft.SortBy.StartsWith("formula:") ? draft.SortBy.Substring(8) : L("Record count", "记录数")) + (draft.SortDescending ? L(" · Descending", " · 降序") : L(" · Ascending", " · 升序")))</p>
                 </section>
-                <section class="analysis-config-panel" aria-label="Default filter conditions">
-                    <h3>Default filter conditions</h3>
-                    <p>Configure fixed values for this template. All conditions must match.</p>
-                    <AnalysisFilterDialog @key="selected" @ref="filterEditor" Source="Session.Source" Settings="draft" Title="Default filter conditions" Inline="true" ShowActions="false" ShowClear="false" Disabled="Session.Busy" OnApply="ApplyFilters" />
-                    <p>Click Update selected to save these fixed conditions with the template.</p>
+                <section class="analysis-config-panel" aria-label="@L("Default filter conditions", "默认筛选条件")">
+                    <h3>@L("Default filter conditions", "默认筛选条件")</h3>
+                    <p>@L("Configure fixed values for this template. All conditions must match.", "为此模板配置固定值。所有条件都必须匹配。")</p>
+                    <AnalysisFilterDialog @key="selected" @ref="filterEditor" Source="Session.Source" Settings="draft" Title="@L("Default filter conditions", "默认筛选条件")" Inline="true" ShowActions="false" ShowClear="false" Disabled="Session.Busy" OnApply="ApplyFilters" />
+                    <p>@L("Click Update selected to save these fixed conditions with the template.", "点击“更新所选模板”保存这些固定条件。")</p>
                 </section>
-                <p>Changes are saved only when you click Update selected. Current analysis settings and results are kept.</p>
+                <p>@L("Changes are saved only when you click Update selected. Current analysis settings and results are kept.", "点击“更新所选模板”后才会保存更改，当前分析设置和结果会保留。")</p>
             }
-            <p role="status" style="white-space:pre-wrap">@Session.Status</p>
+            <p role="status" style="white-space:pre-wrap">@L(Session.Status, Session.ChineseStatus)</p>
         </fieldset>
         </div>
         <div class="dialog-actions template-manager-actions">
             @if (confirmDelete)
             {
-                <p role="alert">Delete template '@Session.Templates.FirstOrDefault(t => t.Id == selected)?.Name'?</p>
+                var name = Session.Templates.FirstOrDefault(t => t.Id == selected)?.Name;
+                <p role="alert">@L($"Delete template '{name}'?", $"删除模板「{name}」吗？")</p>
                 <button class="danger" @onclick="DeleteAsync" disabled="@Session.Busy">@L("Confirm delete", "确认删除")</button><button @onclick="() => confirmDelete = false" disabled="@Session.Busy">@L("Cancel", "取消")</button>
             }
             else
             {
-                <button @onclick="UpdateAsync" disabled="@(Session.Busy || draft == null || string.IsNullOrWhiteSpace(TemplateName))">Update selected</button>
-                <button @onclick="() => confirmDelete = true" disabled="@(Session.Busy || selected == 0)">Delete template</button>
+                <button @onclick="UpdateAsync" disabled="@(Session.Busy || draft == null || string.IsNullOrWhiteSpace(TemplateName))">@L("Update selected", "更新所选模板")</button>
+                <button @onclick="() => confirmDelete = true" disabled="@(Session.Busy || selected == 0)">@L("Delete template", "删除模板")</button>
             }
             <button @onclick="CloseAsync" disabled="@Session.Busy">@L("Close", "关闭")</button>
         </div>

@@ -1,25 +1,25 @@
 @inherits LocalizedComponent
 @using DataPieMaui.Services.Shared
 
-<p class="definition-target">Database: <strong>@Session.Database</strong> · @Session.Target.Kind: <strong>@Session.Target.DisplayName</strong></p>
+<p class="definition-target">@L("Database:", "数据库：") <strong>@Session.Database</strong> · @(ObjectKind(Session.Target.Kind)): <strong>@Session.Target.DisplayName</strong></p>
 @if (!string.IsNullOrEmpty(Session.Error)) { <p class="callout danger" role="alert">@Session.Error</p> }
 @if (!string.IsNullOrEmpty(Session.Message)) { <p role="status">@Session.Message</p> }
 @if (Session.DiscardAction is not null)
 {
-    <p role="alert">Discard your unsaved changes?</p>
+    <p role="alert">@L("Discard your unsaved changes?", "放弃未保存的更改吗？")</p>
     <div class="actions"><button @onclick="Discard">@L("Discard changes", "放弃更改")</button><button @onclick="Session.KeepEditing">@L("Keep editing", "继续编辑")</button></div>
 }
 else if (Session.ReviewSql is not null)
 {
-    <p>Review the changes below. Confirm save updates the definition. Procedure scripts are not executed.</p>
-    <pre class="definition-diff" tabindex="0" aria-label="Definition changes">@foreach (var line in Session.Difference()) { <span class="@line.Kind">@line.Text@("\n")</span> }</pre>
-    <details><summary>Full SQL to be saved</summary><SqlDefinitionView Sql="@Session.ReviewSql" /></details>
-    <div class="actions"><button class="primary" disabled="@Session.Saving" @onclick="Session.ConfirmSaveAsync">@(Session.Saving ? "Saving…" : "Confirm save")</button><button disabled="@Session.Saving" @onclick="Session.BackToEdit">Back to editing</button></div>
+    <p>@L("Review the changes below. Confirm save updates the definition. Procedure scripts are not executed.", "请检查下方的更改。确认保存后只会更新定义。")</p>
+    <pre class="definition-diff" tabindex="0" aria-label="@L("Definition changes", "定义更改")">@foreach (var line in Session.Difference()) { <span class="@line.Kind">@line.Text@("\n")</span> }</pre>
+    <details><summary>@L("Full SQL to be saved", "将保存的完整 SQL")</summary><SqlDefinitionView Sql="@Session.ReviewSql" /></details>
+    <div class="actions"><button class="primary" disabled="@Session.Saving" @onclick="Session.ConfirmSaveAsync">@(Session.Saving ? L("Saving…", "正在保存…") : L("Confirm save", "确认保存"))</button><button disabled="@Session.Saving" @onclick="Session.BackToEdit">@L("Back to editing", "返回编辑")</button></div>
 }
 else if (Session.Editing)
 {
-    <label>SQL definition<textarea class="definition-editor" @bind="Session.Draft" @bind:event="oninput" spellcheck="false" disabled="@Session.Saving"></textarea></label>
-    <div class="actions"><button disabled="@(Session.Saving || string.IsNullOrWhiteSpace(Session.Draft))" @onclick="Session.FormatDraft">Format SQL</button><button class="primary" disabled="@(!Session.Dirty || Session.Saving)" @onclick="Session.Review">Save changes…</button><button disabled="@Session.Saving" @onclick="Session.CancelEditing">Cancel editing</button></div>
+    <label>@L("SQL definition", "SQL 定义")<textarea class="definition-editor" @bind="Session.Draft" @bind:event="oninput" spellcheck="false" disabled="@Session.Saving"></textarea></label>
+    <div class="actions"><button disabled="@(Session.Saving || string.IsNullOrWhiteSpace(Session.Draft))" @onclick="Session.FormatDraft">@L("Format SQL", "格式化 SQL")</button><button class="primary" disabled="@(!Session.Dirty || Session.Saving)" @onclick="Session.Review">@L("Save changes…", "保存更改…")</button><button disabled="@Session.Saving" @onclick="Session.CancelEditing">@L("Cancel editing", "取消编辑")</button></div>
 }
 else
 {

@@ -9,10 +9,10 @@
         }
     </div>
     <div class="section-heading">
-        <span class="muted">Selected across both tabs: @Model.Exports.Count(x => x.Selected && x.Kind == "Table") tables, @Model.Exports.Count(x => x.Selected && x.Kind == "View") views</span>
+        <span class="muted">@L("Selected across both tabs:", "已选中：") @Model.Exports.Count(x => x.Selected && x.Kind == "Table") @L("tables,", "张表、") @Model.Exports.Count(x => x.Selected && x.Kind == "View") @L("views", "个视图")</span>
         <div class="actions"><button @onclick="() => SelectAll(true)">@L("Select all", "全选")</button><button @onclick="() => SelectAll(false)">@L("Clear selection", "清除选择")</button></div>
     </div>
-    <ObjectSelection Items="VisibleItems" Label="@(Model.Form.ExportTab == "Table" ? "Tables" : "Views")" OnPreviewItem="PreviewItemAsync" OnDefinition="Context.Definitions.ShowAsync" OnSelectionChanged="SelectionChanged" />
+    <ObjectSelection Items="VisibleItems" Label="@(Model.Form.ExportTab == "Table" ? L("Tables", "表") : L("Views", "视图"))" OnPreviewItem="PreviewItemAsync" OnDefinition="Context.Definitions.ShowAsync" OnSelectionChanged="SelectionChanged" />
     <div class="actions"><button @onclick='() => ExportBatchAsync("standard")' title="@L("Export all selected objects without formatting", "导出全部选中对象，省略格式")">@L("Excel (Standard)", "Excel（标准）")</button><button class="primary" @onclick='() => ExportBatchAsync("mini")'>@L("Excel (MiniExcel)", "Excel（MiniExcel）")</button><button @onclick='() => ExportBatchAsync("csv")'>@L("CSV folder", "导出到 CSV 文件夹")</button></div>
 </section>
 
@@ -40,15 +40,16 @@
     {
         if (mode is not ("standard" or "mini" or "csv")) throw new ArgumentException("Unsupported export format.", nameof(mode));
         var names = Exports.Where(x => x.Selected).Select(x => x.Name).ToArray();
-        if (names.Length == 0) throw new InvalidOperationException("Select the tables or views to export.");
+        if (names.Length == 0) throw new InvalidOperationException(L("Select the tables or views to export.", "请选择要导出的表或视图。"));
         string type = Type;
         var path = mode == "csv" ? await Desktop.FolderAsync() : await Desktop.SaveAsync(names[0], ".xlsx");
         if (path == null) return;
         var outputs = names.Select(name => Path.Combine(path, FileNames.SafeFileName(name) + ".csv")).ToArray();
         if (mode == "csv")
         {
-            if (outputs.Distinct(StringComparer.OrdinalIgnoreCase).Count() != outputs.Length) throw new InvalidOperationException("Some table names produce identical file names. Export them separately to different folders.");
-            if (outputs.Any(File.Exists) && !await Dialogs.ConfirmAsync("Replace CSV files", "The destination contains CSV files with the same names. Replace them?", "Replace")) return;
+            if (outputs.Distinct(StringComparer.OrdinalIgnoreCase).Count() != outputs.Length) throw new InvalidOperationException(L("Some table names produce identical file names. Export them separately to different folders.", "部分表会生成同名文件，请分别导出到不同文件夹。"));
+            if (outputs.Any(File.Exists) && !await Dialogs.ConfirmAsync("Replace CSV files", "The destination contains CSV files with the same names. Replace them?", "Replace",
+                "替换 CSV 文件", "目标文件夹中有同名的 CSV 文件，要替换吗？", "替换")) return;
         }
         watch.Start();
         await Task.Run(() =>
@@ -75,8 +76,8 @@
             }
         });
         watch.Stop();
-        State.Status = $"Batch export completed in {watch.Elapsed.TotalSeconds:F1} s · "
-            + (mode == "csv" ? "Files: " + string.Join("; ", outputs.Select(Path.GetFullPath))
-                : "File: " + Path.GetFullPath(path));
+        string destination = mode == "csv" ? string.Join("; ", outputs.Select(Path.GetFullPath)) : Path.GetFullPath(path);
+        State.SetStatus($"Batch export completed in {watch.Elapsed.TotalSeconds:F1} s · " + (mode == "csv" ? "Files: " : "File: ") + destination,
+            $"批量导出完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。文件：{destination}");
     });
 }

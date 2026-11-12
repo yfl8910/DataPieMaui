@@ -12,7 +12,7 @@
 @if (Preview != null)
 {
 <main class="preview-page" inert="@searchDialogOpen">
-    <header class="preview-header"><span title="@previewSnapshot?.Connection">@previewSnapshot?.Connection</span><span title="@previewSnapshot?.Source">@previewSnapshot?.Source</span><span class="badge">@L("Read-only", "只读")</span>@if (previewSnapshot != null) { <span>@previewSnapshot.RowCount.ToString("N0") rows · @previewSnapshot.ColumnCount columns</span> }</header>
+    <header class="preview-header"><span title="@previewSnapshot?.Connection">@previewSnapshot?.Connection</span><span title="@previewSnapshot?.Source">@previewSnapshot?.Source</span><span class="badge">@L("Read-only", "只读")</span>@if (previewSnapshot != null) { <span>@previewSnapshot.RowCount.ToString("N0") @L("rows", "行") · @previewSnapshot.ColumnCount @L("columns", "列")</span> }</header>
     @if (previewSnapshot is null)
     {
         <div class="empty">@L("Run a query in the main window to view results.", "请在主窗口执行查询以查看结果。")</div>
@@ -22,7 +22,7 @@
         <SimpleSearch Fields="PreviewSearchFields" Value="previewDraftConditions" ValueChanged="SetPreviewConditions" OnSearch="ApplyPreviewConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="@(previewBusy || previewSnapshot.IsCapturing)" Notice="">
             <Actions><button type="button" @onclick="OpenAdvancedSearch" disabled="@previewSnapshot.IsCapturing">@L("Advanced filters", "高级筛选")</button></Actions>
         </SimpleSearch>
-        @if (previewAdvanced != null) { <p>Advanced filters are applied.</p> }
+        @if (previewAdvanced != null) { <p>@L("Advanced filters are applied.", "已应用高级筛选。")</p> }
         @if (!string.IsNullOrEmpty(dialogError)) { <p class="notice" role="alert">@dialogError</p> }
         @if (previewSnapshot.IsCapturing)
         {
@@ -31,7 +31,7 @@
         else if (!previewSnapshot.HasFullResult) { <p class="notice">@L("Full-result search is unavailable. Run the query again.", "无法搜索完整结果，请重新执行查询。")</p> }
         @if (previewSnapshot.Truncated)
         {
-            <div class="notice">Showing the first 1,000 matching rows. @if (previewSnapshot.HasFullResult) { <text>@L("Search covers the complete query result.", "搜索范围包括全部查询结果。")</text> }</div>
+            <div class="notice">@L("Showing the first 1,000 matching rows.", "显示前 1,000 条匹配记录。") @if (previewSnapshot.HasFullResult) { <text>@L("Search covers the complete query result.", "搜索范围包括全部查询结果。")</text> }</div>
         }
         <TableDataGrid TRow="int" Rows="@previewOrder.Skip(previewPage * PreviewPageSize).Take(PreviewPageSize)" ColumnCount="previewSnapshot.ColumnCount"
                        CellText="previewSnapshot.FormatCell" CellIsNull="previewSnapshot.IsNull" IsSelected="@(_ => false)"
@@ -42,7 +42,7 @@
         </TableDataGrid>
         <footer>
             <span role="status">@previewMessage</span>
-            <div class="pagination"><button @onclick="Previous" disabled="@(previewPage == 0)">@L("Previous", "上一页")</button><span>Page @(previewPage + 1)/@PreviewPageCount · @previewOrder.Length.ToString("N0") rows</span><button @onclick="Next" disabled="@(previewPage + 1 >= PreviewPageCount)">@L("Next", "下一页")</button></div>
+            <div class="pagination"><button @onclick="Previous" disabled="@(previewPage == 0)">@L("Previous", "上一页")</button><span>@L($"Page {previewPage + 1}/{PreviewPageCount} · {previewOrder.Length:N0} rows", $"第 {previewPage + 1}/{PreviewPageCount} 页 · {previewOrder.Length:N0} 行")</span><button @onclick="Next" disabled="@(previewPage + 1 >= PreviewPageCount)">@L("Next", "下一页")</button></div>
         </footer>
     }
 </main>
@@ -51,33 +51,33 @@
 else
 {
 <main inert="@(DialogOpen || searchDialogOpen)">
-    <header><div><p>@ConnectionLabel</p><p>@Session.TableName</p></div><span class="badge">@(Session.CanEdit ? "Table data" : "Read-only")</span></header>
+    <header><div><p>@ConnectionLabel</p><p>@Session.TableName</p></div><span class="badge">@(Session.CanEdit ? L("Table data", "表数据") : L("Read-only", "只读"))</span></header>
     <div class="toolbar">
         <button @onclick="BeginAdd" disabled="@(Session.IsBusy || DialogOpen || !Session.CanInsert)">@L("Add record", "新增记录")</button>
         <button @onclick="BeginImport" disabled="@(Session.IsBusy || DialogOpen || Desktop == null)">@L("Import file", "导入文件")</button>
         <button @onclick="BeginEdit" disabled="@(Session.IsBusy || DialogOpen || selected.Count != 1 || !Session.CanEdit)">@L("EDIT", "编辑")</button>
-        <button @onclick="ExportExcelAsync" disabled="@(Session.IsBusy || DialogOpen)" title="Export all rows matching the applied search, across all pages">@L("Export Excel", "导出 Excel")</button>
+        <button @onclick="ExportExcelAsync" disabled="@(Session.IsBusy || DialogOpen)" title="@L("Export all rows matching the applied search, across all pages", "导出所有匹配搜索条件的记录，覆盖全部页面")">@L("Export Excel", "导出 Excel")</button>
         <button @onclick="RequestDelete" disabled="@(Session.IsBusy || DialogOpen || selected.Count == 0 || !Session.CanEdit)">@L("Delete selected", "删除选中项")</button>
         <button @onclick="() => LoadAsync(Session.Page)" disabled="@(Session.IsBusy || DialogOpen)">@L("Refresh", "刷新")</button>
     </div>
     <SimpleSearch Fields="EditorSearchFields" Value="editorConditions" ValueChanged="SetEditorConditions" OnSearch="ApplyEditorConditionsAsync" OnClear="ClearAdvancedSearchAsync" Disabled="@(Session.IsBusy || DialogOpen)">
         <Actions><button type="button" @onclick="OpenAdvancedSearch">@L("Advanced filters", "高级筛选")</button></Actions>
     </SimpleSearch>
-    @if (Session.AdvancedFilters != null) { <p>Advanced filters are applied. A simple search replaces them.</p> }
+    @if (Session.AdvancedFilters != null) { <p>@L("Advanced filters are applied. A simple search replaces them.", "已应用高级筛选。执行简单搜索会替换当前条件。")</p> }
     @if (!string.IsNullOrEmpty(dialogError)) { <p class="notice" role="alert">@dialogError</p> }
-    @if (Session.Conditions.Count > 0) { <p>Active conditions: @string.Join(" AND ", Session.Conditions.Select(c => c.Column + ": " + c.Text))</p> }
-    @if (!Session.CanEdit) { <p class="notice">@Session.ReadOnlyReason</p> }
-    @if (Session.CanEdit) { <p class="notice">@Session.IdentityNotice</p> }
+    @if (Session.Conditions.Count > 0) { <p>@L("Active conditions:", "当前条件：") @string.Join(L(" AND ", " 且 "), Session.Conditions.Select(c => c.Column + ": " + c.Text))</p> }
+    @if (!Session.CanEdit) { <p class="notice">@L(Session.ReadOnlyReason, "没有可用于安全标识记录的受支持字段。")</p> }
+    @if (Session.CanEdit) { <p class="notice">@IdentityNotice</p> }
     <TableDataGrid TRow="DataRow" Rows="@(Session.Data.Rows.Cast<DataRow>())" ColumnCount="Session.Data.Columns.Count"
                    CellText="EditorCellText" CellIsNull="EditorCellIsNull" IsSelected="selected.Contains"
-                   EmptyText="@(Session.SearchColumn != null || Session.AdvancedFilters != null ? "No matching records." : "No records.")">
-        <LeadingHeader><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="Select all records on this page" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> @L("Select all", "全选")</label></LeadingHeader>
+                   EmptyText="@(Session.SearchColumn != null || Session.AdvancedFilters != null ? L("No matching records.", "没有匹配的记录。") : L("No records.", "没有记录。"))">
+        <LeadingHeader><label class="page-selection"><input type="checkbox" data-page-select-all data-partial="@(selected.Count > 0 && !AllPageSelected ? "true" : "false")" aria-label="@L("Select all records on this page", "选择本页所有记录")" checked="@AllPageSelected" @onchange="e => SelectPage(e.Value is true)" disabled="@(Session.IsBusy || DialogOpen || Session.Data.Rows.Count == 0)" /> @L("Select all", "全选")</label></LeadingHeader>
         <ColumnHeader Context="column">@Session.Data.Columns[column].ColumnName</ColumnHeader>
-        <LeadingCell Context="row"><input type="checkbox" aria-label="Select record" checked="@selected.Contains(row)" @onchange="e => Select(row, e.Value is true)" disabled="@(Session.IsBusy || DialogOpen)" /></LeadingCell>
+        <LeadingCell Context="row"><input type="checkbox" aria-label="@L("Select record", "选择记录")" checked="@selected.Contains(row)" @onchange="e => Select(row, e.Value is true)" disabled="@(Session.IsBusy || DialogOpen)" /></LeadingCell>
     </TableDataGrid>
-    <footer><span role="status" style="white-space:pre-wrap">@message</span><div class="pagination">
+    <footer><span role="status" style="white-space:pre-wrap">@(message == InitialMessage ? L(InitialMessage, "选择一条记录进行编辑，或选择要删除的记录。可通过翻页查看整张表。") : message)</span><div class="pagination">
         <button @onclick="() => LoadAsync(Session.Page - 1, refreshCount: false)" disabled="@(Session.Page == 0 || Session.IsBusy || DialogOpen)">@L("Previous", "上一页")</button>
-        <span>Page @(Session.Page + 1)/@(Math.Max(1L, Session.TotalRows / TableEditorSession.PageSize + (Session.TotalRows % TableEditorSession.PageSize > 0 ? 1 : 0))) · @Session.TotalRows.ToString("N0") rows</span>
+        <span>@L("Page", "页码") @(Session.Page + 1)/@(Math.Max(1L, Session.TotalRows / TableEditorSession.PageSize + (Session.TotalRows % TableEditorSession.PageSize > 0 ? 1 : 0))) · @Session.TotalRows.ToString("N0") @L("rows", "行")</span>
         <button @onclick="() => LoadAsync(Session.Page + 1, refreshCount: false)" disabled="@(!Session.HasNext || Session.IsBusy || DialogOpen)">@L("Next", "下一页")</button>
     </div></footer>
 </main>
@@ -100,9 +100,9 @@ else if (DialogOpen)
     <div class="modal-overlay">
         <section @key="DialogKey" class="editor-dialog" data-wide="@(!confirmDelete && Session.Data.Columns.Count > 10 ? "true" : "false")" data-movable="@(confirmDelete ? "false" : "true")" data-busy="@(Session.IsBusy ? "true" : "false")" role="@(confirmDelete ? "alertdialog" : "dialog")" aria-modal="true" aria-labelledby="editor-dialog-title" tabindex="-1">
             <div class="dialog-header" data-dialog-drag tabindex="@(confirmDelete ? -1 : 0)" aria-label="@(confirmDelete ? null : "Move dialog using arrow keys or drag the title bar")">
-                <h2 id="editor-dialog-title">@(confirmDelete ? "Delete selected records" : adding ? "New record" : "Edit record")</h2>
+                <h2 id="editor-dialog-title">@(confirmDelete ? L("Delete selected records", "删除选中记录") : adding ? L("New record", "新增记录") : L("Edit record", "编辑记录"))</h2>
                 <div class="dialog-window-actions">
-                    @if (!confirmDelete) { <button type="button" aria-label="Maximize dialog" title="Maximize dialog" data-dialog-maximize disabled="@Session.IsBusy">□</button> }
+                    @if (!confirmDelete) { <button type="button" aria-label="@L("Maximize dialog", "最大化对话框")" title="@L("Maximize dialog", "最大化对话框")" data-dialog-maximize disabled="@Session.IsBusy">□</button> }
                     <button aria-label="@L("Close dialog", "关闭对话框")" data-dialog-close @onclick="RequestClose" disabled="@Session.IsBusy">×</button>
                 </div>
             </div>
@@ -110,15 +110,15 @@ else if (DialogOpen)
                 <p>@ConnectionLabel · @Session.TableName</p>
                 @if (confirmDelete)
                 {
-                    <p class="notice">Delete @selected.Count selected records? Database cascades and triggers may affect related data. This cannot be undone.</p>
-                    <p>Selected record keys</p>
+                    <p class="notice">@L($"Delete {selected.Count} selected records? Database cascades and triggers may affect related data. This cannot be undone.", $"删除选中的 {selected.Count} 条记录吗？数据库的级联操作和触发器可能影响相关数据。此操作无法撤销。")</p>
+                    <p>@L("Selected record keys", "所选记录的键值")</p>
                     <ul>@foreach (var row in selected.Take(20)) { <li>@RecordKey(row)</li> }</ul>
-                    @if (selected.Count > 20) { <p>And @(selected.Count - 20) more records.</p> }
+                    @if (selected.Count > 20) { <p>@L($"And {selected.Count - 20} more records.", $"另有 {selected.Count - 20} 条记录。")</p> }
                 }
                 else if (editing != null || adding)
                 {
-                    <p>Use yyyy-MM-dd for dates and a dot for decimals. Read-only fields identify the record or are managed by the database.</p>
-                    @if (adding) { <p>Required fields must be supplied. Untouched optional fields use their database default or NULL. Generated fields are filled automatically.</p> }
+                    <p>@L("Use yyyy-MM-dd for dates and a dot for decimals. Read-only fields identify the record or are managed by the database.", "日期使用 yyyy-MM-dd，小数使用点号。只读字段用于标识记录或由数据库管理。")</p>
+                    @if (adding) { <p>@L("Required fields must be supplied. Untouched optional fields use their database default or NULL. Generated fields are filled automatically.", "请填写必填字段。未填写的可选字段使用数据库默认值或 NULL。生成字段会自动填写。")</p> }
                     <div class="edit-fields">
                     @foreach (DataColumn column in Session.Data.Columns)
                     {
@@ -128,7 +128,7 @@ else if (DialogOpen)
                             <label>@name
                                 @if (editable)
                                 {
-                                    <textarea @bind="draft[name]" @bind:event="oninput" @bind:after="() => DraftChanged(name)" disabled="@Session.IsBusy" placeholder="@(adding ? (Session.HasDefault(name) ? "Database default" : Session.IsRequiredForInsert(name) ? "Required" : "Leave blank for NULL") : editing!.IsNull(name) ? "NULL" : null)" aria-label="@name"></textarea>
+                                    <textarea @bind="draft[name]" @bind:event="oninput" @bind:after="() => DraftChanged(name)" disabled="@Session.IsBusy" placeholder="@(adding ? (Session.HasDefault(name) ? L("Database default", "数据库默认值") : Session.IsRequiredForInsert(name) ? L("Required", "必填") : L("Leave blank for NULL", "留空表示 NULL")) : editing!.IsNull(name) ? "NULL" : null)" aria-label="@name"></textarea>
                                 }
                                 else { <input value="@(adding ? "Generated / read-only" : Format(editing![name]))" readonly aria-label="@name" /> }
                             </label>
@@ -137,7 +137,7 @@ else if (DialogOpen)
                     </div>
                 }
                 @if (!string.IsNullOrEmpty(dialogError)) { <div class="dialog-error" role="alert">@dialogError</div> }
-                @if (confirmDiscard) { <p class="notice" role="alert">Discard your unsaved changes?</p> }
+                @if (confirmDiscard) { <p class="notice" role="alert">@L("Discard your unsaved changes?", "放弃未保存的更改吗？")</p> }
             </div>
             <div class="dialog-actions">
                 @if (confirmDiscard)
@@ -152,7 +152,7 @@ else if (DialogOpen)
                     <button @onclick="RequestClose" disabled="@Session.IsBusy">@L("Cancel", "取消")</button>
                 }
             </div>
-            @if (!confirmDelete) { <button type="button" class="dialog-resize-handle" data-dialog-resize aria-label="Resize dialog using arrow keys or drag" title="Drag to resize; arrow keys also adjust size" disabled="@Session.IsBusy">◢</button> }
+            @if (!confirmDelete) { <button type="button" class="dialog-resize-handle" data-dialog-resize aria-label="@L("Resize dialog using arrow keys or drag", "使用方向键或拖动调整对话框大小")" title="@L("Drag to resize; arrow keys also adjust size", "拖动或使用方向键调整大小")" disabled="@Session.IsBusy">◢</button> }
         </section>
     </div>
 }
@@ -167,6 +167,12 @@ else if (DialogOpen)
 @code {
     [Parameter] public string InitialLanguage { get; set; } = "en";
     protected override string CurrentLanguage => Language ?? InitialLanguage;
+    private string IdentityNotice => Session.IdentityNotice switch
+    {
+        "Records are located using SQLite rowid and original values." => L(Session.IdentityNotice, "使用 SQLite rowid 和原始值定位记录。"),
+        "Records are located using their key and original values." => L(Session.IdentityNotice, "使用键和原始值定位记录。"),
+        _ => L(Session.IdentityNotice, "此表没有唯一键，将使用可比较的原始值定位记录。更改匹配零条或多条记录时将回滚。")
+    };
     [Parameter] public TableEditorSession Session { get; set; } = default!;
     [Parameter] public string ConnectionLabel { get; set; } = "";
     private readonly HashSet<DataRow> selected = [];
@@ -204,7 +210,7 @@ else if (DialogOpen)
             {
                 var matcher = PreviewMatcher(config, out var matchColumns);
                 var original = Preview.Current ?? throw new InvalidOperationException("The query result is no longer available.");
-                if (!original.HasFullResult) throw new InvalidOperationException("Full-result search is unavailable for this preview. Run the query again.");
+                if (!original.HasFullResult) throw new InvalidOperationException(L("Full-result search is unavailable for this preview. Run the query again.", "此预览无法搜索完整结果，请重新执行查询。"));
                 previewBusy = true;
                 try
                 {
@@ -223,7 +229,7 @@ else if (DialogOpen)
                         previewOrder = indices.Where(i => matcher(name => original.GetValue(i, int.Parse(name, CultureInfo.InvariantCulture)))).ToArray();
                     }
                     previewAdvanced = AnalysisFilters.Snapshot(config); previewPage = 0; previewSelected = null;
-                    previewConditions = previewDraftConditions = []; previewMessage = "Search applied to the complete query result.";
+                    previewConditions = previewDraftConditions = []; previewMessage = L("Search applied to the complete query result.", "已搜索完整查询结果。");
                 }
                 finally { previewBusy = false; }
             }
@@ -231,7 +237,7 @@ else if (DialogOpen)
             {
                 if (Session.IsBusy) return;
                 Session.IsBusy = true;
-                try { await Task.Run(() => Session.SearchAdvanced(config)); editorConditions = []; selected.Clear(); message = "Advanced search applied to the entire table."; }
+                try { await Task.Run(() => Session.SearchAdvanced(config)); editorConditions = []; selected.Clear(); message = L("Advanced search applied to the entire table.", "已对整张表应用高级搜索。"); }
                 finally { Session.IsBusy = false; }
             }
             dialogError = ""; searchDialogOpen = false; filterEditorVersion++;
@@ -243,7 +249,7 @@ else if (DialogOpen)
         if (Preview != null) { if (!previewBusy) ClearSearch(); return; }
         if (Session.IsBusy || DialogOpen) return;
         Session.IsBusy = true;
-        try { await Task.Run(() => Session.SearchAdvanced(null)); editorConditions = []; selected.Clear(); dialogError = ""; filterEditorVersion++; message = "Search cleared."; }
+        try { await Task.Run(() => Session.SearchAdvanced(null)); editorConditions = []; selected.Clear(); dialogError = ""; filterEditorVersion++; message = L("Search cleared.", "已清除搜索。"); }
         catch (Exception ex) { message = ex.Message; }
         finally { Session.IsBusy = false; }
     }
@@ -285,7 +291,7 @@ else if (DialogOpen)
                 if (!File.Exists(options.Path)) throw new FileNotFoundException("Select an existing file.");
                 await ImportFile(options.Path);
             }
-            importOpen = false; message = $"Imported {count} file(s). Current search remains applied.";
+            importOpen = false; message = L($"Imported {count} file(s). Current search remains applied.", $"已导入 {count} 个文件，当前搜索条件仍有效。");
         }
         catch (BatchImportException ex) { dialogError = L(ex.Message, ex.ChineseMessage); }
         catch (Exception ex) { dialogError = ex.Message; }
@@ -325,12 +331,13 @@ else if (DialogOpen)
             var snapshot = value.ToArray();
             await Task.Run(() => Session.Search(snapshot));
             editorConditions = snapshot; selected.Clear();
-            message = Session.Conditions.Count == 0 ? "Search cleared." : "AND search applied to the entire table. Text matching follows database rules.";
+            message = Session.Conditions.Count == 0 ? L("Search cleared.", "已清除搜索。") : L("AND search applied to the entire table. Text matching follows database rules.", "已对整张表应用全部搜索条件。文本匹配遵循数据库规则。");
         }
         catch (Exception ex) { message = ex.Message; }
         finally { Session.IsBusy = false; }
     }
-    private string message = "Select one record to edit, or select records to delete. All table records are available through paging.";
+    private const string InitialMessage = "Select one record to edit, or select records to delete. All table records are available through paging.";
+    private string message = InitialMessage;
     public async Task ExportExcelAsync()
     {
         if (Preview != null || Session.IsBusy || DialogOpen) return;
@@ -339,7 +346,7 @@ else if (DialogOpen)
         {
             var path = await Desktop.SaveAsync(Session.TableName, ".xlsx");
             if (path == null) return;
-            message = "Exporting all rows matching the applied search…";
+            message = L("Exporting all rows matching the applied search…", "正在导出符合搜索条件的全部记录…");
             await Task.Run(() => Session.ExportExcel(path));
             message = "Export completed · File: " + System.IO.Path.GetFullPath(path);
         }
@@ -388,7 +395,7 @@ else if (DialogOpen)
             if (Session.IsInsertable(column.ColumnName)) draft[column.ColumnName] = "";
         dialogError = ""; confirmDiscard = false; Session.HasDraft = false;
     }
-    private void Cancel() { editing = null; adding = false; draft.Clear(); touched.Clear(); Session.HasDraft = false; message = "Draft discarded."; }
+    private void Cancel() { editing = null; adding = false; draft.Clear(); touched.Clear(); Session.HasDraft = false; message = L("Draft discarded.", "已放弃草稿。"); }
     public void RequestClose()
     {
         if (Preview != null || Session.IsBusy) return;
@@ -410,7 +417,7 @@ else if (DialogOpen)
                 if (refreshCount) Session.LoadPage(page);
                 else Session.NavigateToPage(page);
             });
-            selected.Clear(); message = "Table page loaded.";
+            selected.Clear(); message = L("Table page loaded.", "已加载当前页。");
         }
         catch (Exception ex) { message = ex.ToString(); }
         finally { Session.IsBusy = false; }
@@ -437,7 +444,7 @@ else if (DialogOpen)
                 await Task.Run(() => Session.Save(original, changes));
             }
             Cancel(); selected.Clear();
-            message = inserting ? "Record added. Refresh or page through the table to locate the new record." : "Changes saved.";
+            message = inserting ? L("Record added. Refresh or page through the table to locate the new record.", "已新增记录。可通过刷新或翻页查找。") : L("Changes saved.", "已保存更改。");
             try { await Task.Run(() => Session.LoadPage(inserting ? 0 : Session.Page)); }
             catch (Exception ex) { message = (inserting ? "Record added" : "Changes saved") + ", but refresh failed. Refresh before editing again. " + ex; }
         }
@@ -454,7 +461,7 @@ else if (DialogOpen)
             var rows = selected.ToArray();
             await Task.Run(() => Session.Delete(rows));
             selected.Clear(); confirmDelete = false;
-            message = $"Deleted {rows.Length} records.";
+            message = L($"Deleted {rows.Length} records.", $"已删除 {rows.Length} 条记录。");
             try
             {
                 await Task.Run(() => Session.LoadPage(Session.Page));
@@ -498,15 +505,15 @@ else if (DialogOpen)
         previewDraftConditions = previewConditions = Array.Empty<SearchCondition>();
         previewAdvanced = null; previewMatcher = null;
         filterEditorVersion++; dialogError = "";
-        previewMessage = "Click a column to sort.";
+        previewMessage = L("Click a column to sort.", "点击列名排序。");
     }
     public void ApplySearch() => ApplyPreviewConditions(previewDraftConditions);
     public async Task ApplyPreviewConditionsAsync(IReadOnlyList<SearchCondition> value)
     {
         if (previewBusy || Preview?.Current is not { } original) return;
         var active = value.Where(c => !string.IsNullOrEmpty(c.Text)).ToArray();
-        if (active.Any(c => !int.TryParse(c.Column, out int index) || index < 0 || index >= original.ColumnCount || original.GetColumnType(index) == typeof(byte[]))) { dialogError = "Select a supported search field."; return; }
-        if (!original.HasFullResult) { dialogError = "Full-result search is unavailable for this preview. Run the query again."; return; }
+        if (active.Any(c => !int.TryParse(c.Column, out int index) || index < 0 || index >= original.ColumnCount || original.GetColumnType(index) == typeof(byte[]))) { dialogError = L("Select a supported search field.", "请选择受支持的搜索字段。"); return; }
+        if (!original.HasFullResult) { dialogError = L("Full-result search is unavailable for this preview. Run the query again.", "此预览无法搜索完整结果，请重新执行查询。"); return; }
         bool Matches(Func<string, object> get) => active.All(c =>
         {
             object value = get(c.Column);
@@ -520,7 +527,7 @@ else if (DialogOpen)
             if (previewDisposed || !ReferenceEquals(Preview.Current, original)) return;
             previewSnapshot = snapshot; previewMatcher = original.HasArchive ? null : Matches;
             previewAdvanced = null; previewDraftConditions = previewConditions = active;
-            RebuildOrder(); dialogError = ""; previewMessage = "Search applied to the complete query result.";
+            RebuildOrder(); dialogError = ""; previewMessage = L("Search applied to the complete query result.", "已搜索完整查询结果。");
         }
         catch (Exception ex) { dialogError = ex.Message; }
         finally { previewBusy = false; }
@@ -533,7 +540,7 @@ else if (DialogOpen)
         if (active.Any(c => !int.TryParse(c.Column, out int index) || index < 0 || index >= previewSnapshot.ColumnCount || previewSnapshot.GetColumnType(index) == typeof(byte[]))) return;
         previewAdvanced = null; previewMatcher = null;
         previewDraftConditions = previewConditions = active;
-        RebuildOrder(); previewMessage = "AND search covers loaded preview rows only. Matches displayed text, ignoring case.";
+        RebuildOrder(); previewMessage = L("AND search covers loaded preview rows only. Matches displayed text, ignoring case.", "全部条件均须匹配，搜索范围为已加载的预览行。按显示文本匹配，忽略大小写。");
     }
     public void ClearSearch()
     {
@@ -541,7 +548,7 @@ else if (DialogOpen)
         previewDraftConditions = previewConditions = Array.Empty<SearchCondition>();
         previewAdvanced = null; previewMatcher = null;
         filterEditorVersion++; dialogError = "";
-        RebuildOrder(); previewMessage = "Search cleared.";
+        RebuildOrder(); previewMessage = L("Search cleared.", "已清除搜索。");
     }
     private void RebuildOrder()
     {
@@ -573,7 +580,7 @@ else if (DialogOpen)
         {
             var text = previewSnapshot.CopyText(all ? previewOrder : new[] { previewSelected!.Value });
             await Desktop.CopyTextAsync(text);
-            previewMessage = all ? $"Copied {previewOrder.Length:N0} preview rows." : "Copied selected row.";
+            previewMessage = all ? L($"Copied {previewOrder.Length:N0} preview rows.", $"已复制 {previewOrder.Length:N0} 条预览记录。") : L("Copied selected row.", "已复制选中的行。");
         }
         catch (Exception ex) { previewMessage = "Copy failed: " + ex.Message; }
     }
