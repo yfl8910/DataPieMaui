@@ -91,7 +91,6 @@
     public async Task DropSelectedTableAsync()
     {
         var table = SelectedTable();
-        await Database.EnsureColumnsAsync(table);
         await Context.TableActions.DropAsync(table);
         if (!Database.Schema!.Tables.Any(t => t.Name == table.Name && (Type != "SQLSERVER" || t.TableSchemaName == table.TableSchemaName)))
         { selected = null; columns = []; showStructure = false; }
@@ -114,10 +113,17 @@
         if (selected is not { Kind: "Table" } item) return;
         watch.Start();
         var table = SelectedTable();
-        var loaded = Type == "SQLITE"
-            ? await Task.Run(() => { using var access = (SQLiteDbAccess)Database.OpenAccess(); return access.ReadSchemaColumns(item.Name); })
-            : table.Columns;
-        columns = loaded; showStructure = true;
+        if (Type == "SQLITE")
+        {
+            if (columns.Count == 0)
+                columns = await Task.Run(() => { using var access = (SQLiteDbAccess)Database.OpenAccess(); return access.ReadSchemaColumns(item.Name); });
+        }
+        else
+        {
+            await Database.EnsureColumnsAsync(table);
+            columns = table.Columns;
+        }
+        showStructure = true;
     });
     public Task ShowDefinitionAsync() => RunAsync("Read definition", async watch =>
     {

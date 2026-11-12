@@ -50,6 +50,11 @@ public sealed class QueryResultSnapshot : IDisposable
         return new QueryResultSnapshot(archive.Search(matcher, matchColumns: matchColumns), Connection, Source, formats, archive);
     }
     public bool HasArchive => archive != null;
+    public void Export(string path, bool csv)
+    {
+        if (archive == null) throw new InvalidOperationException("The full query result is unavailable.");
+        archive.Export(path, csv);
+    }
     internal bool SharesPreviewWith(QueryResultSnapshot other) => ReferenceEquals(data, other.data);
     public void Dispose()
     {

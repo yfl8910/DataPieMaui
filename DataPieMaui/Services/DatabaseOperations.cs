@@ -30,7 +30,12 @@ internal sealed class DatabaseOperations
             access.conn.Open();
             var opened = watch.Elapsed;
             progress?.Report("Reading database object list…");
-            var schema = access is SqlServerDbAccess sqlServer ? sqlServer.ShowDbSchemaSummary() : access.ShowDbSchema();
+            var schema = access switch
+            {
+                SqlServerDbAccess sqlServer => sqlServer.ShowDbSchemaSummary(),
+                SQLiteDbAccess sqlite => sqlite.ShowDbSchemaSummary(),
+                _ => access.ShowDbSchema()
+            };
             var metadata = watch.Elapsed - opened;
             string timings = $"Connection {opened.TotalSeconds:F2}s · Object list {metadata.TotalSeconds:F2}s · {schema.Tables.Count:N0} tables · {schema.DefinitionObjects.Count:N0} views/procedures";
             Trace.TraceInformation("Database connection stages: {0}", timings);
@@ -43,22 +48,28 @@ internal sealed class DatabaseOperations
 
     public async Task EnsureColumnsAsync(TableStruct table)
     {
-        if (Connection?.DatabaseType != "SQLSERVER" || table.ColumnsLoaded) return;
+        if (table.ColumnsLoaded) return;
         var owner = Schema;
         var watch = Stopwatch.StartNew();
-        var columns = await Task.Run(() => { using var access = (SqlServerDbAccess)OpenAccess(); return access.ReadTable(table.TableSchemaName, table.Name).Columns; });
+        var columns = await Task.Run(() =>
+        {
+            using var access = OpenAccess();
+            return access is SqlServerDbAccess sqlServer
+                ? sqlServer.ReadTable(table.TableSchemaName, table.Name).Columns
+                : ((SQLiteDbAccess)access).ShowColumns(table.Name);
+        });
         if (!ReferenceEquals(owner, Schema) || owner == null || !owner.Tables.Contains(table)) throw new InvalidOperationException("The database schema changed. Refresh and select the table again.");
         table.Columns = columns; table.ColumnsLoaded = true;
         Trace.TraceInformation("Loaded table columns in {0:F2}s; {1} columns.", watch.Elapsed.TotalSeconds, columns.Count);
     }
 
-    public static void Import(string path, string table, IDbAccess access, bool validateFieldLengths = false, string sourceTableName = null)
+    public static void Import(string path, string table, IDbAccess access, bool validateFieldLengths = false, string? sourceTableName = null, bool sampleCsv = false)
     {
         switch (Path.GetExtension(path).ToLowerInvariant())
         {
             case ".xlsx": ExcelIO.MiniExcelReaderImport(path, table, access, validateFieldLengths, sourceTableName); break;
             case ".xls": ExcelIO.ExcelDataReaderImport(path, table, access, validateFieldLengths, sourceTableName); break;
-            case ".csv": ExcelIO.CsvImport(path, table, access, validateFieldLengths); break;
+            case ".csv": ExcelIO.CsvImport(path, table, access, validateFieldLengths, sampleCsv); break;
             case ".db":
                 using (var source = DbAccessFactory.Create(new DBConfig { ProviderName = "SQLITE", DataBase = path }.GetConstring(), "SQLITE"))
                 using (var reader = source.GetDataReader(SqlQueryBuilder.BuildSelectAll(sourceTableName ?? table, "SQLITE")))

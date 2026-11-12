@@ -22,16 +22,23 @@ namespace DBUtil
         /// <param name="DBType">数据库类型:SQLSERVER、SQLITE</param>
         /// <returns></returns>
         public static IDbAccess Create(string connStr, string DBType)
+            => Create(connStr, DBType, reuseBulkConnection: false);
+
+        // One destination connection per batch, with a separate transaction for each file.
+        public static IDbAccess CreateBatchImportAccess(string connectionString, string databaseType)
+            => Create(connectionString, databaseType, reuseBulkConnection: true);
+
+        private static IDbAccess Create(string connStr, string DBType, bool reuseBulkConnection)
         {
             DBType = (DBType ?? "").ToUpperInvariant();
             if (DBType == "SQLSERVER")
             {
-                return new SqlServerDbAccess(connStr);
+                return new SqlServerDbAccess(connStr, reuseBulkConnection);
             }
             else if (DBType == "SQLITE")
             {
                 //使用单独一个方法,防止在下面代码访问不到的情况下仍会因没有sqlite组件而报错
-                return CreateSQLite(connStr);
+                return CreateSQLite(connStr, reuseBulkConnection);
             }
             else
             {
@@ -97,9 +104,9 @@ namespace DBUtil
             return builder.ToString();
         }
 
-        private static IDbAccess CreateSQLite(string connStr)
+        private static IDbAccess CreateSQLite(string connStr, bool reuseBulkConnection)
         {
-            return new SQLiteDbAccess(connStr);
+            return new SQLiteDbAccess(connStr, reuseBulkConnection);
         }
     }
 }

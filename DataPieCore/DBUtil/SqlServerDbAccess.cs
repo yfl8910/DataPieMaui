@@ -27,8 +27,11 @@ namespace DBUtil
         /// </summary>
         public DataBaseType DataBaseType => DataBaseType.SQLSERVER;
 
-        internal SqlServerDbAccess(string connectionString)
+        private readonly bool reuseBulkConnection;
+
+        internal SqlServerDbAccess(string connectionString, bool reuseBulkConnection)
         {
+            this.reuseBulkConnection = reuseBulkConnection;
             ConnectionString = connectionString;
             conn = new SqlConnection(connectionString);
         }
@@ -139,8 +142,9 @@ namespace DBUtil
                 throw new ArgumentNullException(nameof(reader));
             string destination = SqlQueryBuilder.QuoteSqlServerTableName(tableName);
 
-            using SqlConnection connection = new SqlConnection(ConnectionString);
-            connection.Open();
+            using var owned = reuseBulkConnection ? null : new SqlConnection(ConnectionString);
+            var connection = owned ?? (SqlConnection)conn;
+            if (connection.State != ConnectionState.Open) connection.Open();
 
             // Discover columns using the SAME connection used for bulk copy
             var destinationColumns = new HashSet<string>(StringComparer.Ordinal);

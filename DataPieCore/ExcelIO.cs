@@ -40,13 +40,13 @@ namespace DataPieCore
             BulkInsertFile(dbAccess, tableName, reader, filePath, validateFieldLengths);
         }
 
-        public static void CsvImport(string filePath, string tableName, IDbAccess dbAccess, bool validateFieldLengths = false)
+        public static void CsvImport(string filePath, string tableName, IDbAccess dbAccess, bool validateFieldLengths = false, bool sampleCsv = false)
         {
             if (filePath is null) throw new ArgumentNullException(nameof(filePath));
             if (dbAccess is null) throw new ArgumentNullException(nameof(dbAccess));
 
             using var stream = OpenReadStream(filePath);
-            using var reader = CreateCsvReader(stream);
+            using var reader = CreateCsvReader(stream, sampleCsv);
             using var headerReader = new HeaderRowDataReader(reader);
             BulkInsertFile(dbAccess, tableName, headerReader, filePath, validateFieldLengths);
         }
@@ -136,12 +136,13 @@ namespace DataPieCore
             throw new ArgumentException($"Worksheet '{sheetName}' was not found.", nameof(sheetName));
         }
 
-        private static IExcelDataReader CreateCsvReader(Stream stream)
+        private static IExcelDataReader CreateCsvReader(Stream stream, bool sampleCsv)
         {
             return ExcelReaderFactory.CreateCsvReader(stream, new ExcelReaderConfiguration
             {
                 FallbackEncoding = Encoding.GetEncoding("GB2312"),
                 AutodetectSeparators = new[] { ',', ';', '\t', '|', '#' },
+                AnalyzeInitialCsvRows = sampleCsv ? 1000 : 0,
             });
         }
 

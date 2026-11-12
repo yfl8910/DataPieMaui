@@ -55,7 +55,7 @@ public sealed class TableAnalysis
     public static TableAnalysis Open(string connectionString, string provider, string schema, string name)
     {
         using var access = DbAccessFactory.Create(connectionString, provider);
-        var table = (access is SqlServerDbAccess sqlServer ? sqlServer.ReadTable(schema, name) : access.ShowTables().SingleOrDefault(t => t.Name == name))
+        var table = (access is SqlServerDbAccess sqlServer ? sqlServer.ReadTable(schema, name) : ((SQLiteDbAccess)access).ReadTable(name))
             ?? throw new InvalidOperationException("The table is no longer available. Refresh the schema.");
         if (access is SQLiteDbAccess sqlite) table.Columns = sqlite.ReadSchemaColumns(name);
         return new(connectionString, provider, table);

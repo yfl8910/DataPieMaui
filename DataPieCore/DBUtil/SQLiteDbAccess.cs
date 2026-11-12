@@ -15,8 +15,11 @@ namespace DBUtil
         public IDbConnection conn { get; }
         public DataBaseType DataBaseType => DataBaseType.SQLITE;
 
-        internal SQLiteDbAccess(string connectionString)
+        private readonly bool reuseBulkConnection;
+
+        internal SQLiteDbAccess(string connectionString, bool reuseBulkConnection)
         {
+            this.reuseBulkConnection = reuseBulkConnection;
             ConnectionString = connectionString;
             conn = SQLiteConnections.Create(connectionString);
         }
@@ -130,8 +133,9 @@ namespace DBUtil
             if (reader == null) throw new ArgumentNullException(nameof(reader));
             var names = Enumerable.Range(0, reader.FieldCount).Select(reader.GetName).ToArray();
             if (names.Length == 0) throw new ArgumentException("No columns to import.");
-            using var connection = SQLiteConnections.Create(ConnectionString);
-            connection.Open();
+            using var owned = reuseBulkConnection ? null : SQLiteConnections.Create(ConnectionString);
+            var connection = owned ?? (DbConnection)conn;
+            if (connection.State != ConnectionState.Open) connection.Open();
             using var transaction = connection.BeginTransaction();
             var blankAsNull = new bool[names.Length];
             var primaryKeys = new List<(string Name, string Type)>();
@@ -150,8 +154,9 @@ namespace DBUtil
                 }
             }
             bool hasPrimaryIndex = false;
-            using (var indexes = connection.CreateCommand())
+            if (primaryKeys.Count == 1 && primaryKeys[0].Type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase))
             {
+                using var indexes = connection.CreateCommand();
                 indexes.Transaction = transaction;
                 indexes.CommandText = "PRAGMA index_list(" + QuoteIdentifier(tableName) + ")";
                 using var indexReader = indexes.ExecuteReader();

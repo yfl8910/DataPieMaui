@@ -268,7 +268,7 @@ else if (DialogOpen)
             Task ImportFile(string path)
             {
                 attempted = true;
-                return Task.Run(() => Session.Import((access, target, source) => DatabaseOperations.Import(path, target, access, validate, source)));
+                return Task.Run(() => Session.Import((access, target, source) => DatabaseOperations.Import(path, target, access, validate, source, options.SampleCsv)));
             }
             int count = 1;
             if (options.Batch)

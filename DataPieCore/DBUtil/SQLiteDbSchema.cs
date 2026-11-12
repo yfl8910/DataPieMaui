@@ -99,6 +99,41 @@ namespace DBUtil
             return dbs;
         }
 
+        public DbSchema ShowDbSchemaSummary()
+        {
+            if (conn.State != ConnectionState.Open) conn.Open();
+            var schema = new DbSchema { Name = conn.Database, Tables = new(), ViewNames = new() };
+            using (var command = conn.CreateCommand())
+            {
+                command.CommandText = "SELECT name, type FROM main.sqlite_master WHERE type IN ('table','view')";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    string name = reader.GetString(0);
+                    if (reader.GetString(1) == "table") schema.Tables.Add(new TableStruct { Name = name, ColumnsLoaded = false });
+                    else schema.ViewNames.Add(name);
+                }
+            }
+            schema.Procedures = GetProcs();
+            schema.DefinitionObjects = schema.ViewNames.Select(name => new DefinitionObject("View", "main", name))
+                .Concat(schema.Procedures.Select(p => new DefinitionObject("Procedure", "", p.Name))).ToArray();
+            return schema;
+        }
+
+        internal TableStruct ReadTable(string name)
+        {
+            using var connection = SQLiteConnections.Create(ConnectionString);
+            connection.Open();
+            using var command = SQLiteConnections.Command("SELECT 1 FROM main.sqlite_master WHERE type = 'table' AND name = @name", connection);
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@name";
+            parameter.Value = name;
+            command.Parameters.Add(parameter);
+            if (command.ExecuteScalar() == null) return null;
+            using var columns = ReadSchema(connection, "Columns", new[] { null, null, name, null });
+            return new TableStruct { Name = name, Columns = columns.AsEnumerable().Select(ReadColumn).ToList() };
+        }
+
         public List<Proc> GetProcs()
         {
             return DataPieCore.SQLiteProcedureScripts.List(ConnectionString);
@@ -157,7 +192,7 @@ namespace DBUtil
             return ReadSchemaColumns(connection, tableName);
         }
 
-        private static List<Column> ReadSchemaColumns(DbConnection connection, string tableName)
+        private static List<Column> ReadSchemaColumns(DbConnection connection, string tableName, bool? hasPrimaryIndex = null)
         {
             string quoted = DataPieCore.SqlQueryBuilder.QuoteIdentifier(tableName, "SQLITE");
             var columns = new List<Column>();
@@ -172,15 +207,22 @@ namespace DBUtil
                         IsPrimaryKey = Convert.ToInt32(reader.GetValue(5)) > 0,
                         IsComputed = Convert.ToInt32(reader.GetValue(6)) is 2 or 3
                     });
-            bool primaryIndex = false;
-            using (var command = SQLiteConnections.Command("PRAGMA main.index_list(" + quoted + ")", connection))
-            using (var reader = command.ExecuteReader())
-                while (reader.Read()) if (reader.GetString(3) == "pk") primaryIndex = true;
             var keys = columns.Where(c => c.IsPrimaryKey).ToList();
-            if (!primaryIndex && keys.Count == 1 && keys[0].Type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase))
+            if (keys.Count == 1 && keys[0].Type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase))
             {
-                keys[0].IsIdentity = true;
-                keys[0].IsNullable = false;
+                if (hasPrimaryIndex == null)
+                {
+                    hasPrimaryIndex = false;
+                    using var command = SQLiteConnections.Command("PRAGMA main.index_list(" + quoted + ")", connection);
+                    using var reader = command.ExecuteReader();
+                    while (reader.Read())
+                        if (reader.GetString(3) == "pk") { hasPrimaryIndex = true; break; }
+                }
+                if (hasPrimaryIndex == false)
+                {
+                    keys[0].IsIdentity = true;
+                    keys[0].IsNullable = false;
+                }
             }
             return columns;
         }
@@ -199,10 +241,13 @@ namespace DBUtil
         {
             using var connection = SQLiteConnections.Create(ConnectionString);
             connection.Open();
-            if (connection is Microsoft.Data.Sqlite.SqliteConnection)
-                return ReadCipherSchema(connection, collectionName, restictionValues);
-            return connection.GetSchema(collectionName, restictionValues);
+            return ReadSchema(connection, collectionName, restictionValues);
         }
+
+        private DataTable ReadSchema(DbConnection connection, string collectionName, string[] restrictions)
+            => connection is Microsoft.Data.Sqlite.SqliteConnection
+                ? ReadCipherSchema(connection, collectionName, restrictions)
+                : connection.GetSchema(collectionName, restrictions);
 
         private DataTable ReadCipherSchema(DbConnection connection, string collectionName, string[] restrictions)
         {
@@ -228,9 +273,14 @@ namespace DBUtil
                 if (restrictions?.Length > 2 && restrictions[2] != null && restrictions[2] != table) continue;
                 var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var indexes = new List<string>();
+                bool hasPrimaryIndex = false;
                 using (var command = SQLiteConnections.Command("PRAGMA index_list(" + QuoteIdentifier(table) + ")", connection))
                 using (var reader = command.ExecuteReader())
-                    while (reader.Read()) if (reader.GetInt64(2) == 1 && reader.GetInt64(4) == 0) indexes.Add(reader.GetString(1));
+                    while (reader.Read())
+                    {
+                        if (reader.GetString(3) == "pk") hasPrimaryIndex = true;
+                        if (reader.GetInt64(2) == 1 && reader.GetInt64(4) == 0) indexes.Add(reader.GetString(1));
+                    }
                 foreach (string index in indexes)
                 {
                     using var command = SQLiteConnections.Command("PRAGMA index_info(" + QuoteIdentifier(index) + ")", connection);
@@ -241,7 +291,7 @@ namespace DBUtil
                         if (!reader.Read() && column != null) unique.Add(column);
                     }
                 }
-                foreach (var column in ReadSchemaColumns(connection, table))
+                foreach (var column in ReadSchemaColumns(connection, table, hasPrimaryIndex))
                 {
                     if (restrictions?.Length > 3 && restrictions[3] != null && restrictions[3] != column.Name) continue;
                     result.Rows.Add(table, column.Name, column.Type, column.IsNullable, column.IsPrimaryKey,

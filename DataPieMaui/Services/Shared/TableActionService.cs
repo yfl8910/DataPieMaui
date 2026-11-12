@@ -11,6 +11,7 @@ public sealed class TableImportOptions(string table, Func<Task<string?>> browse,
     public string Folder { get; set; } = "";
     public bool Batch { get; set; }
     public bool ValidateLengths { get; set; }
+    public bool SampleCsv { get; set; }
     public async Task BrowseAsync()
     {
         bool batch = Batch;
@@ -25,11 +26,11 @@ public sealed class TableActionService(WorkspaceContext context)
     private string Type => context.Database.Connection!.DatabaseType;
     private TableStruct Resolve(TableStruct table) => TableSelection.Resolve(context.Database.Schema!.Tables, TableSelection.Key(table, Type), Type);
 
-    internal Task ImportIntoAsync(string path, TableStruct table, bool validateLengths) => Task.Run(() =>
+    internal Task ImportIntoAsync(string path, TableStruct table, bool validateLengths, bool sampleCsv = false) => Task.Run(() =>
     {
         table = Resolve(table);
         using var access = context.Database.OpenAccess();
-        DatabaseOperations.Import(path, TableSelection.Key(table, Type), access, validateLengths, table.Name);
+        DatabaseOperations.Import(path, TableSelection.Key(table, Type), access, validateLengths, table.Name, sampleCsv);
     });
 
     public Task ImportAsync(TableStruct table) => context.Operations.RunAsync("Import file", async watch =>
@@ -39,26 +40,27 @@ public sealed class TableActionService(WorkspaceContext context)
         if (!await context.Dialogs.ShowTableImportAsync(options)) return;
         if (options.Batch)
         {
-            await ImportFolderIntoAsync(options.Folder, table, options.ValidateLengths, watch);
+            await ImportFolderIntoAsync(options.Folder, table, options.ValidateLengths, options.SampleCsv, watch);
             return;
         }
         if (!File.Exists(options.Path)) throw new FileNotFoundException("Select an existing file.", options.Path);
         watch.Start();
-        await ImportIntoAsync(options.Path, table, options.ValidateLengths);
+        await ImportIntoAsync(options.Path, table, options.ValidateLengths, options.SampleCsv);
     });
 
-    public Task ImportDirectoryAsync(string folder, TableStruct table, bool validateLengths) => context.Operations.RunAsync("Batch import",
-        watch => ImportFolderIntoAsync(folder, table, validateLengths, watch));
+    public Task ImportDirectoryAsync(string folder, TableStruct table, bool validateLengths, bool sampleCsv = false) => context.Operations.RunAsync("Batch import",
+        watch => ImportFolderIntoAsync(folder, table, validateLengths, sampleCsv, watch));
 
-    private async Task ImportFolderIntoAsync(string folder, TableStruct table, bool validateLengths, Stopwatch watch)
+    private async Task ImportFolderIntoAsync(string folder, TableStruct table, bool validateLengths, bool sampleCsv, Stopwatch watch)
     {
         table = Resolve(table);
         folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
-        var key = (context.Database.Connection!.ConnectionString, TableSelection.Key(table, Type), folder.ToUpperInvariant());
+        var key = (Connection: context.Database.Connection!.ConnectionString, Table: TableSelection.Key(table, Type), Folder: folder.ToUpperInvariant());
         if (!batches.TryGetValue(key, out var batch))
             batches.Add(key, batch = BatchImportProgress.Open(folder));
         watch.Start();
-        await batch.RunAsync(path => ImportIntoAsync(path, table, validateLengths),
+        using var access = DbAccessFactory.CreateBatchImportAccess(key.Connection, Type);
+        await batch.RunAsync(path => Task.Run(() => DatabaseOperations.Import(path, key.Table, access, validateLengths, table.Name, sampleCsv)),
             (index, count, name) => context.State.SetStatus($"Importing {index}/{count}: {name}", $"正在导入 {index}/{count} · {name}"));
         batches.Remove(key);
         watch.Stop();

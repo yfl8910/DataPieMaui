@@ -723,6 +723,7 @@ internal static class WorkspaceChecks
             File.WriteAllText(Path.Combine(retryFolder, "b.csv"), "InvalidColumn\nbroken\n");
             File.WriteAllText(Path.Combine(retryFolder, "c.csv"), "Id,Name\n12,last\n");
             workspace.Context.Form.ImportFolder = retryFolder;
+            workspace.Context.Form.ImportOptions.SampleCsv = true;
             var failed = importPage.ImportDirectoryAsync();
             for (int i = 0; i < 200 && workspace.Context.Dialogs.Current == null && !failed.IsCompleted; i++) await Task.Delay(10);
             var report = workspace.Context.Dialogs.Current?.Message;
@@ -732,6 +733,7 @@ internal static class WorkspaceChecks
                 "Batch failure did not report which files had committed");
             File.WriteAllText(Path.Combine(retryFolder, "b.csv"), "Id,Name\n11,fixed\n");
             await importPage.ImportDirectoryAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            workspace.Context.Form.ImportOptions.SampleCsv = false;
             Check(Count(connection) == 9, "Retry did not resume from the failed file");
         });
         await test("Workspace procedure execution waits for confirmation", async () =>

@@ -17,6 +17,13 @@ else
 }
 <p class="muted">@L("Auto-generated ID columns are skipped and filled by the database.", "自动生成的 ID 列由数据库填写，导入时会跳过这些列。")</p>
 <label><input type="checkbox" @bind="Options.ValidateLengths" disabled="@Busy" /> @L("Validate field lengths before importing", "导入前验证字段长度")</label>
+@if (Options.Batch || System.IO.Path.GetExtension(Options.Path).Equals(".csv", StringComparison.OrdinalIgnoreCase))
+{
+    <label><input type="checkbox" @bind="Options.SampleCsv" disabled="@Busy" />
+        @L("Fast CSV detection (first 1,000 rows)", "快速检测 CSV（前 1,000 行）")
+    </label>
+    <p class="muted">@L("Use when the first rows represent the file’s encoding, separator, and column count.", "仅在文件前部能代表整份文件的编码、分隔符和列数时启用。")</p>
+}
 @if (!string.IsNullOrEmpty(error)) { <p role="alert">@error</p> }
 <div class="actions dialog-actions">
     @if (!Embedded) { <button data-dismiss @onclick="() => OnComplete.InvokeAsync(false)" disabled="@Busy">@L("Cancel", "取消")</button> }

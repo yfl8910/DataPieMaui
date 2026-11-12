@@ -21,8 +21,13 @@ public sealed class QueryResultArchive : IDisposable
     private QueryResultArchive(FileStream stream, string[] columns, Type[] types) { this.stream = stream; this.columns = columns; this.types = types; }
     public static QueryResultArchive Capture(IDataReader reader, int previewLimit = 0,
         Action<QueryPreviewResult> previewReady = null, CancellationToken cancellation = default)
+        => Capture(reader, previewLimit, previewReady, cancellation, out _);
+
+    internal static QueryResultArchive Capture(IDataReader reader, int previewLimit,
+        Action<QueryPreviewResult> previewReady, CancellationToken cancellation, out QueryPreviewResult preview)
     {
         if (previewReady != null && previewLimit < 1) throw new ArgumentOutOfRangeException(nameof(previewLimit));
+        preview = null;
         string path = Path.Combine(Path.GetTempPath(), "datapie-query-" + Guid.NewGuid().ToString("N") + ".tmp");
         var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read, 65536, FileOptions.DeleteOnClose | FileOptions.SequentialScan);
         try
@@ -38,24 +43,30 @@ public sealed class QueryResultArchive : IDisposable
             var archive = new QueryResultArchive(stream, columns, types);
             using var writer = new BinaryWriter(stream, Encoding.UTF8, true);
             byte[] buffer = new byte[65536];
+            var firstRows = new List<object[]>(Math.Min(Math.Max(previewLimit, 0), 1000));
             while (true)
             {
                 cancellation.ThrowIfCancellationRequested();
                 if (!reader.Read()) break;
-                if (previewReady != null && archive.RowCount == previewLimit)
+                if (previewLimit > 0 && archive.RowCount == previewLimit)
                 {
-                    writer.Flush();
-                    long end = stream.Position;
-                    previewReady(archive.Search(null, previewLimit, knownTruncated: true));
+                    preview = QueryPreviewResult.FromRows(columns, types, firstRows, true);
+                    previewReady?.Invoke(preview);
                     cancellation.ThrowIfCancellationRequested();
-                    stream.Position = end;
                 }
+                var row = archive.RowCount < previewLimit ? new object[columns.Length] : null;
                 for (int i = 0; i < columns.Length; i++)
                 {
-                    if (reader.IsDBNull(i)) { writer.Write((byte)0); continue; }
+                    if (reader.IsDBNull(i))
+                    {
+                        writer.Write((byte)0);
+                        if (row != null) row[i] = DBNull.Value;
+                        continue;
+                    }
                     if (types[i] == typeof(byte[]))
                     {
                         long length = reader.GetBytes(i, 0, null, 0, 0); if (length > int.MaxValue) throw new InvalidOperationException("A binary value is too large to preview.");
+                        byte[] retained = row == null ? null : new byte[(int)length];
                         writer.Write((byte)14); writer.Write((int)length); long offset = 0;
                         while (offset < length)
                         {
@@ -63,18 +74,27 @@ public sealed class QueryResultArchive : IDisposable
                             int read = (int)reader.GetBytes(i, offset, buffer, 0, (int)Math.Min(buffer.Length, length - offset));
                             if (read <= 0) throw new EndOfStreamException("Incomplete binary query value.");
                             writer.Write(buffer, 0, read);
+                            if (retained != null) Buffer.BlockCopy(buffer, 0, retained, (int)offset, read);
                             offset += read;
                         }
+                        if (row != null) row[i] = retained;
                     }
-                    else Write(writer, reader.GetValue(i));
+                    else
+                    {
+                        var value = Write(writer, reader.GetValue(i));
+                        if (row != null) row[i] = value is byte[] bytes ? bytes.Clone() : value;
+                    }
                 }
+                if (row != null) firstRows.Add(row);
                 archive.RowCount = checked(archive.RowCount + 1);
             }
-            writer.Flush(); return archive;
+            writer.Flush();
+            if (previewLimit > 0) preview ??= QueryPreviewResult.FromRows(columns, types, firstRows, false);
+            return archive;
         }
         catch { stream.Dispose(); throw; }
     }
-    private static void Write(BinaryWriter w, object value)
+    private static object Write(BinaryWriter w, object value)
     {
         switch (value)
         {
@@ -97,8 +117,9 @@ public sealed class QueryResultArchive : IDisposable
             case ushort x: w.Write((byte)16); w.Write(x); break;
             case uint x: w.Write((byte)17); w.Write(x); break;
             case ulong x: w.Write((byte)18); w.Write(x); break;
-            default: w.Write((byte)1); w.Write(Convert.ToString(value, CultureInfo.CurrentCulture) ?? ""); break;
+            default: value = Convert.ToString(value, CultureInfo.CurrentCulture) ?? ""; w.Write((byte)1); w.Write((string)value); break;
         }
+        return value ?? DBNull.Value;
     }
     private static object Read(BinaryReader r) => r.ReadByte() switch
     {
@@ -109,7 +130,10 @@ public sealed class QueryResultArchive : IDisposable
         _ => throw new InvalidDataException("Invalid query snapshot value.")
     };
     public QueryPreviewResult Search(Func<Func<string, object>, bool> matcher, int limit = 1000, IReadOnlyCollection<int> matchColumns = null)
-        => Search(matcher, limit, knownTruncated: false, matchColumns);
+    {
+        if (limit < 1) throw new ArgumentOutOfRangeException(nameof(limit));
+        return SearchRows(matcher, limit, matchColumns);
+    }
 
     private static void Skip(BinaryReader reader)
     {
@@ -129,15 +153,14 @@ public sealed class QueryResultArchive : IDisposable
         if (length > 0) reader.BaseStream.Seek(length, SeekOrigin.Current);
     }
 
-    private QueryPreviewResult Search(Func<Func<string, object>, bool> matcher, int limit, bool knownTruncated, IReadOnlyCollection<int> matchColumns = null)
+    private QueryPreviewResult SearchRows(Func<Func<string, object>, bool> matcher, int limit, IReadOnlyCollection<int> matchColumns)
     {
-        if (limit < 1) throw new ArgumentOutOfRangeException(nameof(limit));
         lock (gate)
         {
             if (disposed) throw new ObjectDisposedException(nameof(QueryResultArchive));
             stream.Position = 0;
             using var reader = new BinaryReader(stream, Encoding.UTF8, true);
-            var rows = new List<object[]>(limit); bool truncated = knownTruncated;
+            var rows = new List<object[]>(limit); bool truncated = false;
             bool[] selected = null;
             if (matcher != null && matchColumns != null)
             {
@@ -179,4 +202,83 @@ public sealed class QueryResultArchive : IDisposable
         }
     }
     public void Dispose() { lock (gate) { if (disposed) return; disposed = true; stream.Dispose(); } }
+
+    public void Export(string path, bool csv)
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            stream.Position = 0;
+            using var input = new BinaryReader(stream, Encoding.UTF8, true);
+            using var rows = new ArchiveReader(input, columns, types, RowCount, csv);
+            if (!csv)
+            {
+                ExcelExporter.Save(path, rows, "Query", new ExcelExportOptions { Formatted = false });
+                return;
+            }
+            string temporary = Path.GetFullPath(path) + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                CsvExporter.SaveCsv(rows, temporary);
+                File.Move(temporary, path, overwrite: true);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+    }
+
+    // The exporter consumes each row synchronously while the archive owns the stream.
+    private sealed class ArchiveReader(BinaryReader input, string[] names, Type[] types, long rowCount, bool binaryAsHex) : IDataReader
+    {
+        private readonly object[] values = new object[names.Length];
+        private long position;
+        public bool Read()
+        {
+            if (IsClosed || position == rowCount) return false;
+            for (int i = 0; i < values.Length; i++) values[i] = QueryResultArchive.Read(input);
+            position++;
+            return true;
+        }
+
+        public int FieldCount => values.Length;
+        public object GetValue(int i) => binaryAsHex && values[i] is byte[] bytes ? Convert.ToHexString(bytes) : values[i];
+        public int GetValues(object[] destination)
+        {
+            int count = Math.Min(destination.Length, values.Length);
+            Array.Copy(values, destination, count);
+            return count;
+        }
+        public string GetName(int i) => names[i];
+        public Type GetFieldType(int i) => types[i];
+        public int GetOrdinal(string name)
+        {
+            int index = Array.FindIndex(names, column => string.Equals(column, name, StringComparison.OrdinalIgnoreCase));
+            return index >= 0 ? index : throw new IndexOutOfRangeException(name);
+        }
+        public bool IsDBNull(int i) => values[i] is DBNull;
+        public object this[int i] => GetValue(i);
+        public object this[string name] => GetValue(GetOrdinal(name));
+        public bool NextResult() => false;
+        public int Depth => 0;
+        public int RecordsAffected => -1;
+        public bool IsClosed { get; private set; }
+        public void Close() => IsClosed = true;
+        public void Dispose() => Close();
+        public string GetDataTypeName(int i) => GetFieldType(i).Name;
+        public bool GetBoolean(int i) => (bool)values[i];
+        public byte GetByte(int i) => (byte)values[i];
+        public char GetChar(int i) => (char)values[i];
+        public DateTime GetDateTime(int i) => (DateTime)values[i];
+        public decimal GetDecimal(int i) => (decimal)values[i];
+        public double GetDouble(int i) => (double)values[i];
+        public float GetFloat(int i) => (float)values[i];
+        public Guid GetGuid(int i) => (Guid)values[i];
+        public short GetInt16(int i) => (short)values[i];
+        public int GetInt32(int i) => (int)values[i];
+        public long GetInt64(int i) => (long)values[i];
+        public string GetString(int i) => (string)values[i];
+        public DataTable GetSchemaTable() => throw new NotSupportedException();
+        public IDataReader GetData(int i) => throw new NotSupportedException();
+        public long GetBytes(int i, long offset, byte[] buffer, int start, int length) => throw new NotSupportedException();
+        public long GetChars(int i, long offset, char[] buffer, int start, int length) => throw new NotSupportedException();
+    }
 }

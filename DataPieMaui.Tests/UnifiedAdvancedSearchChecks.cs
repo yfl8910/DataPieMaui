@@ -108,6 +108,14 @@ internal static class UnifiedAdvancedSearchChecks
             {
                 Check(ReferenceEquals(first, data), "The completed archive did not reuse the early preview");
                 Check(snapshot.TotalRows == 1505 && snapshot.RowCount == 1000 && snapshot.Truncated, "Initial query did not capture all rows with a bounded preview");
+                string csvPath = Path.Combine(root, "archived-preview.csv");
+                snapshot.Export(csvPath, csv: true);
+                var lines = File.ReadAllLines(csvPath);
+                Check(lines.Length == 1506 && lines[^1].StartsWith("1505,row 1505,") && lines[^1].EndsWith(",00FEFF"),
+                    "Archive export lost rows beyond the preview");
+                string excelPath = Path.Combine(root, "archived-preview.xlsx");
+                snapshot.Export(excelPath, csv: false);
+                Check(MiniExcelLibs.MiniExcel.Query(excelPath, useHeaderRow: true).Count() == 1505, "Excel archive export lost rows");
                 var narrowMatch = snapshot.SearchFull(get => (string)get("1") == "row 1505", new[] { 1 });
                 Check(narrowMatch.RowCount == 1 && ((byte[])narrowMatch.GetValue(0, 3)).SequenceEqual(new byte[] { 0, 254, 255 }),
                     "Column-limited search did not restore the binary value of the matching row");

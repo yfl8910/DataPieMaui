@@ -8,6 +8,14 @@
     </div>
     <label>@L("SQL editor", "SQL 编辑器")<textarea class="sql-editor" @bind="Model.Form.Sql" @bind:event="oninput" spellcheck="false" placeholder="@L("Enter SQL. Preview shows up to 1,000 rows.", "输入 SQL。预览最多显示 1,000 行。")"></textarea></label>
     <div class="actions"><button class="primary" @onclick="PreviewAsync">@L("Preview query", "预览查询")</button><button @onclick="ExecuteSqlAsync">@L("Run SQL", "执行 SQL")</button><span class="action-divider"></span><button @onclick="() => ExportQueryAsync(false, false)">@L("Query to Excel", "查询结果导出为 Excel")</button><button @onclick="() => ExportQueryAsync(true, false)">@L("Query to CSV", "查询结果导出为 CSV")</button></div>
+    @if (Results.Current is { HasArchive: true } captured)
+    {
+        <div class="actions">
+            <span>@L("Last preview", "最近一次预览") · @captured.Source · @captured.TotalRows.ToString("N0") @L("rows", "行")</span>
+            <button @onclick="() => ExportCapturedAsync(false)">@L("Export preview to Excel", "预览结果导出为 Excel")</button>
+            <button @onclick="() => ExportCapturedAsync(true)">@L("Export preview to CSV", "预览结果导出为 CSV")</button>
+        </div>
+    }
 </section>
 
 @code {
@@ -72,5 +80,14 @@
         });
         watch.Stop();
         State.Status = $"Export data completed in {watch.Elapsed.TotalSeconds:F1} s · File: {Path.GetFullPath(path)}";
+    });
+
+    public Task ExportCapturedAsync(bool csv) => RunAsync("Export preview", async watch =>
+    {
+        if (Results.Current is not { HasArchive: true } captured) return;
+        var path = await Desktop.SaveAsync("Query preview", csv ? ".csv" : ".xlsx");
+        if (path == null) return;
+        watch.Start();
+        await Task.Run(() => captured.Export(path, csv));
     });
 }

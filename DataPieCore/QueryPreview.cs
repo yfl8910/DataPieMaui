@@ -30,16 +30,11 @@ public static class QueryPreview
         {
             cancellation.ThrowIfCancellationRequested();
             using var reader = command.ExecuteReader();
-            QueryPreviewResult first = null;
-            var archive = QueryResultArchive.Capture(reader, limit, previewReady == null ? null : data =>
-            {
-                first = data;
-                previewReady(data);
-            }, cancellation);
+            var archive = QueryResultArchive.Capture(reader, limit, previewReady, cancellation, out var first);
             try
             {
                 cancellation.ThrowIfCancellationRequested();
-                return (first ?? archive.Search(null, limit), archive);
+                return (first, archive);
             }
             catch { archive.Dispose(); throw; }
         }

@@ -42,7 +42,7 @@
         watch.Start();
         await ImportIntoTableAsync(path, table, validateFieldLengths);
     });
-    public Task ImportDirectoryAsync() => Context.TableActions.ImportDirectoryAsync(Form.ImportFolder, SelectedImportTable(), Form.ImportOptions.ValidateLengths);
+    public Task ImportDirectoryAsync() => Context.TableActions.ImportDirectoryAsync(Form.ImportFolder, SelectedImportTable(), Form.ImportOptions.ValidateLengths, Form.ImportOptions.SampleCsv);
     public Task ExportTemplateAsync() => RunAsync("Export template", async watch =>
     {
         var table = SelectedImportTable();
@@ -64,5 +64,5 @@
     private DBUtil.TableStruct SelectedImportTable() => TableSelection.Resolve(Database.Schema!.Tables, Required(Form.ImportTable, "Select a table."), Type);
 
     private Task ImportIntoTableAsync(string path, DBUtil.TableStruct table, bool validateFieldLengths)
-        => Context.TableActions.ImportIntoAsync(path, table, validateFieldLengths);
+        => Context.TableActions.ImportIntoAsync(path, table, validateFieldLengths, Form.ImportOptions.SampleCsv);
 }

@@ -29,7 +29,10 @@ internal static class SqlCipherChecks
             var database = new DatabaseOperations();
             var info = new DatabaseConnectionInfo("SQLITE", connectionString, "cipher");
             await database.ConnectAsync(info);
-            Check(database.Schema!.Tables.Single(t => t.Name == "Items").Columns.Count == 3, "Encrypted schema missing");
+            var table = database.Schema!.Tables.Single(t => t.Name == "Items");
+            Check(!table.ColumnsLoaded && table.Columns.Count == 0, "Encrypted login loaded all columns");
+            await database.EnsureColumnsAsync(table);
+            Check(table.ColumnsLoaded && table.Columns.Count == 3, "Encrypted schema missing");
             foreach (string key in new[] { "wrong", "" })
             {
                 string invalid = new DBConfig { ProviderName = "SQLITE", DataBase = path, UserPwd = key }.GetConstring();

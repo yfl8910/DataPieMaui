@@ -91,11 +91,12 @@ public sealed class ExcelExporter : IDisposable
         if (options.Totals != null && options.Totals.Length != count) throw new ArgumentException("Totals must match the worksheet column count.");
         sheets.Add(SafeSheetName(name));
         var names = Enumerable.Range(0, count).Select(reader.GetName).ToArray();
+        var columnNames = Enumerable.Range(0, count).Select(Column).ToArray();
         var numberStyles = new Dictionary<int, (int Normal, int Total)>();
         if (options.Formatted) for (int c = 0; c < Math.Min(count, options.NumberFormats.Count); c++)
             if (options.NumberFormats[c] is { Kind: not "Auto" } format) numberStyles[c] = RegisterFormat(format);
         var sample = new List<object[]>();
-        while (sample.Count < 200 && reader.Read()) { var values = new object[count]; reader.GetValues(values); sample.Add(values); }
+        while (options.Formatted && sample.Count < 200 && reader.Read()) { var values = new object[count]; reader.GetValues(values); sample.Add(values); }
         using var sheet = zip.CreateEntry($"xl/worksheets/sheet{sheets.Count}.xml").Open();
         using var xml = XmlWriter.Create(sheet, new XmlWriterSettings { Encoding = new UTF8Encoding(false) });
         void Start(string name) => xml.WriteStartElement(name, Ns);
@@ -126,18 +127,19 @@ public sealed class ExcelExporter : IDisposable
         }
         Start("sheetData"); Start("row"); Attr("r", 1);
         if (options.Formatted) { Attr("ht", 30); Attr("customHeight", 1); }
-        for (int c = 0; c < count; c++) TextCell(Column(c) + "1", names[c], options.Formatted ? 1 : 0);
+        for (int c = 0; c < count; c++) TextCell(columnNames[c] + "1", names[c], options.Formatted ? 1 : 0);
         xml.WriteEndElement(); int rowNumber = 1;
         void Row(object[] values, bool total = false)
         {
             if (++rowNumber > 1048576) throw new InvalidOperationException("Worksheet exceeds Excel's row limit (including header and totals).");
             Start("row"); Attr("r", rowNumber);
+            string rowReference = rowNumber.ToString(Invariant);
             for (int c = 0; c < count; c++)
             {
-                object value = values[c]; if (value is null or DBNull) { if (total && options.Formatted) { Start("c"); Attr("r", Column(c) + rowNumber.ToString(Invariant)); Attr("s", 5); xml.WriteEndElement(); } continue; }
+                object value = values[c]; if (value is null or DBNull) { if (total && options.Formatted) { Start("c"); Attr("r", columnNames[c] + rowReference); Attr("s", 5); xml.WriteEndElement(); } continue; }
                 if (value is double d && !double.IsFinite(d) || value is float f && !float.IsFinite(f))
                     throw new InvalidOperationException("Excel cannot store a nonfinite numeric value.");
-                string reference = Column(c) + rowNumber.ToString(Invariant);
+                string reference = columnNames[c] + rowReference;
                 if (Numeric(value) && !NeedsText(value) || value is DateTime || value is bool)
                 {
                     Start("c"); Attr("r", reference);
@@ -152,7 +154,8 @@ public sealed class ExcelExporter : IDisposable
             xml.WriteEndElement();
         }
         foreach (var values in sample) Row(values);
-        while (reader.Read()) { var values = new object[count]; reader.GetValues(values); Row(values); }
+        var current = new object[count];
+        while (reader.Read()) { reader.GetValues(current); Row(current); }
         int lastDataRow = rowNumber; if (options.Totals != null) Row(options.Totals, true);
         xml.WriteEndElement(); if (options.Formatted) Empty("autoFilter", ("ref", "A1:" + Column(count - 1) + lastDataRow.ToString(Invariant)));
         xml.WriteEndElement();
