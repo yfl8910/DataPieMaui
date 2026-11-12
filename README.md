@@ -38,17 +38,17 @@ Encrypted connections use `Microsoft.Data.Sqlite.Core` and `SQLitePCLRaw.bundle_
 ## Requirements
 
 - Windows x64. The project declares Windows 10 version 1809 as its minimum OS version.
-- The .NET SDK `11.0.100-rc.3.26522.148` selected in `global.json` and the matching `maui-windows` workload for development. The project currently targets `net11.0-windows10.0.19041.0`.
+- The .NET SDK `11.0.100` selected in `global.json` and the matching `maui-windows` workload for development. The project targets `net11.0-windows10.0.19041.0`.
 - Microsoft Edge WebView2 Runtime for the entire application interface, including when running a published copy. If it is missing, the native host displays an installation message instead of opening the workspace.
 - Access to NuGet when restoring dependencies for the first time.
 
 The current project targets Windows only.
 
-The SDK is pinned to .NET 11 RC3; MAUI Controls and Blazor WebView packages are `11.0.0-rc.2.26505.5`, and Microsoft.Extensions.Logging.Debug is `11.0.0-rc.3.26522.148`. Install the SDK selected by `global.json` and a compatible MAUI workload. Visual Studio must support that SDK and allow preview SDK usage where required.
+The project uses .NET 11. MAUI Controls and Blazor WebView.Maui use `11.0.10`. The base Blazor WebView and Microsoft.Extensions.Logging.Debug packages use `11.0.0`. Use a Visual Studio version that supports .NET 11.
 
 Visual Studio needs the SDK installed system-wide (normally under `C:\Program Files\dotnet`), plus the matching MAUI workload. An SDK installed only in `tmp/net11/sdk/` is sufficient for explicit command-line validation but is not automatically discovered by Visual Studio. `global.json` selects an installed SDK; it does not install one.
 
-If Visual Studio reports that the current SDK cannot target .NET 11, install the x64 SDK version above, run the workload installation command below, and restart Visual Studio. Check `dotnet --list-sdks` and `dotnet --version` from the repository root. This repository explicitly enables prerelease SDK selection through `global.json`.
+If Visual Studio reports that the current SDK cannot target .NET 11, install the x64 SDK version above, run the workload installation command below, and restart Visual Studio. Check `dotnet --list-sdks` and `dotnet --version` from the repository root. If the SDK reports a missing `maui-tizen` workload, install `maui-windows` using the command below.
 
 ## Build and run
 
@@ -296,7 +296,7 @@ This produces a framework-dependent, unpackaged application. The destination com
 
 ### Publish from Visual Studio
 
-Open `DataPieMaui.sln` in Visual Studio with .NET 11 RC3 and the .NET MAUI workload installed. Stop debugging, set `DataPieMaui` as the startup project, and select **Release** and **Windows Machine**. Right-click the **DataPieMaui project** and select **Publish**, then use `FolderProfile`.
+Open `DataPieMaui.sln` in Visual Studio with .NET 11 and the Windows MAUI workload installed. Stop debugging, set `DataPieMaui` as the startup project, and select **Release** and **Windows Machine**. Right-click the **DataPieMaui project** and select **Publish**, then use `FolderProfile`.
 
 The project explicitly declares `Publish` and `FolderPublish` capabilities for its unpackaged Windows configuration. After changing the project file, reload the project (or reopen the solution) so Visual Studio refreshes the commands. The profile publishes a framework-dependent Windows x64 application to the destination configured in `FolderProfile.pubxml`; distribute the entire directory. The matching x64 .NET 11 runtime, Windows App Runtime, and WebView2 Runtime must already be installed on the destination computer.
 

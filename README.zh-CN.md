@@ -26,8 +26,8 @@
 ## 开发与运行要求
 
 - Windows x64；项目声明的最低系统版本为 Windows 10 1809。
-- `global.json` 指定的 .NET SDK：`11.0.100-rc.3.26522.148`，以及匹配的 `maui-windows` 工作负载。
-- 当前目标框架为 `net11.0-windows10.0.19041.0`；MAUI Controls 和 Blazor WebView.Maui 包版本为 `11.0.0-rc.2.26505.5`。
+- 安装 `global.json` 指定的 .NET SDK `11.0.100`，以及匹配的 `maui-windows` 工作负载。如果 SDK 提示缺少 `maui-tizen`，请使用下面的命令安装 `maui-windows`。
+- 当前目标框架为 `net11.0-windows10.0.19041.0`。MAUI Controls 和 Blazor WebView.Maui 使用 `11.0.10`。
 - Microsoft Edge WebView2 Runtime。开发和发布版本都需要；缺少时原生宿主会显示安装提示。
 - 首次还原依赖需要访问 NuGet。
 
