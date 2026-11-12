@@ -134,6 +134,20 @@ internal static class UnifiedAdvancedSearchChecks
                 throw new Exception("Early preview was not published during capture or cancellation was ignored");
             }
             catch (OperationCanceledException) { }
+            using var interrupt = new CancellationTokenSource();
+            var blocked = Task.Run(() => QueryPreview.LoadFull(access,
+                "WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<1000000000) SELECT SUM(i) FROM n",
+                1000, cancellation: interrupt.Token));
+            await Task.Delay(150);
+            Check(!blocked.IsCompleted, "The query should still be computing its first row");
+            interrupt.Cancel();
+            try
+            {
+                var completed = await blocked.WaitAsync(TimeSpan.FromSeconds(5));
+                completed.Archive.Dispose();
+                throw new Exception("The query completed instead of being interrupted");
+            }
+            catch (OperationCanceledException) { }
         });
         await test("Data analysis single clear removes both legacy and advanced conditions", async () =>
         {

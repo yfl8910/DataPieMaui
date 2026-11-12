@@ -1,6 +1,6 @@
 namespace DataPieMaui.Services;
 
-public sealed record WorkspaceDialog(string Title, string Message, string Accept, bool CanCancel, string? Sql = null, Shared.DefinitionEditorSession? Editor = null, Shared.ProcedureExecutionSession? Procedure = null, Shared.TableImportOptions? TableImport = null);
+public sealed record WorkspaceDialog(string Title, string Message, string Accept, bool CanCancel, string? Sql = null, Shared.DefinitionEditorSession? Editor = null, Shared.ProcedureExecutionSession? Procedure = null, Shared.TableImportOptions? TableImport = null, string? ChineseTitle = null, string? ChineseMessage = null, string? ChineseAccept = null);
 
 public sealed class WorkspaceDialogs
 {
@@ -9,9 +9,11 @@ public sealed class WorkspaceDialogs
     public WorkspaceDialog? Current { get; private set; }
     public event Action? Changed;
 
-    public Task<bool> ConfirmAsync(string title, string message, string accept) => ShowAsync(new(title, message, accept, true));
+    public Task<bool> ConfirmAsync(string title, string message, string accept, string? chineseTitle = null, string? chineseMessage = null, string? chineseAccept = null)
+        => ShowAsync(new(title, message, accept, true, ChineseTitle: chineseTitle, ChineseMessage: chineseMessage, ChineseAccept: chineseAccept));
     public Task<bool> ShowTableImportAsync(Shared.TableImportOptions options) => ShowAsync(new("Import file", "", "Import file", true, TableImport: options));
-    public Task<bool> AlertAsync(string title, string message) => ShowAsync(new(title, message, "OK", false));
+    public Task<bool> AlertAsync(string title, string message, string? chineseTitle = null, string? chineseMessage = null)
+        => ShowAsync(new(title, message, "OK", false, ChineseTitle: chineseTitle, ChineseMessage: chineseMessage, ChineseAccept: "确定"));
     public Task<bool> ShowProcedureAsync(Shared.ProcedureExecutionSession session) => ShowAsync(new("Run with parameters", "", "Close", false, Procedure: session));
 
     public Task<bool> ShowDefinitionAsync(string title, string sql, string notice, Shared.DefinitionEditorSession? editor = null) => ShowAsync(new(title, notice, "Close", false, sql, editor));

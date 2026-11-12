@@ -13,6 +13,13 @@ internal sealed class DatabaseOperations
         ? DbAccessFactory.Create(connection.ConnectionString, connection.DatabaseType)
         : throw new InvalidOperationException("Connect to a database first.");
 
+    internal (QueryPreviewResult Preview, QueryResultArchive Archive) CaptureQuery(
+        string sql, int limit, Action<QueryPreviewResult> firstPage, CancellationToken cancellation)
+    {
+        using var access = OpenAccess();
+        return QueryPreview.LoadFull(access, sql, limit, firstPage, cancellation);
+    }
+
     public async Task ConnectAsync(DatabaseConnectionInfo connection, IProgress<string>? progress = null)
     {
         var result = await Task.Run(() =>

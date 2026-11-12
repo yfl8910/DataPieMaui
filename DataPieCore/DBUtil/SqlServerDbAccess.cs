@@ -135,11 +135,6 @@ namespace DBUtil
 
             using SqlConnection connection = new SqlConnection(ConnectionString);
             connection.Open();
-            using SqlBulkCopy bulkCopy = new SqlBulkCopy(connection)
-            {
-                DestinationTableName = destination,
-                BulkCopyTimeout = 600
-            };
 
             // Discover columns using the SAME connection used for bulk copy
             var destinationColumns = new HashSet<string>(StringComparer.Ordinal);
@@ -172,9 +167,15 @@ namespace DBUtil
                 transaction.Commit();
                 return true;
             }
+            using var bulkTransaction = connection.BeginTransaction();
+            using var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, bulkTransaction)
+            {
+                DestinationTableName = destination,
+                BulkCopyTimeout = 600
+            };
             AddColumnMappings(bulkCopy, reader, destinationColumns);
-
             bulkCopy.WriteToServer(new ImportLengthDataReader(reader, lengthLimits, sourceFile, blankAsNullColumns));
+            bulkTransaction.Commit();
             return true;
         }
 

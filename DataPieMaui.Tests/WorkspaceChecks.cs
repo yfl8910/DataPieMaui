@@ -717,6 +717,22 @@ internal static class WorkspaceChecks
             workspace.Context.Form.ImportFolder = Path.Combine(root, "workspace-exports");
             await importPage.ImportDirectoryAsync().WaitAsync(TimeSpan.FromSeconds(10));
             Check(Count(connection) == 6 && workspace.Context.State.Status.StartsWith("Batch import completed"), "Batch import or completion status failed");
+
+            string retryFolder = Directory.CreateDirectory(Path.Combine(root, "retry-import")).FullName;
+            File.WriteAllText(Path.Combine(retryFolder, "a.csv"), "Id,Name\n10,first\n");
+            File.WriteAllText(Path.Combine(retryFolder, "b.csv"), "InvalidColumn\nbroken\n");
+            File.WriteAllText(Path.Combine(retryFolder, "c.csv"), "Id,Name\n12,last\n");
+            workspace.Context.Form.ImportFolder = retryFolder;
+            var failed = importPage.ImportDirectoryAsync();
+            for (int i = 0; i < 200 && workspace.Context.Dialogs.Current == null && !failed.IsCompleted; i++) await Task.Delay(10);
+            var report = workspace.Context.Dialogs.Current?.Message;
+            workspace.Context.Dialogs.Complete(false);
+            await failed.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(report?.Contains("Imported: a.csv\nFailed: b.csv\nPending: c.csv") == true && Count(connection) == 7,
+                "Batch failure did not report which files had committed");
+            File.WriteAllText(Path.Combine(retryFolder, "b.csv"), "Id,Name\n11,fixed\n");
+            await importPage.ImportDirectoryAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(Count(connection) == 9, "Retry did not resume from the failed file");
         });
         await test("Workspace procedure execution waits for confirmation", async () =>
         {

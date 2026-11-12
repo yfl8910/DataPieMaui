@@ -262,27 +262,30 @@ else if (DialogOpen)
         try
         {
             var options = importOptions;
-            string[] paths;
+            bool validate = options.ValidateLengths;
+            Task ImportFile(string path)
+            {
+                attempted = true;
+                return Task.Run(() => Session.Import((access, target, source) => DatabaseOperations.Import(path, target, access, validate, source)));
+            }
+            int count = 1;
             if (options.Batch)
             {
-                if (!Directory.Exists(options.Folder)) throw new DirectoryNotFoundException("Select an existing folder.");
-                paths = ImportFiles.GetFiles(options.Folder).Select(f => f.FullName).ToArray();
-                if (paths.Length == 0) throw new InvalidOperationException("The folder contains no CSV or XLSX files.");
+                string folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.Folder));
+                if (!importBatches.TryGetValue(folder, out var batch))
+                    importBatches.Add(folder, batch = BatchImportProgress.Open(folder));
+                await batch.RunAsync(ImportFile);
+                count = batch.Count;
+                importBatches.Remove(folder);
             }
             else
             {
                 if (!File.Exists(options.Path)) throw new FileNotFoundException("Select an existing file.");
-                paths = [options.Path];
+                await ImportFile(options.Path);
             }
-            bool validate = options.ValidateLengths;
-            foreach (string path in paths)
-            {
-                attempted = true;
-                try { await Task.Run(() => Session.Import((access, target, source) => DatabaseOperations.Import(path, target, access, validate, source))); }
-                catch (Exception ex) { throw new InvalidOperationException($"Import failed for {Path.GetFileName(path)}. Previously imported data has been kept. {ex.Message}", ex); }
-            }
-            importOpen = false; message = $"Imported {paths.Length} file(s). Current search remains applied.";
+            importOpen = false; message = $"Imported {count} file(s). Current search remains applied.";
         }
+        catch (BatchImportException ex) { dialogError = L(ex.Message, ex.ChineseMessage); }
         catch (Exception ex) { dialogError = ex.Message; }
         finally
         {
@@ -295,6 +298,7 @@ else if (DialogOpen)
             Session.IsBusy = false;
         }
     }
+    private readonly Dictionary<string, BatchImportProgress> importBatches = new(StringComparer.OrdinalIgnoreCase);
     private string DialogKey => confirmDelete ? "delete" : adding ? "new" : "edit";
     private bool IsLongText(DataColumn column)
     {

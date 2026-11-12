@@ -102,6 +102,10 @@ internal static class TableEditorChecks
             session.NavigateToPage(1);
             Check(Convert.ToInt64(session.Data.Rows[0]["Id"]) == 101 && session.Data.Rows.Count == 100,
                 "Forward paging skipped a row after an earlier row was removed");
+            session.NavigateToPage(0);
+            Check(session.Data.Rows.Count == 99 && Convert.ToInt64(session.Data.Rows[98]["Id"]) == 100 && session.HasNext,
+                "Backward paging repeated the next page's first record or reversed the display");
+            session.NavigateToPage(1);
             Execute("INSERT INTO SearchRows VALUES(1,'match 1');");
             Execute("INSERT INTO SearchRows VALUES(207,'match new');");
             session.NavigateToPage(2);

@@ -6,6 +6,13 @@ namespace DataPieMaui.Services.Shared;
 
 public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePageActions(context)
 {
+    private CancellationTokenSource? activeCapture;
+    public bool CanCancel => activeCapture is { IsCancellationRequested: false };
+    public void Cancel()
+    {
+        activeCapture?.Cancel();
+        context.Notify();
+    }
     public Task PreviewObjectAsync(DefinitionObject target) => RunAsync("Query data", async watch =>
     {
         if (target.Kind != "View" || !Database.Schema!.DefinitionObjects.Any(o => o.Kind == target.Kind && o.Schema == target.Schema && o.Name == target.Name))
@@ -25,15 +32,29 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
     internal async Task LoadAsync(string sql, string source, Stopwatch watch)
     {
         watch.Start();
-        string connection = State.Connection;
         using var cancellation = new CancellationTokenSource();
+        activeCapture = cancellation;
+        try
+        {
+            context.Notify();
+            await CaptureAsync(sql, source, watch, cancellation);
+        }
+        finally
+        {
+            activeCapture = null;
+            context.Notify();
+        }
+    }
+
+    private async Task CaptureAsync(string sql, string source, Stopwatch watch, CancellationTokenSource cancellation)
+    {
+        string connection = State.Connection;
         var firstPage = new TaskCompletionSource<QueryPreviewResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var capture = Task.Run(() =>
         {
             try
             {
-                using var access = Database.OpenAccess();
-                return QueryPreview.LoadFull(access, sql, 1000, data => firstPage.TrySetResult(data), cancellation.Token);
+                return Database.CaptureQuery(sql, 1000, data => firstPage.TrySetResult(data), cancellation.Token);
             }
             finally { firstPage.TrySetResult(null); }
         });
@@ -42,7 +63,7 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
         QueryResultSnapshot? pending = null;
         if (preview != null)
         {
-            pending = new QueryResultSnapshot(preview, connection, source, cancelCapture: cancellation.Cancel);
+            pending = new QueryResultSnapshot(preview, connection, source, cancelCapture: Cancel);
             QuerySummary = $"{source} · Showing the first 1,000 rows · Saving full result…";
             State.Status = QuerySummary;
             try

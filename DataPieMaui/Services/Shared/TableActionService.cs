@@ -21,6 +21,7 @@ public sealed class TableImportOptions(string table, Func<Task<string?>> browse,
 
 public sealed class TableActionService(WorkspaceContext context)
 {
+    private readonly Dictionary<(string Connection, string Table, string Folder), BatchImportProgress> batches = new();
     private string Type => context.Database.Connection!.DatabaseType;
     private TableStruct Resolve(TableStruct table) => TableSelection.Resolve(context.Database.Schema!.Tables, TableSelection.Key(table, Type), Type);
 
@@ -52,20 +53,14 @@ public sealed class TableActionService(WorkspaceContext context)
     private async Task ImportFolderIntoAsync(string folder, TableStruct table, bool validateLengths, Stopwatch watch)
     {
         table = Resolve(table);
-        if (!Directory.Exists(folder)) throw new DirectoryNotFoundException("Select an existing folder.");
-        var files = ImportFiles.GetFiles(folder);
-        if (files.Count == 0) throw new InvalidOperationException("The folder contains no CSV or XLSX files.");
+        folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+        var key = (context.Database.Connection!.ConnectionString, TableSelection.Key(table, Type), folder.ToUpperInvariant());
+        if (!batches.TryGetValue(key, out var batch))
+            batches.Add(key, batch = BatchImportProgress.Open(folder));
         watch.Start();
-        for (int i = 0; i < files.Count; i++)
-        {
-            var file = files[i];
-            context.State.Status = $"Importing {i + 1}/{files.Count}: {file.Name}";
-            try { await ImportIntoAsync(file.FullName, table, validateLengths); }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Import failed for {file.Name}. Previously imported data has been kept: {ex.Message}", ex);
-            }
-        }
+        await batch.RunAsync(path => ImportIntoAsync(path, table, validateLengths),
+            (index, count, name) => context.State.Status = $"Importing {index}/{count}: {name}");
+        batches.Remove(key);
         watch.Stop();
         context.State.Status = $"Batch import completed in {watch.Elapsed.TotalSeconds:F1} s.";
     }
@@ -114,13 +109,17 @@ public sealed class TableActionService(WorkspaceContext context)
     public Task ClearAsync(TableStruct table) => context.Operations.RunAsync("Clear table", async watch =>
     {
         table = Resolve(table);
-        if (!await context.Dialogs.ConfirmAsync("Clear table", $"Delete all data in {TableSelection.Label(table, Type)} from {context.State.Connection}? The table structure will be kept. This action cannot be undone.", "Clear")) return;
+        string label = TableSelection.Label(table, Type);
+        if (!await context.Dialogs.ConfirmAsync("Clear table",
+            $"Delete all data in {label} from {context.State.Connection}? The table structure will be kept. This action cannot be undone.", "Clear",
+            "清空表", $"将清空 {context.State.Connection} 中 {label} 的全部数据，并保留表结构。此操作无法撤销。", "清空")) return;
         watch.Start();
         await Task.Run(() =>
         {
             using var access = context.Database.OpenAccess();
             access.TruncateTable(TableSelection.Key(table, Type));
         });
+        ForgetBatches(TableSelection.Key(table, Type));
         context.Results.Set(null);
         context.QuerySummary = "Run a new preview after clearing the table.";
     });
@@ -131,9 +130,12 @@ public sealed class TableActionService(WorkspaceContext context)
     {
         var table = TableSelection.Resolve(context.Database.Schema!.Tables, tableKey, Type);
         string key = TableSelection.Key(table, Type), label = TableSelection.Label(table, Type);
-        if (!await context.Dialogs.ConfirmAsync("Drop table", $"Permanently delete table {label} and ALL its data from {context.State.Connection}? This cannot be undone.", "Drop table")) return;
+        if (!await context.Dialogs.ConfirmAsync("Drop table",
+            $"Permanently delete table {label} and ALL its data from {context.State.Connection}? This cannot be undone.", "Drop table",
+            "删除表", $"将永久删除 {context.State.Connection} 中的表 {label} 及其全部数据。此操作无法撤销。", "删除表")) return;
         watch.Start();
         await context.Database.DropTableAsync(key);
+        ForgetBatches(key);
         watch.Stop();
         context.Form.DropTable = "";
         if (context.Form.ImportTable == key) context.Form.ImportTable = "";
@@ -150,4 +152,11 @@ public sealed class TableActionService(WorkspaceContext context)
         try { await context.RefreshSchemaAsync(); }
         catch (Exception ex) { await context.Dialogs.AlertAsync("Table deleted", "The table was deleted, but refreshing the schema failed. Reconnect to reload the table list. " + ex.Message); }
     });
+
+    private void ForgetBatches(string table)
+    {
+        string connection = context.Database.Connection!.ConnectionString;
+        foreach (var batch in batches.Keys.Where(key => key.Connection == connection && key.Table == table).ToArray())
+            batches.Remove(batch);
+    }
 }

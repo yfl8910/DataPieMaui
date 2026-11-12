@@ -59,8 +59,9 @@
         </div>
         <footer class="statusbar" aria-live="polite">
             <span class="status-dot @(Controller.Context.State.Busy ? "working" : "")"></span>
-            <span class="status-text">@(Controller.Context.State.Status == "Select or create a database connection." ? L("Select or create a database connection.", "请选择或创建数据库连接。") : Controller.Context.State.Status)</span>
+            <span class="status-text">@L(Controller.Context.State.Status, Controller.Context.State.ChineseStatus ?? Controller.Context.State.Status)</span>
             @if (Controller.Context.State.Converting) { <button class="danger" @onclick="Controller.Conversion.CancelConversion">@L("Cancel conversion", "取消转换")</button> }
+            @if (Controller.Context.Preview.CanCancel) { <button @onclick="Controller.Context.Preview.Cancel">@L("Cancel query", "取消查询")</button> }
         </footer>
     </div>
     <WorkspaceDialogView Dialogs="Controller.Context.Dialogs" />

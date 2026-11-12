@@ -11,17 +11,42 @@ public static class QueryPreview
         Action<QueryPreviewResult> previewReady = null, CancellationToken cancellation = default)
     {
         if (limit < 1) throw new ArgumentOutOfRangeException(nameof(limit));
+        cancellation.ThrowIfCancellationRequested();
         if (access.conn.State != ConnectionState.Open) access.conn.Open();
         using var command = access.conn.CreateCommand(); command.CommandText = sql; command.CommandTimeout = 1000;
-        using var reader = command.ExecuteReader();
-        QueryPreviewResult first = null;
-        var archive = QueryResultArchive.Capture(reader, limit, previewReady == null ? null : data =>
+        using var registration = cancellation.Register(() =>
         {
-            first = data;
-            previewReady(data);
-        }, cancellation);
-        try { return (first ?? archive.Search(null, limit), archive); }
-        catch { archive.Dispose(); throw; }
+            try
+            {
+                if (command.Connection is Microsoft.Data.Sqlite.SqliteConnection sqlite)
+                    SQLitePCL.raw.sqlite3_interrupt(sqlite.Handle);
+                else if (command.Connection is System.Data.SQLite.SQLiteConnection plainSqlite)
+                    plainSqlite.Cancel();
+                else command.Cancel();
+            }
+            catch (Exception ex) { System.Diagnostics.Trace.TraceWarning("Query cancellation request failed: {0}", ex.Message); }
+        });
+        try
+        {
+            cancellation.ThrowIfCancellationRequested();
+            using var reader = command.ExecuteReader();
+            QueryPreviewResult first = null;
+            var archive = QueryResultArchive.Capture(reader, limit, previewReady == null ? null : data =>
+            {
+                first = data;
+                previewReady(data);
+            }, cancellation);
+            try
+            {
+                cancellation.ThrowIfCancellationRequested();
+                return (first ?? archive.Search(null, limit), archive);
+            }
+            catch { archive.Dispose(); throw; }
+        }
+        catch (System.Data.Common.DbException ex) when (cancellation.IsCancellationRequested)
+        {
+            throw new OperationCanceledException("Query canceled.", ex, cancellation);
+        }
     }
     // Do not rewrite arbitrary SQL: it may contain CTEs, batches or procedures.
     public static QueryPreviewResult Load(IDbAccess access, string sql, int limit)

@@ -183,18 +183,21 @@ public sealed class TableEditorSession
             command.CommandText = $"SELECT {(databaseType == "SQLSERVER" ? "COUNT_BIG(*)" : "COUNT(*)")} FROM {destination}{filter}";
             totalRows = Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
-        // A forward step can seek to the last visible key instead of walking the preceding pages.
-        if (!refreshCount && page == (long)Page + 1 && Data.Rows.Count > 0)
+        bool backwards = false;
+        if (!refreshCount && Math.Abs((long)page - Page) == 1 && Data.Rows.Count > 0)
         {
-            var last = Data.Rows[Data.Rows.Count - 1];
+            bool previous = page < Page;
+            var edge = Data.Rows[previous ? 0 : Data.Rows.Count - 1];
             string key = sqliteRowId ?? (keys.Count == 1 ? keys.Single() : null);
-            object boundary = sqliteRowId != null ? rowIds[last]
-                : key != null && Data.Columns.Contains(key) && Comparable(Data.Columns[key].DataType) ? last[key] : null;
+            object boundary = sqliteRowId != null ? rowIds[edge]
+                : key != null && Data.Columns.Contains(key) ? edge[key] : null;
             if (boundary is byte or short or int or long)
             {
                 SearchConditions.Bind(command, new[] { new SearchParameter("@pageBoundary", boundary) });
                 filter = (predicate.Sql.Length == 0 ? " WHERE " : " WHERE (" + predicate.Sql + ") AND ")
-                    + Quote(key) + " > @pageBoundary";
+                    + Quote(key) + (previous ? " < @pageBoundary" : " > @pageBoundary");
+                if (previous) order += " DESC";
+                backwards = previous;
                 offset = 0;
             }
         }
@@ -269,6 +272,14 @@ public sealed class TableEditorSession
         }
         bool hasNext = next.Rows.Count > PageSize;
         if (hasNext) next.Rows.RemoveAt(PageSize);
+        if (backwards)
+        {
+            var ascending = next.Clone();
+            for (int i = next.Rows.Count - 1; i >= 0; i--) ascending.ImportRow(next.Rows[i]);
+            next.Dispose();
+            next = ascending;
+            hasNext = true;
+        }
         rowIds.Clear();
         if (sqliteRowId != null)
         {
