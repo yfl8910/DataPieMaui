@@ -189,9 +189,10 @@ else if (DialogOpen)
         if (previewSnapshot == null || !int.TryParse(name, out int index) || index < 0 || index >= previewSnapshot.ColumnCount || !SupportedPreviewType(previewSnapshot.GetColumnType(index))) throw new ArgumentException("Select a supported preview column.");
         return new SearchColumn(name, previewSnapshot.GetColumnType(index), name);
     }
-    private Func<Func<string, object>, bool> PreviewMatcher(AnalysisFilterConfig config) => AnalysisFilters.CreatePreviewMatcher(config, ResolvePreviewColumn,
-        AdvancedFields.Where(f => f.Kind == "Text").Select(f => ResolvePreviewColumn(f.Name)).ToArray());
-    private void ValidateAdvanced(AnalysisFilterConfig config) { if (Preview == null) Session.ValidateAdvanced(config); else PreviewMatcher(config); }
+    private Func<Func<string, object>, bool> PreviewMatcher(AnalysisFilterConfig config, out IReadOnlyCollection<string> matchColumns) =>
+        AnalysisFilters.CreatePreviewMatcher(config, ResolvePreviewColumn,
+            AdvancedFields.Where(f => f.Kind == "Text").Select(f => ResolvePreviewColumn(f.Name)).ToArray(), out matchColumns);
+    private void ValidateAdvanced(AnalysisFilterConfig config) { if (Preview == null) Session.ValidateAdvanced(config); else PreviewMatcher(config, out _); }
     public void OpenAdvancedSearch() { if (!previewBusy && (Preview != null || (!Session.IsBusy && !DialogOpen))) { dialogError = ""; searchDialogOpen = true; } }
     private void CloseAdvancedSearch() { searchDialogOpen = false; dialogError = ""; }
     public async Task ApplyAdvancedAsync(AnalysisFilterConfig config)
@@ -201,7 +202,7 @@ else if (DialogOpen)
         {
             if (Preview != null)
             {
-                var matcher = PreviewMatcher(config);
+                var matcher = PreviewMatcher(config, out var matchColumns);
                 var original = Preview.Current ?? throw new InvalidOperationException("The query result is no longer available.");
                 if (!original.HasFullResult) throw new InvalidOperationException("Full-result search is unavailable for this preview. Run the query again.");
                 previewBusy = true;
@@ -209,7 +210,8 @@ else if (DialogOpen)
                 {
                     if (original.HasArchive)
                     {
-                        var filteredSnapshot = await Task.Run(() => original.SearchFull(matcher));
+                        var columns = matchColumns.Select(name => int.Parse(name, CultureInfo.InvariantCulture)).ToArray();
+                        var filteredSnapshot = await Task.Run(() => original.SearchFull(matcher, columns));
                         if (previewDisposed || !ReferenceEquals(Preview.Current, original)) return;
                         previewSnapshot = filteredSnapshot; previewMatcher = null;
                         previewOrder = previewSortColumn >= 0 ? filteredSnapshot.Sort(previewSortColumn, previewDescending) : Enumerable.Range(0, filteredSnapshot.RowCount).ToArray();

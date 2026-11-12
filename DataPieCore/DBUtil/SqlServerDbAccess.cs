@@ -15,17 +15,23 @@ namespace DBUtil
         /// <summary>
         /// 连接字符串
         /// </summary>
-        public string ConnectionString { get; set; }
+        public string ConnectionString { get; }
 
         /// <summary>
         /// 连接对象
         /// </summary>
-        public IDbConnection conn { set; get; }
+        public IDbConnection conn { get; }
 
         /// <summary>
         /// 数据库类型
         /// </summary>
-        public DataBaseType DataBaseType { get; set; }
+        public DataBaseType DataBaseType => DataBaseType.SQLSERVER;
+
+        internal SqlServerDbAccess(string connectionString)
+        {
+            ConnectionString = connectionString;
+            conn = new SqlConnection(connectionString);
+        }
 
         /// <summary>
         /// 执行sql语句

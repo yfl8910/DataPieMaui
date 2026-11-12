@@ -11,9 +11,15 @@ namespace DBUtil
 {
     public partial class SQLiteDbAccess : IDbAccess
     {
-        public string ConnectionString { get; set; }
-        public IDbConnection conn { set; get; }
-        public DataBaseType DataBaseType { get; set; }
+        public string ConnectionString { get; }
+        public IDbConnection conn { get; }
+        public DataBaseType DataBaseType => DataBaseType.SQLITE;
+
+        internal SQLiteDbAccess(string connectionString)
+        {
+            ConnectionString = connectionString;
+            conn = SQLiteConnections.Create(connectionString);
+        }
 
  
 

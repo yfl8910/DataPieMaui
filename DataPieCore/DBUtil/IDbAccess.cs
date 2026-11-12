@@ -13,17 +13,17 @@ namespace DBUtil
         /// <summary>
         /// 连接字符串
         /// </summary>
-        string ConnectionString { get; set; }
+        string ConnectionString { get; }
 
         /// <summary>
-        /// 连接对象
+        /// 由此访问对象拥有的连接。调用方可以借用连接，释放由访问对象负责。
         /// </summary>
-        IDbConnection conn { get; set; }
+        IDbConnection conn { get; }
 
         /// <summary>
         /// 数据库类型
         /// </summary>
-        DataBaseType DataBaseType { get; set; }
+        DataBaseType DataBaseType { get; }
 
       
 

@@ -59,10 +59,11 @@ public sealed class TableActionService(WorkspaceContext context)
             batches.Add(key, batch = BatchImportProgress.Open(folder));
         watch.Start();
         await batch.RunAsync(path => ImportIntoAsync(path, table, validateLengths),
-            (index, count, name) => context.State.Status = $"Importing {index}/{count}: {name}");
+            (index, count, name) => context.State.SetStatus($"Importing {index}/{count}: {name}", $"正在导入 {index}/{count} · {name}"));
         batches.Remove(key);
         watch.Stop();
-        context.State.Status = $"Batch import completed in {watch.Elapsed.TotalSeconds:F1} s.";
+        context.State.SetStatus($"Batch import completed in {watch.Elapsed.TotalSeconds:F1} s.",
+            $"批量导入完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。");
     }
 
     public Task ExportExcelAsync(TableStruct table) => context.Operations.RunAsync("Export data", async watch =>

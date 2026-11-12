@@ -1,5 +1,4 @@
 using System;
-using Microsoft.Data.SqlClient;
 using System.IO;
 
 namespace DBUtil
@@ -27,14 +26,7 @@ namespace DBUtil
             DBType = (DBType ?? "").ToUpperInvariant();
             if (DBType == "SQLSERVER")
             {
-                SqlConnection conn = new SqlConnection(connStr);
-                IDbAccess iDb = new SqlServerDbAccess()
-                {
-                    conn = conn,
-                    ConnectionString = connStr,
-                    DataBaseType = DataBaseType.SQLSERVER
-                };
-                return iDb;
+                return new SqlServerDbAccess(connStr);
             }
             else if (DBType == "SQLITE")
             {
@@ -107,16 +99,7 @@ namespace DBUtil
 
         private static IDbAccess CreateSQLite(string connStr)
         {
-            var conn = SQLiteConnections.Create(connStr);
-
-            IDbAccess iDb = new SQLiteDbAccess()
-            {
-                conn = conn,
-                ConnectionString = connStr,
-                DataBaseType = DataBaseType.SQLITE
-            };
-
-            return iDb;
+            return new SQLiteDbAccess(connStr);
         }
     }
 }

@@ -96,16 +96,23 @@ public static class AnalysisFilters
         => (config?.Parameters ?? Array.Empty<AnalysisParameter>()).ToDictionary(p => p.Id,
             p => (IReadOnlyList<string>)((values != null && values.TryGetValue(p.Id, out var input) ? input : Defaults(p, DateTime.Today)) ?? Array.Empty<string>()).ToArray(), StringComparer.Ordinal);
     public static Func<Func<string, object>, bool> CreatePreviewMatcher(AnalysisFilterConfig config, Func<string, SearchColumn> resolve, IReadOnlyList<SearchColumn> allText)
+        => CreatePreviewMatcher(config, resolve, allText, out _);
+
+    public static Func<Func<string, object>, bool> CreatePreviewMatcher(AnalysisFilterConfig config, Func<string, SearchColumn> resolve,
+        IReadOnlyList<SearchColumn> allText, out IReadOnlyCollection<string> matchColumns)
     {
         // Reuse the database compiler for validation and type checking before changing the active preview.
         Build(config, null, "SQLITE", resolve, allText);
         var values = Resolve(config);
+        var usedColumns = new HashSet<string>(StringComparer.Ordinal);
         Func<AnalysisFilterRule, Func<Func<string, object>, bool>> compile = rule =>
         {
             var column = string.IsNullOrEmpty(rule.Column) ? null : resolve(rule.Column);
             var input = string.IsNullOrEmpty(rule.ParameterId) ? rule.Values ?? Array.Empty<string>() : values[rule.ParameterId];
             if (rule.Operation == "In") input = input.Where(v => !string.IsNullOrEmpty(v)).ToArray();
             if (rule.Operation is not ("IsNull" or "IsNotNull") && (input.Count == 0 || (!string.IsNullOrEmpty(rule.ParameterId) && input.All(string.IsNullOrEmpty)))) return null;
+            if (column == null) usedColumns.UnionWith(allText.Select(c => c.Name));
+            else usedColumns.Add(column.Name);
             object Parse(string value) => column == null || column.Type == typeof(string) ? value : column.Type == typeof(Guid) ? Guid.Parse(value) : column.Type == typeof(DateTime) ? DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind) : column.Type == typeof(DateTimeOffset) ? DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind) : column.Type == typeof(TimeSpan) ? TimeSpan.Parse(value, CultureInfo.InvariantCulture) : Convert.ChangeType(value, column.Type, CultureInfo.InvariantCulture);
             object[] operands = input.Select(Parse).ToArray();
             int Compare(object a, object b) => a is string text ? string.Compare(text, (string)b, StringComparison.OrdinalIgnoreCase) : ((IComparable)a).CompareTo(b);
@@ -131,6 +138,7 @@ public static class AnalysisFilters
         };
         var groups = config.Groups.Select(g => g.Rules.Select(compile).Where(f => f != null).ToArray()).Where(g => g.Length > 0).ToArray();
         var common = (config.CommonRules ?? Array.Empty<AnalysisFilterRule>()).Select(compile).Where(f => f != null).ToArray();
+        matchColumns = usedColumns;
         return get => common.All(f => f(get)) && (groups.Length == 0 || groups.All(g => g.All(f => f(get))));
     }
     public static SearchPredicate Build(AnalysisFilterConfig config, IReadOnlyDictionary<string, IReadOnlyList<string>> values,

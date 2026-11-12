@@ -11,7 +11,7 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
     public void Cancel()
     {
         activeCapture?.Cancel();
-        context.Notify();
+        Notify();
     }
     public Task PreviewObjectAsync(DefinitionObject target) => RunAsync("Query data", async watch =>
     {
@@ -36,13 +36,13 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
         activeCapture = cancellation;
         try
         {
-            context.Notify();
+            Notify();
             await CaptureAsync(sql, source, watch, cancellation);
         }
         finally
         {
             activeCapture = null;
-            context.Notify();
+            Notify();
         }
     }
 
@@ -65,7 +65,7 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
         {
             pending = new QueryResultSnapshot(preview, connection, source, cancelCapture: Cancel);
             QuerySummary = $"{source} · Showing the first 1,000 rows · Saving full result…";
-            State.Status = QuerySummary;
+            State.SetStatus(QuerySummary, $"{source} · 正在保存完整结果，已显示前 1,000 行…");
             try
             {
                 Results.Set(pending);
@@ -100,6 +100,9 @@ public sealed class QueryPreviewService(WorkspaceContext context) : WorkspacePag
         Results.Set(result);
         QuerySummary = $"{source} · {result.TotalRows:N0} rows / {result.ColumnCount} columns" + (result.Truncated ? " · Showing the first 1,000 rows; search covers the full result." : "");
         if (pending == null) await Desktop.ShowTablePreviewAsync(Results);
-        State.Status = $"Query completed in {watch.Elapsed.TotalSeconds:F1} s: " + QuerySummary;
+        string chineseSummary = $"{source} · {result.TotalRows:N0} 行 / {result.ColumnCount} 列";
+        if (result.Truncated) chineseSummary += " · 显示前 1,000 行，可搜索完整结果。";
+        State.SetStatus($"Query completed in {watch.Elapsed.TotalSeconds:F1} s: " + QuerySummary,
+            $"查询完成，耗时 {watch.Elapsed.TotalSeconds:F1} 秒。{chineseSummary}");
     }
 }
