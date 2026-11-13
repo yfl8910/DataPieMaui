@@ -134,6 +134,37 @@ internal static class UnifiedAdvancedSearchChecks
             }
             finally { preview.Dispose(); previewSession.Set(null); }
             Check(!File.Exists(temporary), "Temporary query snapshot was not deleted");
+            var (_, replacedArchive) = QueryPreview.LoadFull(access, "SELECT Id FROM LargeRows", 1000);
+            string replacedPath = replacedArchive.StoragePath;
+            var reading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var resumeSearch = new ManualResetEventSlim();
+            var searching = Task.Run(() => replacedArchive.Search(_ =>
+            {
+                reading.TrySetResult();
+                resumeSearch.Wait(TimeSpan.FromSeconds(10));
+                return false;
+            }));
+            try
+            {
+                await reading.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Task.Run(replacedArchive.Dispose).WaitAsync(TimeSpan.FromSeconds(2));
+                Check(!searching.IsCompleted, "Disposal had to wait for the archive search");
+            }
+            finally { resumeSearch.Set(); replacedArchive.Dispose(); }
+            try
+            {
+                await searching.WaitAsync(TimeSpan.FromSeconds(5));
+                throw new Exception("Search continued after the result was replaced");
+            }
+            catch (OperationCanceledException) { }
+            Check(!File.Exists(replacedPath), "Replaced archive was not deleted when the reader exited");
+
+            var (wide, wideArchive) = QueryPreview.LoadFull(access, "SELECT randomblob(4096) AS Payload", 1000);
+            using (wideArchive)
+            {
+                Check(wide.FormatGridCell(0, 0).Length == 257 && wide.FormatCell(0, 0).Length == 8192,
+                    "Large binary grid preview affected full-value formatting");
+            }
             using var cancellation = new CancellationTokenSource();
             try
             {

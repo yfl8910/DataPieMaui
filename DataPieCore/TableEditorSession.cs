@@ -262,13 +262,16 @@ public sealed class TableEditorSession
             }
             columnReader.Close();
             // INTEGER PRIMARY KEY aliases rowid only when no separate PK index exists.
-            using var indexes = access.conn.CreateCommand();
-            indexes.CommandText = "PRAGMA index_list(" + destination + ")";
-            using var indexReader = indexes.ExecuteReader();
-            bool hasPrimaryIndex = false;
-            while (indexReader.Read()) if (indexReader.GetString(3) == "pk") hasPrimaryIndex = true;
-            if (sqliteKeys.Count == 1 && sqliteKeys[0].Type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase) && !hasPrimaryIndex)
-                nextInsertable.Remove(sqliteKeys[0].Name);
+            if (sqliteKeys.Count == 1 && sqliteKeys[0].Type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase))
+            {
+                using var indexes = access.conn.CreateCommand();
+                indexes.CommandText = "PRAGMA index_list(" + destination + ")";
+                using var indexReader = indexes.ExecuteReader();
+                bool hasPrimaryIndex = false;
+                while (indexReader.Read())
+                    if (indexReader.GetString(3) == "pk") { hasPrimaryIndex = true; break; }
+                if (!hasPrimaryIndex) nextInsertable.Remove(sqliteKeys[0].Name);
+            }
         }
         bool hasNext = next.Rows.Count > PageSize;
         if (hasNext) next.Rows.RemoveAt(PageSize);

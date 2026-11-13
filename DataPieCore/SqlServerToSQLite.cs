@@ -8,6 +8,7 @@ using System.Data.SQLite;
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using System.Data;
+using System.Diagnostics;
 
 namespace DataPieCore
 {
@@ -40,9 +41,11 @@ namespace DataPieCore
         /// <param name="schema">The schema of the SQL Server database.</param>
         /// <param name="password">The password to use for encrypting the file</param> 
         /// <param name="commandTimeoutSeconds">SQL Server query timeout in seconds; zero disables the timeout.</param>
-        public static void CopySqlServerRowsToSQLiteDB(string sqlConnString, string sqlitePath, string password, int commandTimeoutSeconds = 600)
+        public static void CopySqlServerRowsToSQLiteDB(string sqlConnString, string sqlitePath, string password, int commandTimeoutSeconds = 600,
+            int rowsPerTransaction = 1000)
         {
             if (commandTimeoutSeconds < 0) throw new ArgumentOutOfRangeException(nameof(commandTimeoutSeconds));
+            if (rowsPerTransaction < 1) throw new ArgumentOutOfRangeException(nameof(rowsPerTransaction));
             Done = false;
             TotalCopyed = 0;
             currentProcessTable = null;
@@ -55,12 +58,16 @@ namespace DataPieCore
                 destination.Open();
                 foreach (var table in dbs.Tables)
                 {
+                    long tableStarted = Stopwatch.GetTimestamp();
+                    long readTicks = 0, commitTicks = 0;
+                    int initialRows = TotalCopyed;
                     currentProcessTable = table.TableSchemaName + "." + table.Name;
                     using var query = new SqlCommand(BuildSqlServerTableQuery(table), source)
                     {
                         CommandTimeout = commandTimeoutSeconds
                     };
                     using var reader = query.ExecuteReader(CommandBehavior.SequentialAccess);
+                    readTicks += Stopwatch.GetTimestamp() - tableStarted;
                     using var insert = BuildSQLiteInsert(table, destination);
                     insert.Connection = destination;
                     var parameters = insert.Parameters.Cast<DbParameter>().ToArray();
@@ -71,16 +78,25 @@ namespace DataPieCore
                         insert.Transaction = transaction;
                         insert.Prepare();
                         int batchRows = 0;
-                        while (reader.Read())
+                        while (true)
                         {
+                            long readStarted = Stopwatch.GetTimestamp();
+                            if (!reader.Read())
+                            {
+                                readTicks += Stopwatch.GetTimestamp() - readStarted;
+                                break;
+                            }
                             CheckCancelled();
                             for (int j = 0; j < parameters.Length; j++)
                                 parameters[j].Value = CastValueForColumn(reader[j], types[j]) ?? DBNull.Value;
+                            readTicks += Stopwatch.GetTimestamp() - readStarted;
                             insert.ExecuteNonQuery();
                             batchRows++;
-                            if (batchRows == 1000)
+                            if (batchRows == rowsPerTransaction)
                             {
+                                long commitStarted = Stopwatch.GetTimestamp();
                                 transaction.Commit();
+                                commitTicks += Stopwatch.GetTimestamp() - commitStarted;
                                 TotalCopyed += batchRows;
                                 batchRows = 0;
                                 transaction.Dispose();
@@ -89,10 +105,17 @@ namespace DataPieCore
                             }
                         }
                         CheckCancelled();
+                        long finalCommit = Stopwatch.GetTimestamp();
                         transaction.Commit();
+                        commitTicks += Stopwatch.GetTimestamp() - finalCommit;
                         TotalCopyed += batchRows;
                     }
                     finally { transaction.Dispose(); }
+                    double elapsed = Stopwatch.GetElapsedTime(tableStarted).TotalSeconds;
+                    double read = (double)readTicks / Stopwatch.Frequency;
+                    double commit = (double)commitTicks / Stopwatch.Frequency;
+                    Trace.TraceInformation("Migration {0}: {1:N0} rows, source read and conversion {2:F3}s, destination work {3:F3}s, commit {4:F3}s.",
+                        currentProcessTable, TotalCopyed - initialRows, read, Math.Max(0, elapsed - read - commit), commit);
                 }
             }
             catch (SqlException ex) when (ex.Number == -2)
@@ -394,9 +417,10 @@ namespace DataPieCore
             // SQL Server foreign keys may reference a unique key instead of the primary key.
             int index = 0;
             var indexedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var tablesByName = dbs.Tables.ToDictionary(table => table.Name, StringComparer.OrdinalIgnoreCase);
             foreach (var key in dbs.Tables.SelectMany(table => table.ForeignKeys))
             {
-                var parent = dbs.Tables.Single(table => string.Equals(table.Name, key.ReferencedTableName, StringComparison.OrdinalIgnoreCase));
+                var parent = tablesByName[key.ReferencedTableName];
                 if (parent.Columns.Where(column => column.IsPrimaryKey).Select(column => column.Name)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(key.ReferencedColumnNames))
                     continue;

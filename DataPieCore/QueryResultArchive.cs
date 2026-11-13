@@ -15,7 +15,7 @@ public sealed class QueryResultArchive : IDisposable
     private readonly object gate = new();
     private readonly string[] columns;
     private readonly Type[] types;
-    private bool disposed;
+    private volatile bool disposed;
     public long RowCount { get; private set; }
     internal string StoragePath => stream.Name;
     private QueryResultArchive(FileStream stream, string[] columns, Type[] types) { this.stream = stream; this.columns = columns; this.types = types; }
@@ -29,7 +29,7 @@ public sealed class QueryResultArchive : IDisposable
         if (previewReady != null && previewLimit < 1) throw new ArgumentOutOfRangeException(nameof(previewLimit));
         preview = null;
         string path = Path.Combine(Path.GetTempPath(), "datapie-query-" + Guid.NewGuid().ToString("N") + ".tmp");
-        var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read, 65536, FileOptions.DeleteOnClose | FileOptions.SequentialScan);
+        var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read | FileShare.Delete, 65536, FileOptions.DeleteOnClose | FileOptions.SequentialScan);
         try
         {
             var columns = new string[reader.FieldCount]; var types = new Type[reader.FieldCount];
@@ -155,75 +155,79 @@ public sealed class QueryResultArchive : IDisposable
 
     private QueryPreviewResult SearchRows(Func<Func<string, object>, bool> matcher, int limit, IReadOnlyCollection<int> matchColumns)
     {
-        lock (gate)
+        using var input = OpenReadStream();
+        using var reader = new BinaryReader(input, Encoding.UTF8, true);
+        var rows = new List<object[]>(limit); bool truncated = false;
+        bool[] selected = null;
+        if (matcher != null && matchColumns != null)
         {
-            if (disposed) throw new ObjectDisposedException(nameof(QueryResultArchive));
-            stream.Position = 0;
-            using var reader = new BinaryReader(stream, Encoding.UTF8, true);
-            var rows = new List<object[]>(limit); bool truncated = false;
-            bool[] selected = null;
-            if (matcher != null && matchColumns != null)
+            selected = new bool[columns.Length];
+            foreach (int column in matchColumns) selected[column] = true;
+            if (Array.TrueForAll(selected, value => value)) selected = null;
+        }
+        var row = new object[columns.Length];
+        object GetValue(string name)
+        {
+            int column = int.Parse(name, CultureInfo.InvariantCulture);
+            if (selected != null && !selected[column]) throw new InvalidOperationException("The search accessed an undeclared column.");
+            return row[column];
+        }
+        Func<string, object> getValue = GetValue;
+        for (long n = 0; n < RowCount; n++)
+        {
+            if (disposed) throw new OperationCanceledException("The query result was replaced.");
+            long start = selected == null ? 0 : input.Position;
+            for (int i = 0; i < row.Length; i++)
             {
-                selected = new bool[columns.Length];
-                foreach (int column in matchColumns) selected[column] = true;
-                if (Array.TrueForAll(selected, value => value)) selected = null;
+                if (selected == null || selected[i]) row[i] = Read(reader);
+                else Skip(reader);
             }
-            var row = new object[columns.Length];
-            object GetValue(string name)
+            if (matcher != null && !matcher(getValue)) continue;
+            if (rows.Count == limit) { truncated = true; break; }
+            if (selected != null)
             {
-                int column = int.Parse(name, CultureInfo.InvariantCulture);
-                if (selected != null && !selected[column]) throw new InvalidOperationException("The search accessed an undeclared column.");
-                return row[column];
-            }
-            Func<string, object> getValue = GetValue;
-            for (long n = 0; n < RowCount; n++)
-            {
-                long start = selected == null ? 0 : stream.Position;
+                input.Position = start;
                 for (int i = 0; i < row.Length; i++)
                 {
-                    if (selected == null || selected[i]) row[i] = Read(reader);
-                    else Skip(reader);
+                    if (selected[i]) Skip(reader);
+                    else row[i] = Read(reader);
                 }
-                if (matcher != null && !matcher(getValue)) continue;
-                if (rows.Count == limit) { truncated = true; break; }
-                if (selected != null)
-                {
-                    stream.Position = start;
-                    for (int i = 0; i < row.Length; i++)
-                    {
-                        if (selected[i]) Skip(reader);
-                        else row[i] = Read(reader);
-                    }
-                }
-                rows.Add(row);
-                row = new object[columns.Length];
             }
-            return QueryPreviewResult.FromRows(columns, types, rows, truncated);
+            rows.Add(row);
+            row = new object[columns.Length];
         }
+        return QueryPreviewResult.FromRows(columns, types, rows, truncated);
     }
-    public void Dispose() { lock (gate) { if (disposed) return; disposed = true; stream.Dispose(); } }
-
-    public void Export(string path, bool csv)
+    private FileStream OpenReadStream()
     {
         lock (gate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            stream.Position = 0;
-            using var input = new BinaryReader(stream, Encoding.UTF8, true);
-            using var rows = new ArchiveReader(input, columns, types, RowCount, csv);
-            if (!csv)
-            {
-                ExcelExporter.Save(path, rows, "Query", new ExcelExportOptions { Formatted = false });
-                return;
-            }
-            string temporary = Path.GetFullPath(path) + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try
-            {
-                CsvExporter.SaveCsv(rows, temporary);
-                File.Move(temporary, path, overwrite: true);
-            }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            // Readers own their handles so replacing the result never waits for file I/O.
+            return new FileStream(stream.Name, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
+                65536, FileOptions.SequentialScan);
         }
+    }
+
+    public void Dispose() { lock (gate) { if (disposed) return; disposed = true; stream.Dispose(); } }
+
+    public void Export(string path, bool csv)
+    {
+        using var readable = OpenReadStream();
+        using var input = new BinaryReader(readable, Encoding.UTF8, true);
+        using var rows = new ArchiveReader(input, columns, types, RowCount, csv);
+        if (!csv)
+        {
+            ExcelExporter.Save(path, rows, "Query", new ExcelExportOptions { Formatted = false });
+            return;
+        }
+        string temporary = Path.GetFullPath(path) + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            CsvExporter.SaveCsv(rows, temporary);
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
     // The exporter consumes each row synchronously while the archive owns the stream.

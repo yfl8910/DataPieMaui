@@ -34,7 +34,7 @@
             <div class="notice">@L("Showing the first 1,000 matching rows.", "显示前 1,000 条匹配记录。") @if (previewSnapshot.HasFullResult) { <text>@L("Search covers the complete query result.", "搜索范围包括全部查询结果。")</text> }</div>
         }
         <TableDataGrid TRow="int" Rows="@previewOrder.Skip(previewPage * PreviewPageSize).Take(PreviewPageSize)" ColumnCount="previewSnapshot.ColumnCount"
-                       CellText="previewSnapshot.FormatCell" CellIsNull="previewSnapshot.IsNull" IsSelected="@(_ => false)"
+                       CellText="previewSnapshot.FormatGridCell" CellIsNull="previewSnapshot.IsNull" IsSelected="@(_ => false)"
                        SortState="PreviewSortState" EmptyText="@(PreviewHasFilter ? L("No matching records in the loaded preview.", "已加载的预览中没有匹配记录。") : L("The query returned no rows.", "查询未返回数据。"))">
             <LeadingHeader>#</LeadingHeader>
             <ColumnHeader Context="column"><button @onclick="() => Sort(column)" disabled="@(previewSnapshot.GetColumnType(column) == typeof(byte[]))">@previewSnapshot.GetColumnName(column) @(previewSortColumn == column ? (previewDescending ? "▼" : "▲") : "")</button></ColumnHeader>
@@ -217,7 +217,9 @@ else if (DialogOpen)
                     if (original.HasArchive)
                     {
                         var columns = matchColumns.Select(name => int.Parse(name, CultureInfo.InvariantCulture)).ToArray();
-                        var filteredSnapshot = await Task.Run(() => original.SearchFull(matcher, columns));
+                        QueryResultSnapshot filteredSnapshot;
+                        try { filteredSnapshot = await Task.Run(() => original.SearchFull(matcher, columns)); }
+                        catch (Exception ex) when (IsObsoleteSearch(original, ex)) { return; }
                         if (previewDisposed || !ReferenceEquals(Preview.Current, original)) return;
                         previewSnapshot = filteredSnapshot; previewMatcher = null;
                         previewOrder = previewSortColumn >= 0 ? filteredSnapshot.Sort(previewSortColumn, previewDescending) : Enumerable.Range(0, filteredSnapshot.RowCount).ToArray();
@@ -244,6 +246,9 @@ else if (DialogOpen)
         }
         catch (Exception ex) { dialogError = ex.Message; }
     }
+    private bool IsObsoleteSearch(QueryResultSnapshot original, Exception error) =>
+        (error is OperationCanceledException or ObjectDisposedException)
+        && (previewDisposed || !ReferenceEquals(Preview?.Current, original));
     public async Task ClearAdvancedSearchAsync()
     {
         if (Preview != null) { if (!previewBusy) ClearSearch(); return; }
@@ -362,7 +367,8 @@ else if (DialogOpen)
     };
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("tableEditorModal.sync");
     public void Select(DataRow row, bool value) { if (Preview != null || Session.IsBusy || DialogOpen) return; if (value) selected.Add(row); else selected.Remove(row); }
-    private static string EditorCellText(DataRow row, int column) => NumericDisplay.Format(row[column], CultureInfo.CurrentCulture) ?? Format(row[column]);
+    private static string EditorCellText(DataRow row, int column) => QueryPreviewResult.ShortGridText(row[column])
+        ?? NumericDisplay.Format(row[column], CultureInfo.CurrentCulture) ?? Format(row[column]);
     private static bool EditorCellIsNull(DataRow row, int column) => row.IsNull(column);
     private bool AllPageSelected => Session.Data.Rows.Count > 0 && Session.Data.Rows.Cast<DataRow>().All(selected.Contains);
     public void SelectPage(bool value)
@@ -529,6 +535,7 @@ else if (DialogOpen)
             previewAdvanced = null; previewDraftConditions = previewConditions = active;
             RebuildOrder(); dialogError = ""; previewMessage = L("Search applied to the complete query result.", "已搜索完整查询结果。");
         }
+        catch (Exception ex) when (IsObsoleteSearch(original, ex)) { }
         catch (Exception ex) { dialogError = ex.Message; }
         finally { previewBusy = false; }
     }

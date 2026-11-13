@@ -23,14 +23,15 @@ public sealed class QueryResultSnapshot : IDisposable
     public bool IsNull(int row, int column) => data.IsNull(row, column);
     public object GetValue(int row, int column) => data.GetValue(row, column);
     public string FormatCell(int row, int column) => data.FormatDisplayCell(row, column);
+    public string FormatGridCell(int row, int column) => data.FormatGridCell(row, column);
     public string FormatGroupedCell(int row, int column) => data.GetValue(row, column) switch
     {
-        byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal
+        IFormattable number when number is byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal
             => formats != null && column < formats.Count && formats[column] is { Kind: not "Auto" } format
-                ? ((IFormattable)data.GetValue(row, column)).ToString(format.Code(), System.Globalization.CultureInfo.CurrentCulture)
+                ? number.ToString(format.Code(), System.Globalization.CultureInfo.CurrentCulture)
                 : GetColumnName(column).Contains('%')
-                ? ((IFormattable)data.GetValue(row, column)).ToString("0.0%", System.Globalization.CultureInfo.CurrentCulture)
-                : ((IFormattable)data.GetValue(row, column)).ToString("N2", System.Globalization.CultureInfo.CurrentCulture),
+                ? number.ToString("0.0%", System.Globalization.CultureInfo.CurrentCulture)
+                : number.ToString("N2", System.Globalization.CultureInfo.CurrentCulture),
         _ => FormatCell(row, column)
     };
 

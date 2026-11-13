@@ -5,6 +5,7 @@
 <CascadingValue Name="UiLanguage" Value="CurrentLanguage">
 <div lang="@CurrentLanguage" style="display: contents">
 <main class="analysis-page" inert="@(settingsDialog.Length > 0)">
+    @{ bool matchesResult = Session.Result != null && Session.Matches(Request); }
     <header><div><h1>@L("Data analysis", "数据分析")</h1><p>@Session.ConnectionLabel · @Session.Source.TableName</p></div><span class="badge">@(Session.Busy ? L("Working…", "处理中…") : L("Read-only", "只读"))</span></header>
     <div class="analysis-settings-scroll" tabindex="0" aria-label="@L("Analysis settings", "分析设置")">
     <fieldset class="analysis-settings" disabled="@Session.Busy">
@@ -30,7 +31,7 @@
             }
         </div>
         <SimpleSearch Fields="SearchFields" Value="conditions" ValueChanged="SetConditions" OnSearch="AnalyzeConditionsAsync" OnClear="ClearAllFiltersAsync" Disabled="Session.Busy" AllowAllText="true" SearchLabel="@L("Analyze", "分析")">
-            <Actions><button type="button" @onclick="OpenFilterSettings">@L("Advanced search", "高级搜索")</button><button type="button" @onclick="Reset">@L("Reset", "重置")</button><label><input type="checkbox" @bind="exportFormatted" /> @L("Format", "应用格式")</label><button type="button" @onclick="ExportAsync" disabled="@(Session.Result == null || !Session.Matches(Request))">@L("Export", "导出")</button></Actions>
+            <Actions><button type="button" @onclick="OpenFilterSettings">@L("Advanced search", "高级搜索")</button><button type="button" @onclick="Reset">@L("Reset", "重置")</button><label><input type="checkbox" @bind="exportFormatted" /> @L("Format", "应用格式")</label><button type="button" @onclick="ExportAsync" disabled="@(!matchesResult)">@L("Export", "导出")</button></Actions>
         </SimpleSearch>
 
         @if (filters != null && (filters.Groups.Any(g => g.Rules.Count > 0) || filters.CommonRules?.Count > 0)) { <p>@L("Advanced filters:", "高级筛选：") @FilterSummary(filters)</p> }
@@ -40,10 +41,10 @@
     </div>
     @if (Session.Result is { } result)
     {
-        @if (!Session.Matches(Request)) { <p class="notice">@L("Settings changed. Analyze again to update these results.", "设置已更改，请重新分析以更新结果。")</p> }
+        @if (!matchesResult) { <p class="notice">@L("Settings changed. Analyze again to update these results.", "设置已更改，请重新分析以更新结果。")</p> }
         @if (result.Truncated) { <p class="notice">@L("Showing the first 1,000 groups. Calculations include the full matching source. Export Excel retrieves all groups.", "当前显示前 1,000 个分组，计算覆盖所有匹配数据。导出 Excel 可获取全部分组。")</p> }
         <TableDataGrid TRow="int" Rows="@order.Skip(page * 100).Take(100)" ColumnCount="result.ColumnCount" CellText="result.FormatGroupedCell" CellIsNull="result.IsNull"
-                       IsSelected="IsSelected" SelectRows="true" OnSelect="Select" SortState="SortState" ShowFooter="@(Session.Totals != null && Session.Matches(Request))">
+                       IsSelected="IsSelected" SelectRows="true" OnSelect="Select" SortState="SortState" ShowFooter="@(Session.Totals != null && matchesResult)">
             <LeadingHeader>#</LeadingHeader>
             <ColumnHeader Context="column"><button @onclick="() => Sort(column)">@result.GetColumnName(column) @(sortColumn == column ? (descending ? "▼" : "▲") : "")</button></ColumnHeader>
             <LeadingCell Context="index">@(index + 1)</LeadingCell>
@@ -57,7 +58,8 @@
                             else
                             {
                                 int totalColumn = column - analyzed.Groups.Count;
-                                <td class="@(totals.IsNull(0, totalColumn) ? "null" : "")" title="@totals.FormatGroupedCell(0, totalColumn)">@totals.FormatGroupedCell(0, totalColumn)</td>
+                                string text = totals.FormatGroupedCell(0, totalColumn);
+                                <td class="@(totals.IsNull(0, totalColumn) ? "null" : "")" title="@text">@text</td>
                             }
                         }
                     </tr>

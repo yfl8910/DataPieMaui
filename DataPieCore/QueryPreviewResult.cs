@@ -21,6 +21,15 @@ public sealed class QueryPreviewResult
     // Binary values are copied only when explicitly requested by an external caller.
     public object GetValue(int row, int column) => rows[row][column] is byte[] bytes ? bytes.Clone() : rows[row][column];
     public string FormatDisplayCell(int row, int column) => NumericDisplay.Format(rows[row][column], System.Globalization.CultureInfo.CurrentCulture) ?? FormatCell(row, column);
+    public string FormatGridCell(int row, int column)
+        => ShortGridText(rows[row][column]) ?? FormatDisplayCell(row, column);
+
+    public static string ShortGridText(object value) => value switch
+    {
+        byte[] bytes when bytes.Length > 128 => Convert.ToHexString(bytes.AsSpan(0, 128)) + "…",
+        string text when text.Length > 512 => text[..(char.IsHighSurrogate(text[511]) ? 511 : 512)] + "…",
+        _ => null
+    };
     public string FormatCell(int row, int column) => rows[row][column] switch
     {
         null or DBNull => "NULL",

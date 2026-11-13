@@ -269,10 +269,15 @@ public sealed class TableAnalysis
         var grouped = BuildQuery(table, provider, request, validateOnly: false, preview: true);
         var overall = BuildQuery(table, provider, request with { Groups = Array.Empty<string>() });
         using var access = DbAccessFactory.Create(connectionString, provider); access.conn.Open();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         Validate(access.conn, grouped);
+        double validationSeconds = watch.Elapsed.TotalSeconds;
         // Publish both results together; totals include all matching source rows, not just preview groups.
         var rows = ReadPreview(access.conn, grouped);
+        double groupedSeconds = watch.Elapsed.TotalSeconds;
         var totals = ReadPreview(access.conn, overall);
+        System.Diagnostics.Trace.TraceInformation("Analysis {0}: validation {1:F3}s, grouped preview {2:F3}s, overall totals {3:F3}s.",
+            provider, validationSeconds, groupedSeconds - validationSeconds, watch.Elapsed.TotalSeconds - groupedSeconds);
         return new(rows, totals);
     }
     private const int PreviewLimit = 1000;

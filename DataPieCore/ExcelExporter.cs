@@ -221,8 +221,12 @@ public sealed class ExcelExporter : IDisposable
     private static bool Numeric(object value) => value is byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal;
     private static string ExcelText(string value)
     {
-        value = System.Text.RegularExpressions.Regex.Replace(value, "_x[0-9a-fA-F]{4}_", m => "_x005F_" + m.Value.Substring(1));
-        return System.Text.RegularExpressions.Regex.Replace(value, "[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]", m => "_x" + ((int)m.Value[0]).ToString("X4", Invariant) + "_");
+        if (value.Contains("_x", StringComparison.Ordinal))
+            value = System.Text.RegularExpressions.Regex.Replace(value, "_x[0-9a-fA-F]{4}_", m => "_x005F_" + m.Value.Substring(1));
+        foreach (char character in value)
+            if (character is <= '\u0008' or '\u000B' or '\u000C' or (>= '\u000E' and <= '\u001F') or '\uFFFE' or '\uFFFF')
+                return System.Text.RegularExpressions.Regex.Replace(value, "[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]", m => "_x" + ((int)m.Value[0]).ToString("X4", Invariant) + "_");
+        return value;
     }
     private static string Display(object value, bool percent, bool calculation) => value is null or DBNull ? "" : Numeric(value)
         ? ((IFormattable)value).ToString(percent ? "0.0%" : calculation ? "N2" : "G", Invariant) : Convert.ToString(value, Invariant) ?? "";

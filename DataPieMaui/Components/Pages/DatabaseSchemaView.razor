@@ -10,9 +10,9 @@
     <div class="schema-object-list" aria-label="@L("Database objects", "数据库对象")">
         @foreach (var category in new[] { (Kind: "Table", Label: L("Tables", "表")), (Kind: "View", Label: L("Views", "视图")), (Kind: "Procedure", Label: L("Stored procedures", "存储过程")) })
         {
-            var items = Objects.Where(o => o.Kind == category.Kind).OrderBy(o => o.Schema).ThenBy(o => o.Name).ToArray();
             @if (kind == "All" || kind == category.Kind)
             {
+                var items = FilteredObjects(category.Kind);
                 <h3>@category.Label (@items.Length)</h3>
                 @foreach (var item in items)
                 {
@@ -74,8 +74,27 @@
         _ => ""
     };
     private IReadOnlyList<DefinitionObject> Definitions => Database.Schema?.DefinitionObjects ?? [];
-    private IEnumerable<DefinitionObject> Objects => (Database.Schema?.Tables.Select(t => new DefinitionObject("Table", Type == "SQLSERVER" ? t.TableSchemaName : "main", t.Name)) ?? [])
-        .Concat(Definitions).Where(o => (kind == "All" || o.Kind == kind) && o.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase));
+    private DbSchema? indexedSchema;
+    private int indexedTableCount = -1;
+    private IReadOnlyList<DefinitionObject>? indexedDefinitions;
+    private ILookup<string, DefinitionObject>? indexedObjects;
+
+    private DefinitionObject[] FilteredObjects(string category)
+    {
+        var schema = Database.Schema;
+        int tableCount = schema?.Tables.Count ?? 0;
+        var definitions = Definitions;
+        if (indexedObjects == null || !ReferenceEquals(indexedSchema, schema) || indexedTableCount != tableCount
+            || !ReferenceEquals(indexedDefinitions, definitions))
+        {
+            indexedObjects = (schema?.Tables.Select(t => new DefinitionObject("Table", Type == "SQLSERVER" ? t.TableSchemaName : "main", t.Name)) ?? [])
+                .Concat(definitions).OrderBy(o => o.Schema).ThenBy(o => o.Name).ToLookup(o => o.Kind);
+            indexedSchema = schema;
+            indexedTableCount = tableCount;
+            indexedDefinitions = definitions;
+        }
+        return indexedObjects[category].Where(o => o.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase)).ToArray();
+    }
     private string YesNo(bool value) => value ? L("Yes", "是") : L("No", "否");
     public Task QuerySelectedViewAsync() => selected is { Kind: "View" } item ? Context.Preview.PreviewObjectAsync(item) : Task.CompletedTask;
     public Task AnalyzeSelectedViewAsync() => selected is { Kind: "View" } item ? Context.TableActions.AnalyzeViewAsync(item) : Task.CompletedTask;
